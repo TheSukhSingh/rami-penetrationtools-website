@@ -1,0 +1,20 @@
+{% extends 'auth/auth_base.html' %}
+{% block title %}Verify MFA{% endblock %}
+
+{% block content %}
+  <main>
+    <div class="auth-container">
+      <div class="auth-card">
+        <form method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label>Auth Code:</label>
+          <input name="token" maxlength="6" required autofocus>
+          <label><input type="checkbox" name="remember">
+            Remember this device for 30 days
+          </label>
+          <button type="submit" class="btn auth-btn">Verify</button>
+        </form>
+      </div>
+    </div>
+  </main>
+{% endblock %}

@@ -1,0 +1,142 @@
+{% extends 'auth/auth_base.html' %} {% block title %}Register{% endblock %} {%
+block content %}
+<main>
+  <div class="auth-container">
+    <div class="auth-card">
+      <h2>Create New Account</h2>
+      <form
+        id="registerForm"
+        class="auth-form"
+        method="POST"
+        action="{{ url_for('auth.signup') }}"
+      >
+        <div class="form-group">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+          <label for="username">Username</label>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            minlength="5"
+            maxlength="15"
+            pattern="^[A-Za-z0-9_]+$"
+            title="5-15 letters, numbers, or underscores only"
+            required
+            class="form-control"
+          />
+        </div>
+        <div class="form-group">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" required />
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required />
+        </div>
+
+        <div class="form-group password-group">
+          <label for="password">Password</label>
+          <div class="pw-input-wrapper">
+            <input
+              type="password"
+              id="password"
+              name="password"
+              required
+              autocomplete="new-password"
+            />
+            <div class="password-toggle">
+              <i class="fas fa-eye"></i>
+            </div>
+            <button
+              type="button"
+              class="pw-gen-btn"
+              id="pwGenToggle"
+              title="Generate strong password"
+            >
+              <i class="fas fa-key"></i>
+            </button>
+          </div>
+
+          <!-- Popup MUST be a child of .password-group -->
+          <div class="pw-popup" id="pwPopup">
+            <div class="pw-popup-header">
+              <span>Strong Password</span>
+              <button
+                type="button"
+                class="pw-popup-close"
+                id="pwPopupClose"
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div class="pw-popup-body">
+              <label for="pwLength">
+                Length: <strong id="pwLengthValue">12</strong>
+              </label>
+              <input type="range" id="pwLength" min="8" max="32" value="12" />
+
+              <button type="button" id="genBtn" class="btn small">
+                Generate
+              </button>
+
+              <input
+                type="text"
+                id="pwOutputPopup"
+                readonly
+                placeholder="▢▢▢▢▢▢▢▢"
+              />
+
+              <button type="button" id="copyPwBtn" class="btn small">
+                Use Password
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="confirm_password">Confirm Password</label>
+          <div class="pw-input-wrapper">
+            <input
+              type="password"
+              id="confirm_password"
+              name="confirm_password"
+              required
+              autocomplete="new-password"
+            />
+            <div class="password-toggle">
+              <i class="fas fa-eye"></i>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="btn auth-btn">Register</button>
+      </form>
+
+      <div class="social-auth">
+        <div class="divider"><span>OR</span></div>
+        <a
+          href="{{ url_for('auth.google_login') }}"
+          class="btn social-btn google-btn"
+        >
+          <i class="fab fa-google"></i> Sign in with Google
+        </a>
+        <a
+          href="{{ url_for('auth.github_login') }}"
+          class="btn social-btn github-btn"
+        >
+          <i class="fab fa-github"></i> Sign up with GitHub
+        </a>
+      </div>
+
+      <div class="auth-footer">
+        <p>
+          Already have an account?
+          <a href="{{ url_for('auth.login_page') }}">Login</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</main>
+{% endblock %}

@@ -1,0 +1,69 @@
+import os
+from flask import Flask
+from flask_migrate      import Migrate
+from flask_bcrypt import Bcrypt
+from flask_login import LoginManager
+from dotenv import load_dotenv
+from auth import auth_bp
+from auth.models import db, bcrypt, User
+from auth.utils import login_required, init_mail
+
+from flask_wtf import CSRFProtect
+from flask_migrate import Migrate
+# load .env variables
+load_dotenv()
+
+# create Flask extensions (they'll be initialized in create_app)
+
+migrate = Migrate()
+login_manager = LoginManager()
+login_manager.login_view = 'auth.login_page'
+
+from auth.models import User
+from auth.utils import init_mail
+
+# from extensions import limiter, csrf
+
+
+def create_app():
+    app = Flask(__name__, instance_relative_config=True, template_folder='templates', static_folder='static')
+    app.config.from_mapping(
+        SECRET_KEY=os.getenv('SECRET_KEY', 'dev'),
+        SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL', f"sqlite:///{os.path.join(app.instance_path, 'app.db')}"),
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        # mail settings
+        MAIL_SERVER=os.getenv('MAIL_SERVER', 'smtp.gmail.com'),
+        MAIL_PORT=int(os.getenv('MAIL_PORT', 587)),
+        MAIL_USE_TLS=True,
+        MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
+        MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
+        MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
+    )
+    CSRFProtect(app)  
+    # ensure instance folder exists
+    os.makedirs(app.instance_path, exist_ok=True)
+
+    # init extensions with app
+    db.init_app(app)
+    bcrypt.init_app(app)
+    login_manager.init_app(app)
+    init_mail(app)
+    migrate.init_app(app, db)
+
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        return User.query.get(int(user_id))
+
+    @app.route('/')
+    def index():
+        return 'Hello, World!'
+
+    return app
+
+
+if __name__ == '__main__':
+    app = create_app()
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
