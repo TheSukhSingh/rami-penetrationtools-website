@@ -1,0 +1,921 @@
+
+{% extends 'main.html' %}
+{% block title %}Hunter's Terminal - Advanced Reconnaissance Platform
+{% endblock %} 
+
+    {% block head_extra %}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+ <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    {% endblock %}
+{% block content %}
+<main id="mainContent">
+  <!-- Home Page -->
+  <div id="homePage" class="page active">
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <div class="grid-bg"></div>
+      <canvas id="wireframeGlobe" class="wireframe-globe"></canvas>
+      <div class="scan-lines"></div>
+
+      <div class="hero-content">
+        <div class="hero-logo">
+          <div class="glass glow-cyan hero-icon">
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="4,17 10,11 4,5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+          </div>
+          <h1 class="hero-title">Hunter's Terminal</h1>
+        </div>
+
+        <div class="cli-container glass">
+          <div class="cli-prompt">root@hunters-terminal:~$</div>
+          <div class="cli-text" id="typedText"></div>
+        </div>
+
+        <h2 class="hero-subtitle">
+          Advanced Reconnaissance Platform<br />
+          <span class="text-cyan">for Digital Hunters</span>
+        </h2>
+
+        <p class="hero-description">
+          Penetrate deeper. Move faster. Stay invisible. Our cutting-edge
+          toolkit combines solo precision tools with automated intelligence
+          chains for the modern cyber hunter.
+        </p>
+
+        <div class="hero-buttons">
+          <button class="cyber-button" onclick="scrollToSection('tools')">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polygon
+                points="13,2 3,14 12,14 11,22 21,10 12,10 13,2"
+              ></polygon>
+            </svg>
+            Launch Scan
+          </button>
+          <button class="glass-button">Watch Demo</button>
+        </div>
+      </div>
+
+      <!-- Floating particles -->
+      <div class="particles" id="particles"></div>
+    </section>
+
+    <!-- Tools Preview Section -->
+    <section id="tools" class="tools-section">
+      <div class="grid-bg"></div>
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">
+            Choose Your <span class="text-cyan">Arsenal</span>
+          </h2>
+          <p class="section-description">
+            Whether you prefer surgical precision or automated workflows, we've
+            got the tools to elevate your reconnaissance game to the next level.
+          </p>
+        </div>
+
+        <div class="tools-grid">
+          <!-- Solo Tools -->
+          <div class="tool-category reveal">
+            <div class="glass card-hover">
+              <div class="category-header">
+                <div class="glass-violet category-icon">
+                  <svg
+                    width="32"
+                    height="32"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polygon
+                      points="13,2 3,14 12,14 11,22 21,10 12,10 13,2"
+                    ></polygon>
+                  </svg>
+                </div>
+                <div>
+                  <h3 class="category-title">Solo Tools</h3>
+                  <p class="category-subtitle">
+                    Individual precision instruments
+                  </p>
+                </div>
+              </div>
+
+              <div class="tools-list">
+                <div class="tool-item glass card-hover hover-glow-cyan">
+                  <div class="tool-header">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="text-cyan"
+                    >
+                      <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                      <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                      <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                      <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                    </svg>
+                    <h4>Port Scanner</h4>
+                  </div>
+                  <p>
+                    Advanced TCP/UDP port scanning with stealth capabilities
+                  </p>
+                </div>
+
+                <div class="tool-item glass card-hover hover-glow-violet">
+                  <div class="tool-header">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="text-violet"
+                    >
+                      <circle cx="12" cy="12" r="2"></circle>
+                      <path
+                        d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"
+                      ></path>
+                    </svg>
+                    <h4>Network Mapper</h4>
+                  </div>
+                  <p>Comprehensive network topology discovery and mapping</p>
+                </div>
+
+                <div class="tool-item glass card-hover hover-glow-magenta">
+                  <div class="tool-header">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="text-magenta"
+                    >
+                      <path
+                        d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"
+                      ></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    <h4>Web Crawler</h4>
+                  </div>
+                  <p>Intelligent web application discovery and enumeration</p>
+                </div>
+
+                <div class="tool-item glass card-hover hover-glow-cyan">
+                  <div class="tool-header">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="text-cyan"
+                    >
+                      <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                    </svg>
+                    <h4>Data Miner</h4>
+                  </div>
+                  <p>Extract and analyze data from various sources</p>
+                </div>
+              </div>
+
+              <button class="cyber-button full-width">
+                Explore Solo Tools
+              </button>
+            </div>
+          </div>
+
+          <!-- Auto Chains -->
+          <div class="tool-category reveal">
+            <div class="glass card-hover">
+              <div class="category-header">
+                <div class="glass category-icon glow-cyan">
+                  <svg
+                    width="32"
+                    height="32"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <line x1="6" y1="3" x2="6" y2="15"></line>
+                    <circle cx="18" cy="6" r="3"></circle>
+                    <circle cx="6" cy="18" r="3"></circle>
+                    <path d="M18 9a9 9 0 0 1-9 9"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h3 class="category-title">Auto Chains</h3>
+                  <p class="category-subtitle">
+                    Automated workflow orchestration
+                  </p>
+                </div>
+              </div>
+
+              <div class="chains-list">
+                <div class="chain-item glass card-hover hover-glow-violet">
+                  <div class="chain-header">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="text-violet"
+                    >
+                      <line x1="6" y1="3" x2="6" y2="15"></line>
+                      <circle cx="18" cy="6" r="3"></circle>
+                      <circle cx="6" cy="18" r="3"></circle>
+                      <path d="M18 9a9 9 0 0 1-9 9"></path>
+                    </svg>
+                    <h4>Full Recon Chain</h4>
+                  </div>
+                  <p>
+                    Complete reconnaissance workflow from discovery to analysis
+                  </p>
+                  <div class="chain-steps">
+                    <span class="step-badge text-violet">Discovery</span>
+                    <div class="step-connector bg-violet"></div>
+                    <span class="step-badge text-violet">Enumeration</span>
+                    <div class="step-connector bg-violet"></div>
+                    <span class="step-badge text-violet">Analysis</span>
+                    <div class="step-connector bg-violet"></div>
+                    <span class="step-badge text-violet">Report</span>
+                  </div>
+                </div>
+
+                <div class="chain-item glass card-hover hover-glow-magenta">
+                  <div class="chain-header">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="text-magenta"
+                    >
+                      <rect
+                        x="3"
+                        y="11"
+                        width="18"
+                        height="11"
+                        rx="2"
+                        ry="2"
+                      ></rect>
+                      <circle cx="12" cy="16" r="1"></circle>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <h4>Security Assessment</h4>
+                  </div>
+                  <p>Automated vulnerability assessment and risk analysis</p>
+                  <div class="chain-steps">
+                    <span class="step-badge text-magenta">Scan</span>
+                    <div class="step-connector bg-magenta"></div>
+                    <span class="step-badge text-magenta">Analyze</span>
+                    <div class="step-connector bg-magenta"></div>
+                    <span class="step-badge text-magenta">Classify</span>
+                    <div class="step-connector bg-magenta"></div>
+                    <span class="step-badge text-magenta">Report</span>
+                  </div>
+                </div>
+
+                <div class="chain-item glass card-hover hover-glow-cyan">
+                  <div class="chain-header">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      class="text-cyan"
+                    >
+                      <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                      <rect x="9" y="9" width="6" height="6"></rect>
+                      <path d="M15 2v2"></path>
+                      <path d="M15 20v2"></path>
+                      <path d="M2 15h2"></path>
+                      <path d="M20 15h2"></path>
+                    </svg>
+                    <h4>Intel Gathering</h4>
+                  </div>
+                  <p>Multi-source intelligence collection and correlation</p>
+                  <div class="chain-steps">
+                    <span class="step-badge text-cyan">Collect</span>
+                    <div class="step-connector bg-cyan"></div>
+                    <span class="step-badge text-cyan">Correlate</span>
+                    <div class="step-connector bg-cyan"></div>
+                    <span class="step-badge text-cyan">Analyze</span>
+                    <div class="step-connector bg-cyan"></div>
+                    <span class="step-badge text-cyan">Export</span>
+                  </div>
+                </div>
+              </div>
+
+              <button class="cyber-button full-width">Build Auto Chains</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <section class="testimonials-section">
+      <div class="grid-bg"></div>
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">
+            Why Hunters <span class="text-magenta">❤️</span> Us
+          </h2>
+          <p class="section-description">
+            Join thousands of security professionals who trust Hunter's Terminal
+          </p>
+        </div>
+
+        <div class="testimonial-container">
+          <div class="testimonial-card glass card-hover" id="testimonialCard">
+            <div class="testimonial-content">
+              <div class="stars">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="star"
+                >
+                  <polygon
+                    points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
+                  ></polygon>
+                </svg>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="star"
+                >
+                  <polygon
+                    points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
+                  ></polygon>
+                </svg>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="star"
+                >
+                  <polygon
+                    points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
+                  ></polygon>
+                </svg>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="star"
+                >
+                  <polygon
+                    points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
+                  ></polygon>
+                </svg>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="star"
+                >
+                  <polygon
+                    points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
+                  ></polygon>
+                </svg>
+              </div>
+              <blockquote id="testimonialText">
+                "Hunter's Terminal has revolutionized our reconnaissance
+                process. The automated chains save us hours of manual work while
+                maintaining the precision we need."
+              </blockquote>
+            </div>
+
+            <div class="testimonial-author">
+              <div class="author-info">
+                <div class="author-avatar glass" id="testimonialAvatar">🥷</div>
+                <div>
+                  <div class="author-name" id="testimonialName">Alex Chen</div>
+                  <div class="author-role" id="testimonialRole">
+                    Senior Penetration Tester • CyberSec Corp
+                  </div>
+                </div>
+              </div>
+              <div class="specialty-badge glass" id="testimonialSpecialty">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect
+                    x="3"
+                    y="11"
+                    width="18"
+                    height="11"
+                    rx="2"
+                    ry="2"
+                  ></rect>
+                  <circle cx="12" cy="16" r="1"></circle>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <span>Network Security</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="testimonial-nav prev" id="prevTestimonial">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="15,18 9,12 15,6"></polyline>
+            </svg>
+          </button>
+
+          <button class="testimonial-nav next" id="nextTestimonial">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="9,18 15,12 9,6"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        <div class="testimonial-dots" id="testimonialDots">
+          <button class="dot active" onclick="setTestimonial(0)"></button>
+          <button class="dot" onclick="setTestimonial(1)"></button>
+          <button class="dot" onclick="setTestimonial(2)"></button>
+          <button class="dot" onclick="setTestimonial(3)"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="grid-bg"></div>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-brand">
+            <div class="footer-logo">
+              <div class="glass glow-cyan footer-icon">
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="4,17 10,11 4,5"></polyline>
+                  <line x1="12" y1="19" x2="20" y2="19"></line>
+                </svg>
+              </div>
+              <span class="footer-title">Hunter's Terminal</span>
+            </div>
+            <p class="footer-description">
+              The most advanced reconnaissance platform for digital hunters.
+              Penetrate deeper, move faster, stay invisible.
+            </p>
+            <div class="social-links">
+              <a href="#" class="social-link glass">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"
+                  ></path>
+                </svg>
+              </a>
+              <a href="#" class="social-link glass">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"
+                  ></path>
+                </svg>
+              </a>
+              <a href="#" class="social-link glass">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"
+                  ></path>
+                  <rect x="2" y="9" width="4" height="12"></rect>
+                  <circle cx="4" cy="4" r="2"></circle>
+                </svg>
+              </a>
+            </div>
+          </div>
+
+          <div class="footer-links">
+            <div class="footer-column">
+              <h3>Product</h3>
+              <ul>
+                <li><a href="#">Solo Tools</a></li>
+                <li><a href="#">Auto Chains</a></li>
+                <li><a href="#">Pricing</a></li>
+                <li><a href="#">Enterprise</a></li>
+              </ul>
+            </div>
+            <div class="footer-column">
+              <h3>Resources</h3>
+              <ul>
+                <li><a href="#">Documentation</a></li>
+                <li><a href="#">API Reference</a></li>
+                <li><a href="#">Tutorials</a></li>
+                <li>
+                  <a href="javascript:void(0)" onclick="showPage('blog')"
+                    >Blog</a
+                  >
+                </li>
+              </ul>
+            </div>
+            <div class="footer-column">
+              <h3>Company</h3>
+              <ul>
+                <li><a href="#">About</a></li>
+                <li><a href="#">Careers</a></li>
+                <li><a href="#">Contact</a></li>
+                <li><a href="#">Security</a></li>
+              </ul>
+            </div>
+            <div class="footer-column">
+              <h3>Legal</h3>
+              <ul>
+                <li><a href="#" id="privacy">Privacy Policy</a></li>
+                <li><a href="#">Terms of Service</a></li>
+                <li><a href="#">Cookie Policy</a></li>
+                <li><a href="#">Compliance</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="newsletter glass">
+          <div class="newsletter-content">
+            <h3>Stay in the Loop</h3>
+            <p>
+              Get the latest updates on new tools, techniques, and threat
+              intelligence.
+            </p>
+            <div class="newsletter-form">
+              <input
+                type="email"
+                placeholder="Enter your email"
+                class="newsletter-input glass"
+              />
+              <button class="cyber-button">Subscribe</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <p>
+            &copy; 2025 Hunter's Terminal. All rights reserved. Built for the
+            digital elite.
+          </p>
+          <div class="footer-status">
+            <span>Powered by</span>
+            <div class="status-indicator">
+              <div class="status-dot pulse-glow"></div>
+              <span class="status-version">v2.1.0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Blog Page -->
+  <div id="blogPage" class="page">
+    <div class="blog-header">
+      <div class="grid-bg"></div>
+      <div class="scan-lines"></div>
+      <div class="container">
+        <button
+          class="back-button glass hover-glow-cyan"
+          onclick="showPage('home')"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <polyline points="15,18 9,12 15,6"></polyline>
+          </svg>
+          <span>Back to Home</span>
+        </button>
+
+        <h1 class="page-title">
+          Hunter's <span class="text-cyan">Intel</span>
+        </h1>
+        <p class="page-description">
+          Latest techniques, tools, and insights from the cybersecurity
+          frontlines. Stay ahead of the curve with expert analysis and
+          real-world case studies.
+        </p>
+      </div>
+    </div>
+
+    <div class="blog-content">
+      <div class="container">
+        <div class="blog-grid" id="blogGrid">
+          <!-- Blog posts will be populated by JavaScript -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Blog Post Detail Page -->
+  <div id="blogPostPage" class="page">
+    <div class="blog-post-content">
+      <div class="grid-bg"></div>
+      <div class="scan-lines"></div>
+      <div class="container">
+        <button
+          class="back-button glass hover-glow-cyan"
+          onclick="showPage('blog')"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <polyline points="15,18 9,12 15,6"></polyline>
+          </svg>
+          <span>Back to Blog</span>
+        </button>
+
+        <article class="blog-post glass" id="blogPostContent">
+          <!-- Blog post content will be populated by JavaScript -->
+        </article>
+
+        <div class="blog-interactions glass" id="blogInteractions">
+          <!-- Interaction buttons will be populated by JavaScript -->
+        </div>
+
+        <div class="blog-comments glass" id="blogComments">
+          <!-- Comments section will be populated by JavaScript -->
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Auth Modal -->
+<div id="authModal" class="modal">
+  <div class="modal-backdrop" onclick="closeAuth()"></div>
+  <div class="scan-lines"></div>
+  <div class="auth-panel glass card-hover">
+    <div class="auth-header">
+      <div class="auth-icon glass glow-cyan">
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="4,17 10,11 4,5"></polyline>
+          <line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+      </div>
+      <h2 id="authTitle">Access Terminal</h2>
+      <p id="authSubtitle">Enter your credentials to continue</p>
+    </div>
+
+    <form id="authForm" class="auth-form">
+      <div id="usernameField" class="form-group" style="display: none">
+        <label>Hunter Name</label>
+        <input
+          type="text"
+          id="username"
+          placeholder="Enter your hunter name"
+          class="form-input glass"
+        />
+      </div>
+
+      <div class="form-group">
+        <label>Email Address</label>
+        <input
+          type="email"
+          id="email"
+          placeholder="hunter@terminal.com"
+          class="form-input glass"
+          required
+        />
+      </div>
+
+      <div id="passwordField" class="form-group">
+        <label>Password</label>
+        <div class="password-input">
+          <input
+            type="password"
+            id="password"
+            placeholder="Enter your password"
+            class="form-input glass"
+            required
+          />
+          <button
+            type="button"
+            class="password-toggle"
+            onclick="togglePassword('password')"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="eye-open"
+            >
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="eye-closed"
+              style="display: none"
+            >
+              <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
+              ></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="confirmPasswordField" class="form-group" style="display: none">
+        <label>Confirm Password</label>
+        <div class="password-input">
+          <input
+            type="password"
+            id="confirmPassword"
+            placeholder="Confirm your password"
+            class="form-input glass"
+          />
+          <button
+            type="button"
+            class="password-toggle"
+            onclick="togglePassword('confirmPassword')"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="eye-open"
+            >
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="eye-closed"
+              style="display: none"
+            >
+              <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
+              ></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="cyber-button full-width" id="authSubmit">
+        <span id="authButtonText">Access Terminal</span>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          id="authButtonIcon"
+        >
+          <polyline points="9,18 15,12 9,6"></polyline>
+        </svg>
+        <div
+          class="loading-spinner"
+          id="authSpinner"
+          style="display: none"
+        ></div>
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      <div id="authLinks">
+        <!-- Auth links will be populated by JavaScript -->
+      </div>
+      <div class="security-notice">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          class="text-green"
+        >
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <circle cx="12" cy="16" r="1"></circle>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span>256-bit encrypted connection</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+    {% block scripts %}
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    {% endblock %}

@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, render_template
 from flask_migrate      import Migrate
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager
@@ -59,7 +59,7 @@ def create_app():
 
     @app.route('/')
     def index():
-        return 'Hello, World!'
+        return render_template('landing_page.html')
 
     return app
 
