@@ -3,6 +3,7 @@ from flask import Flask, render_template
 from flask_migrate      import Migrate
 from flask_bcrypt import Bcrypt
 from dotenv import load_dotenv
+from admin import admin_bp
 from auth import auth_bp
 from auth.models import db, bcrypt, User
 from auth.utils import login_required, init_mail
@@ -51,6 +52,7 @@ def create_app():
     migrate.init_app(app, db)
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(admin_bp, url_prefix='/admin')
 
     init_jwt_manager(app, jwt)
 
