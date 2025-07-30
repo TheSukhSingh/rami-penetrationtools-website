@@ -2,38 +2,20 @@ from flask import flash, request, session, render_template, redirect, jsonify, u
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import os, secrets, requests
+
+from auth.models import User
+
 from . import auth_bp
-from .models import db, User
-from .utils import login_required, login_user, generate_username_from_email
+from .utils import (
+    login_required,
+    login_oauth, 
+    jwt_logout
+)
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GITHUB_CLIENT_ID     = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-
-def login_or_create_user(email, name, provider, provider_id, email_verified=False):
-    """
-    Find a User by (provider, provider_id). If none exists, create one.
-    """
-    user = User.query.filter_by(
-        provider=provider,
-        provider_id=str(provider_id)
-    ).first()
-
-    if not user:
-        username = generate_username_from_email(email)
-        user = User(
-            username=username,
-            email=email,
-            name=name,
-            provider=provider,
-            provider_id=str(provider_id),
-            email_verified=email_verified
-        )
-        db.session.add(user)
-        db.session.commit()
-
-    return user
 
 @auth_bp.route('/token-signin', methods=['POST'])
 def token_signin():
@@ -44,29 +26,27 @@ def token_signin():
         idinfo = id_token.verify_oauth2_token(token, grequests.Request(), GOOGLE_CLIENT_ID)
 
         existing = User.query.filter_by(email=idinfo['email']).first()
-        if existing and existing.provider != 'google':
+        if existing and not any(o.provider=='google' for o in existing.oauth_accounts):
             return jsonify({
                 'status': 'error',
-                'message': f"This email is already registered via {existing.provider}. Please sign in with that."
+                'message': f"Already registered via {existing.oauth_accounts[0].provider}"
             }), 400
         
-        user = login_or_create_user(
-            email=idinfo['email'],
-            name=idinfo.get('name') or idinfo['email'],
+        tokens = login_oauth(
             provider='google',
             provider_id=idinfo['sub'],
-            email_verified=True
+            profile_info={
+                'email':         idinfo['email'],
+                'name':          idinfo.get('name'),
+            }
         )
+        return jsonify({'status':'ok', **tokens})
 
-        login_user(user)
-
-        return jsonify({'status': 'ok', 'name': user.name})
     except Exception as e:
         print("Login Error: ", e)
         return jsonify({'status': 'error', 'message': str(e)}), 400
 
 @auth_bp.route('/signin',  methods=['GET'])
-@auth_bp.route('/signin/', methods=['GET'], strict_slashes=False)
 def login_page():
     return render_template(
         'auth/login.html',
@@ -89,16 +69,10 @@ def google_login():
         "access_type":   "offline",
         "prompt":        "consent"
     }
-    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + requests.compat.urlencode(params)
 
-    # 🔥 DEBUG LOGGING — copy these values exactly into your Cloud Console
-    print("👉 Using GOOGLE_CLIENT_ID:", GOOGLE_CLIENT_ID)
-    print("👉 Full Google OAuth URL:", auth_url)
-    # 👆 You should see in your terminal the exact client_id and redirect_uri being sent.
-
-    return redirect(auth_url)
-
-
+    return redirect(
+        "https://accounts.google.com/o/oauth2/v2/auth?" + requests.compat.urlencode(params)
+    )
 
 @auth_bp.route('/google/callback')
 def google_callback():
@@ -130,23 +104,22 @@ def google_callback():
     # 4) verify & pull user info from the ID token
     idinfo = id_token.verify_oauth2_token(idt, grequests.Request(), GOOGLE_CLIENT_ID)
 
-    # 5) find or create your user
-    user = login_or_create_user(
-        email           = idinfo["email"],
-        name            = idinfo.get("name") or idinfo["email"],
-        provider        = "google",
-        provider_id     = idinfo["sub"],
-        email_verified  = idinfo.get("email_verified", False)
+    # 5) issue our JWTs
+    tokens = login_oauth(
+        provider='google',
+        provider_id=idinfo['sub'],
+        profile_info={
+            'email':         idinfo['email'],
+            'name':          idinfo.get('name'),
+        }
     )
 
-    # 6) log them in & go home
-    login_user(user)
-    return redirect(url_for('index'))
+    # 6) return JSON (or set cookies and redirect)
+    return jsonify(tokens), 200
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])
 def logout():
-    session.clear()
-    return redirect(url_for('auth.login_page'))
+    return jwt_logout()
 
 @auth_bp.route('/github-login')
 def github_login():
@@ -158,8 +131,10 @@ def github_login():
         "scope":         "read:user user:email",
         "state":         state
     }
-    github_auth_url = "https://github.com/login/oauth/authorize"
-    return redirect(f"{github_auth_url}?{requests.compat.urlencode(params)}")
+    return redirect(
+        "https://github.com/login/oauth/authorize?"
+        + requests.compat.urlencode(params)
+    )
 
 @auth_bp.route('/github/callback')
 def github_callback():
@@ -200,32 +175,27 @@ def github_callback():
             for e in emails.json():
                 # pick the primary & verified one
                 if e.get("primary") and e.get("verified"):
-                    email = e.get("email")
+                    email = e["email"]
                     break
     if not email:
-        flash(
-            "Could not retrieve a verified email from GitHub. Make sure it’s public or primary.",
-            "warning"
-        )
+        flash("Could not retrieve a verified email from GitHub.", "warning")
         return redirect(url_for('auth.login_page'))
 
     existing = User.query.filter_by(email=email).first()
-    if existing and existing.provider != 'github':
+    if existing and not any(o.provider=='github' for o in existing.oauth_accounts):
         flash(
-            f"This email is already registered via {existing.provider.title()}. Please sign in with that.",
+            f"Already registered via {existing.oauth_accounts[0].provider.title()}.",
             "warning"
         )
         return redirect(url_for('auth.login_page'))
 
-
-
-    user = login_or_create_user(
-        email=email,
-        name=user_resp.get("name") or user_resp.get("login"),
+    tokens = login_oauth(
         provider='github',
         provider_id=user_resp["id"],
-        email_verified=True
+        profile_info={
+            'email':         email,
+            'name':          user_resp.get("name") or user_resp.get("login"),
+        }
     )
 
-    login_user(user)
-    return redirect(url_for('index'))
+    return jsonify(tokens), 200

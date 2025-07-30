@@ -1,13 +1,18 @@
-import os
-import re
-from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
-from flask import current_app, session, flash, redirect, url_for
 from functools import wraps
-from .models import db, User
-from datetime import datetime
+import re
+from datetime import datetime, timedelta 
+from typing import Optional, Dict, Tuple
+
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
+from flask import current_app, flash, redirect, request, url_for, jsonify
+
 from flask_mail import Mail, Message
+from flask_jwt_extended import (
+    create_access_token, create_refresh_token,
+    jwt_required, get_jwt, get_jwt_identity, decode_token, verify_jwt_in_request
+)
+from .models import LoginEvent, RefreshToken, db, User, LocalAuth, OAuthAccount
 from .passwords import COMMON_PASSWORDS
-from flask_login import login_user as _flask_login_user, current_user
 
 mail = Mail()
 
@@ -19,7 +24,7 @@ def generate_confirmation_token(email: str) -> str:
     salt = current_app.config.get('SECURITY_PASSWORD_SALT','email-confirm-salt')
     return serializer.dumps(email, salt=salt)
 
-def confirm_token(token: str, expiration: int = 3600*24) -> str | None:
+def confirm_token(token: str, expiration: int = 3600*24)  -> Optional[str]:
     serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
     salt = current_app.config.get('SECURITY_PASSWORD_SALT','email-confirm-salt')
     try:
@@ -28,25 +33,171 @@ def confirm_token(token: str, expiration: int = 3600*24) -> str | None:
         return None
 
 def send_email(to: str, subject: str, html_body: str) -> None:
-    msg = Message(subject, recipients=[to], html=html_body, sender=current_app.config['MAIL_DEFAULT_SENDER'])
+    msg = Message(
+        subject,
+        recipients=[to],
+        html=html_body,
+        sender=current_app.config['MAIL_DEFAULT_SENDER']
+    )
     mail.send(msg)
 
-def login_required(view_func):
-    @wraps(view_func)
-    def wrapped(*args, **kwargs):
-        if not current_user.is_authenticated:
+def login_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            # this will raise if no valid JWT
+            verify_jwt_in_request()
+        except Exception:
             flash("Please log in first.", "warning")
-            return redirect(url_for('auth.login_page'))
-        return view_func(*args, **kwargs)
-    return wrapped
+            # preserve the URL they wanted
+            return redirect(url_for('auth.login_page', next=request.url))
+        return func(*args, **kwargs)
+    return wrapper
 
-def login_user(user):
-    user.failed_logins = 0
-    user.last_login_at = datetime.utcnow()
+def init_jwt_manager(app, jwt):
+    """
+    Register callbacks on the JWTManager instance to check and handle revoked/expired tokens.
+    Call this in your factory after you init JWTManager:
+        init_jwt_manager(app, jwt)
+    """
+    @jwt.token_in_blocklist_loader
+    def check_if_token_revoked(jwt_header, jwt_payload):
+        jti = jwt_payload["jti"]
+        token = RefreshToken.query.filter_by(token_hash=jti).first()
+        # treat missing or revoked tokens as blocked
+        return token is None or token.revoked
+
+    @jwt.revoked_token_loader
+    def revoked_token_callback(jwt_header, jwt_payload):
+        return jsonify({"msg": "Token has been revoked"}), 401
+
+    @jwt.expired_token_loader
+    def expired_token_callback(jwt_header, jwt_payload):
+        return jsonify({"msg": "Token has expired"}), 401
+
+    @jwt.invalid_token_loader
+    def invalid_token_callback(err):
+        return jsonify({"msg": "Invalid token"}), 422
+
+    @jwt.unauthorized_loader
+    def missing_token_callback(err):
+        return jsonify({"msg": "Authorization required"}), 401
+    
+def jwt_login(user: User) -> Dict[str, str]:
+    """
+    Issue JWT access and refresh tokens, store refresh JTI in DB, and return both tokens.
+    """
+    # reset failure counters if present
+    if user.local_auth:
+        user.local_auth.failed_logins = 0
+        user.local_auth.last_login_at = datetime.utcnow()
+        db.session.add(user.local_auth)
+
+    access_token = create_access_token(identity=user.id)
+    refresh_token = create_refresh_token(identity=user.id)
+
+    # decode JTI & expiry from the refresh token
+    data = decode_token(refresh_token)
+    rt = RefreshToken(
+        user_id=user.id,
+        token_hash=data['jti'],
+        expires_at=datetime.fromtimestamp(data['exp'])
+    )
+    db.session.add(rt)
     db.session.commit()
-    _flask_login_user(user)
-    session['user'] = {'id': user.id, 'email': user.email, 'name': user.name, 'provider': user.provider}
 
+    return {'access_token': access_token, 'refresh_token': refresh_token}
+
+@jwt_required(refresh=True)
+def jwt_logout():
+    """
+    Revoke the current refresh token. Requires @jwt_required(refresh=True) context.
+    """
+    jti = get_jwt()['jti']
+    token_row = RefreshToken.query.filter_by(token_hash=jti).first()
+    if token_row:
+        token_row.revoked = True
+        db.session.commit()
+    return jsonify({"msg": "Refresh token revoked"}), 200
+
+def login_local(email: str, password: str) -> tuple[dict, str]:
+    """
+    Attempt to authenticate a user by email+password.
+    On success returns (tokens, None), on failure returns (None, error_msg).
+    """
+    user = User.query.filter_by(email=email.strip().lower()).first()
+    la = user.local_auth if user else None
+
+    if not user or not user.local_auth or not user.local_auth.check_password(password):
+        # record failed attempt
+        if user and user.local_auth:
+            user.local_auth.failed_logins += 1
+            user.local_auth.last_failed_at = datetime.utcnow()
+            db.session.commit()
+        return None, "Invalid credentials"
+    if user.is_blocked or user.is_deactivated:
+        return None, "Account is inactive"
+    
+    if la.failed_logins >= 3:
+        lock_expires = (la.last_failed_at or datetime.utcnow()) + timedelta(minutes=15)
+        if datetime.utcnow() < lock_expires:
+            return None, "Account locked. Try again later."
+        la.failed_logins = 0
+
+    if not la.email_verified:
+        return None, "Please verify your email first."
+
+    la.failed_logins = 0
+    la.last_login_at = datetime.utcnow()
+    db.session.add(LoginEvent(
+        user_id    = user.id,
+        ip_address = request.remote_addr,
+        successful = True
+    ))
+
+
+    db.session.commit()
+
+    tokens = jwt_login(user)
+    return tokens, None
+
+def login_oauth(provider: str, provider_id: str, profile_info: dict) -> Dict[str, str]:
+    """
+    Handle OAuth sign‑in/up. Finds or creates the OAuthAccount + User, then issues tokens.
+    profile_info should contain at least 'email' and optionally 'name'.
+    """
+    oauth = OAuthAccount.query.filter_by(
+        provider=provider, provider_id=provider_id
+    ).first()
+
+    if oauth:
+        user = oauth.user
+    else:
+        # create new user
+        email = profile_info.get("email")
+        name = profile_info.get("name")
+        username = generate_username_from_email(email)
+        user = User(email=email, username=username, name=name)
+        db.session.add(user)
+        db.session.commit()
+
+        oauth = OAuthAccount(
+            user_id=user.id,
+            provider=provider,
+            provider_id=provider_id
+        )
+        db.session.add(oauth)
+        db.session.commit()
+
+    return jwt_login(user)
+
+def get_current_user() -> Optional[User]:
+    """
+    Return the User object for the current valid JWT, or None if no token/invalid.
+    Use inside @jwt_required‑protected endpoints.
+    """
+    user_id = get_jwt_identity()
+    return User.query.get(user_id) if user_id else None
 
 def validate_and_set_password(user, password, confirm, commit=True):
     """
@@ -87,8 +238,7 @@ def validate_and_set_password(user, password, confirm, commit=True):
 
     # 6) No username or email fragments
     lower_pw = password.lower()
-    forbidden_fragments = [user.name.lower(), user.email.lower()]
-    for fragment in forbidden_fragments:
+    for fragment in (user.username.lower(), user.email.lower(), (user.name or '').lower()):
         if fragment and fragment in lower_pw:
             flash('Password must not contain your username or email.', 'warning')
             return False
@@ -100,18 +250,17 @@ def validate_and_set_password(user, password, confirm, commit=True):
 
     # OK: hash & store it
     try:
-        user.set_password(password)
+        la = user.local_auth or LocalAuth(user_id=user.id)
+        la.set_password(password)
     except ValueError as ve:
         flash(str(ve), 'warning')
         return False
 
     if commit:
-        # for new users you probably need db.session.add(user) first
-        db.session.add(user)
+        db.session.add(la)
         db.session.commit()
 
     return True
-
 
 def generate_username_from_email(email: str) -> str:
     """Derive a valid, unique username from the email local-part."""

@@ -1,27 +1,35 @@
 import datetime
 from io import BytesIO
 from flask import (
-    render_template, redirect, send_file, session, url_for,
-    request, flash
+    render_template, redirect, send_file,
+    url_for, request, jsonify, current_app, flash, session
 )
 import pyotp
 import qrcode
+
+from . import auth_bp
+from .models import (
+    db, User, Role, LocalAuth, LoginEvent,
+    PasswordReset, MFASetting, RefreshToken
+)
+
 from .utils import (
     generate_confirmation_token,
     confirm_token,
-    login_required,
     send_email,
-    login_user,
-    validate_and_set_password
+    login_required,
+    validate_and_set_password,
+    login_local as util_login_local,
+    jwt_logout,
+    get_current_user
 )
-from . import auth_bp
 from extensions import limiter
-from .models import db, User
 from flask_limiter.util import get_remote_address
-
+from flask_jwt_extended import (
+    create_access_token, jwt_required, get_jwt_identity
+)
 
 @auth_bp.route('/signup', methods=['GET', 'POST'])
-@auth_bp.route('/signup/', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
         username = request.form.get('username','').strip()
@@ -35,19 +43,12 @@ def signup():
             flash('All fields are required.', 'warning')
             return redirect(url_for('auth.signup'))
         
-        if password != confirm:
-            flash('Passwords do not match.', 'warning')
+        if User.query.filter_by(email=email).first():
+            flash('Email already registered.', 'warning')
             return redirect(url_for('auth.signup'))
         
-        existing = User.query.filter_by(email=email).first()
-        if existing:
-            if existing.provider != 'local':
-                flash(
-                    f"This email is already registered via {existing.provider}. Please sign in with that.",
-                    'warning'
-                )
-            else:
-                flash('Email is already registered.', 'warning')
+        if password != confirm:
+            flash('Passwords do not match.', 'warning')
             return redirect(url_for('auth.signup'))
         
         try:
@@ -55,15 +56,35 @@ def signup():
         except ValueError as ve:
             flash(str(ve), 'warning')
             return redirect(url_for('auth.signup'))
+        
         if User.query.filter_by(username=username).first():
             flash('Username already taken.', 'warning')
             return redirect(url_for('auth.signup'))
+        
 
+        
         # Create and persist new user
-        user = User(username=username, email=email, name=name, provider='local')
- 
-        if not validate_and_set_password(user, password, confirm):
+        # todo 1 - i don't have provider field, i have table for local auth
+        user = User(username=username, email=email, name=name)
+        db.session.add(user)
+        db.session.flush()  
+
+        role = Role.query.filter_by(name='user').first()
+        if not role:
+            role = Role(name='user', description='Default user role')
+            db.session.add(role)
+            db.session.flush()
+        user.roles.append(role)
+
+
+        if not validate_and_set_password(user, password, confirm, commit=False):
+            db.session.rollback()
             return redirect(url_for('auth.signup'))
+        
+        db.session.add(user.local_auth)
+
+        db.session.commit()
+
 
         # Send email confirmation link
         token       = generate_confirmation_token(user.email)
@@ -74,155 +95,143 @@ def signup():
         flash('Signup successful! Check your email to confirm your account.', 'success')
         return redirect(url_for('auth.login_page'))
 
-    return render_template(
-        'auth/signup.html'
-    )
+    return render_template('auth/signup.html')
 
 
 @auth_bp.route('/confirm/<token>')
 def confirm_email(token):
-    try:
-        email = confirm_token(token)
-    except:
+    email = confirm_token(token)
+    if not email:
         flash('The confirmation link is invalid or has expired.', 'danger')
         return redirect(url_for('index'))
 
     user = User.query.filter_by(email=email).first_or_404()
-    if not user:
+    if not user.local_auth:
         flash('Account not found.', 'danger')
         return redirect(url_for('auth.signup'))
-    if user.email_verified:
+    
+    if user.local_auth.email_verified:
         flash('Account already confirmed. Please log in.', 'info')
+
     else:
-        user.email_verified = True
+        user.local_auth.email_verified = True
         db.session.commit()
         flash('Your account has been confirmed!', 'success')
+
     return redirect(url_for('index'))
 
+
 @auth_bp.route('/signin',  methods=['POST'])
-@auth_bp.route('/signin/', methods=['POST'], strict_slashes=False)
-@limiter.limit(
-    "3 per 15 minutes",
-    key_func=lambda: request.form.get('email', get_remote_address()),
-    error_message="Too many attempts for that account; try again in 15 minutes."
-)
-def login_local():
+# @limiter.limit(
+#     "3 per 15 minutes",
+#     key_func=lambda: request.form.get('email', get_remote_address()),
+#     error_message="Too many login attempts; try again later."
+# )
+def local_login():
     email    = request.form.get('email', '').strip().lower()
     password = request.form.get('password', '')
 
-    user = User.query.filter_by(email=email, provider='local').first()
+    tokens, err = util_login_local(email, password)
+    if err:
+        # all errors come back as err string; adjust status if you want 403 for locked/blocked, etc.
+        return jsonify({"msg": err}), 401
+
+    return jsonify(tokens), 200
 
 
-    if not user:
-        flash('Email not found.', 'danger')
-        return redirect(url_for('auth.login_page'))
-    if user.is_blocked:
-        flash('Your account is blocked. Contact admin.', 'danger')
-        return redirect(url_for('auth.login_page'))
-    if user.failed_logins >= 3:
-        lock_expires = user.last_failed_login_at + datetime.timedelta(minutes=15)
-        if datetime.datetime.utcnow() < lock_expires:
-            flash("Account locked due to too many attempts. Try again later.", "danger")
-            return redirect(url_for('auth.login_page'))
-        else:
-            # lock expired → reset counter
-            user.failed_logins = 0
-            db.session.commit()
-    if not user.email_verified:
-        flash('Please verify your email before logging in.', 'warning')
-        return redirect(url_for('auth.login_page'))
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    identity     = get_jwt_identity()
+    access_token = create_access_token(identity=identity)
+    return jsonify(access_token=access_token), 200
 
-    if user.check_password(password):
-        if user.mfa_enabled:
-            session['mfa_user'] = user.id
-            return redirect(url_for('auth.verify_mfa'))
-        login_user(user)
-        flash('Logged in successfully.', 'success')
-        return redirect(url_for('index'))
 
-    else:
-        user.failed_logins += 1
-        user.last_failed_login_at = datetime.datetime.utcnow()
-        db.session.commit()
-        flash('Incorrect password.', 'danger')
-        return redirect(url_for('auth.login_page'))
+@auth_bp.route('/logout', methods=['POST'])
+@jwt_required(refresh=True)
+def logout():
+    return jwt_logout()
 
-@auth_bp.route('/forgot-password', methods=['GET', 'POST'])
+
+
+
+@auth_bp.route('/forgot-password', methods=['GET','POST'])
 def forgot_password():
-    if request.method == 'POST':
-        email = request.form.get('email', '').strip().lower()
-        user  = User.query.filter_by(email=email, provider='local').first()
-        if user:
-            # Generate and email reset token
-            token     = user.generate_reset_token(expires_in=600)
+    if request.method=='POST':
+        email = request.form.get('email','').strip().lower()
+        user  = User.query.filter_by(email=email).first()
+        if user and user.local_auth:
+            pr = PasswordReset(user_id=user.id)
+            token = pr.generate_reset_token()
             reset_url = url_for('auth.reset_password', token=token, _external=True)
-            html      = render_template('auth/reset_password_email.html', reset_url=reset_url)
-            flash('Password reset link sent. Check your mail.', 'info')
+            html = render_template('auth/reset_password_email.html', reset_url=reset_url)
             send_email(user.email, 'Your Password Reset Link', html)
-        # Always show this message to avoid enumeration
 
-        if not user:
-            flash('This email is not registered.', 'info')
+        # always show this to avoid user enumeration
+        flash('If that email is registered, you’ll receive a reset link.', 'info')
         return redirect(url_for('auth.login_page'))
+
     return render_template('auth/forgot.html')
 
-@auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
+
+@auth_bp.route('/reset-password/<token>', methods=['GET','POST'])
 def reset_password(token):
-    user = User.verify_reset_token(token)
-    if not user:
-        flash('The reset password link is invalid or has expired.', 'danger')
+    user = PasswordReset.verify_reset_token(token)
+    if not user or not user.local_auth:
+        flash('Invalid or expired reset link.', 'danger')
         return redirect(url_for('auth.forgot_password'))
 
     if request.method == 'POST':
-        password = request.form.get('password', '')
-        confirm  = request.form.get('confirm_password', '')
-        if not validate_and_set_password(user, password, confirm, commit=False):
-            return redirect(url_for('auth.reset_password', token=token))
-        
-        user.reset_token        = None
-        user.reset_token_expiry = None
-        db.session.commit()
+        pwd     = request.form.get('password', '')
+        confirm = request.form.get('confirm_password', '')
 
+        # validate & set (but don’t commit yet)
+        if not validate_and_set_password(user, pwd, confirm, commit=False):
+            # flashes are handled in the helper
+            return redirect(url_for('auth.reset_password', token=token))
+
+        # everything’s valid: persist the new hash
+        db.session.commit()
         flash('Your password has been updated! Please log in.', 'success')
         return redirect(url_for('auth.login_page'))
 
-    return render_template('auth/reset_password.html', token=token, user=user)
+    return render_template('auth/reset_password.html', token=token)
 
 
-@auth_bp.route('/mfa-setup')
-@login_required
-def mfa_setup():
-    # 1) ensure secret exists
-    user = User.query.get(session['user']['id'])
-    if not user.mfa_secret:
-        user.mfa_secret = pyotp.random_base32()
-        db.session.commit()
+# @auth_bp.route('/mfa-setup')
+# @login_required
+# def mfa_setup():
+#     uid = get_jwt_identity() if request.headers.get('Authorization') else session.get('user','{}').get('id')
+#     user = User.query.get_or_404(uid)
 
-    # 2) build provisioning URI
-    totp = pyotp.TOTP(user.mfa_secret)
-    uri  = totp.provisioning_uri(user.email, issuer_name="YourAppName")
+#     # ensure setting exists
+#     m = user.mfa_setting or MFASetting(user_id=user.id)
+#     if not m.secret:
+#         m.secret = pyotp.random_base32()
+#     db.session.add(m)
+#     db.session.commit()
 
-    # 3) render QR code
-    img = qrcode.make(uri)
-    buf = BytesIO(); img.save(buf); buf.seek(0)
-    return send_file(buf, mimetype='image/png')
+#     totp = pyotp.TOTP(m.secret)
+#     uri  = totp.provisioning_uri(user.email, issuer_name=current_app.name)
+
+#     img = qrcode.make(uri)
+#     buf = BytesIO(); img.save(buf); buf.seek(0)
+#     return send_file(buf, mimetype='image/png')
 
 
-@auth_bp.route('/verify-mfa', methods=['GET','POST'])
-def verify_mfa():
-    user_id = session.get('mfa_user')
-    if not user_id:
-        return redirect(url_for('auth.login_page'))
-    user = User.query.get(user_id)
+# @auth_bp.route('/verify-mfa', methods=['GET','POST'])
+# def verify_mfa():
+#     if request.method=='POST':
+#         token = request.form.get('token','')
+#         uid   = session.get('mfa_user')
+#         user  = User.query.get(uid)
+#         m     = user.mfa_setting
 
-    if request.method=='POST':
-        token = request.form['token']
-        if pyotp.TOTP(user.mfa_secret).verify(token):
-            # success → finalize login
-            login_user(user)
-            session.pop('mfa_user', None)
-            flash("Logged in with MFA.", "success")
-            return redirect(url_for('index'))
-        flash("Invalid authentication code.", "danger")
+#         if m and pyotp.TOTP(m.secret).verify(token):
+#             # on success you’d issue tokens as in login_local
+#             session.pop('mfa_user', None)
+#             flash('MFA verified, please sign in again.', 'success')
+#             return redirect(url_for('auth.login_page'))
+#         flash('Invalid authentication code.', 'danger')
 
-    return render_template('auth/verify_mfa.html')
+#     return render_template('auth/verify_mfa.html')
