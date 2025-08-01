@@ -251,12 +251,21 @@ function executeScan() {
   // build preview-friendly options
   const previewOptions = {};
   for (let [key, value] of formData.entries()) {
-    if (value instanceof File) {
-      previewOptions[key] = value.name;
-    } else {
-      previewOptions[key] = value;
+  // if it’s a File, swap in just the name
+  if (value instanceof File) value = value.name;
+
+  // if we’ve never seen this key, just set it
+  if (!(key in previewOptions)) {
+    previewOptions[key] = value;
+  } else {
+    // if it was a scalar, turn it into a 2-item array
+    if (!Array.isArray(previewOptions[key])) {
+      previewOptions[key] = [previewOptions[key]];
     }
+    // now push the new one
+    previewOptions[key].push(value);
   }
+}
   const command = generateCommand(currentTool, previewOptions);
 
   clearTerminal();

@@ -2,7 +2,6 @@ import subprocess
 import os
 
 def run_scan(data):
-
     targets = data.get('dnsx-file')
     manual = data.get('dnsx-manual')
     if manual and not targets:
