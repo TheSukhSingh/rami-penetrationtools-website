@@ -4,29 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{% endblock %}</title>
-    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="csrf-token" content="{{ csrf_token() }}" />
 
     {% block head_extra %}{% endblock %}
   </head>
   <body>
-    
-    <div class="page-wrapper"> <!-- ✅ WRAPPER START -->
+    <div class="page-wrapper">
+      <!-- ✅ WRAPPER START -->
 
-{% include 'navbar.html' %}
+      {% include 'navbar.html' %} 
+
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-          <div class="flash-container">
-            {% for category, msg in messages %}
-              <div class="flash flash-{{ category }}">{{ msg }}</div>
-            {% endfor %}
-          </div>
-        {% endif %}
-      {% endwith %}
+        <div class="flash-container">
+          {% for category, msg in messages %}
+          <div class="flash flash-{{ category }}">{{ msg }}</div>
+          {% endfor %}
+        </div>
+        {% endif %} 
+      {% endwith %} 
+      
+      {% block content %}
+      {% endblock %}
+    </div>
+    <!-- ✅ WRAPPER END -->
 
-      {% block content %}{% endblock %}
-
-    </div> <!-- ✅ WRAPPER END -->
-
-    {% block scripts %}{% endblock %}
+    {% block scripts %}
+    {% endblock %}
   </body>
 </html>

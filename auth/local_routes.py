@@ -147,13 +147,6 @@ def refresh():
     return jsonify(access_token=access_token), 200
 
 
-@auth_bp.route('/logout', methods=['POST'])
-@jwt_required(refresh=True)
-def logout():
-    return jwt_logout()
-
-
-
 
 @auth_bp.route('/forgot-password', methods=['GET','POST'])
 def forgot_password():

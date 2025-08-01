@@ -3,22 +3,24 @@ from flask import Flask, render_template
 from flask_migrate      import Migrate
 from flask_bcrypt import Bcrypt
 from dotenv import load_dotenv
-from admin import admin_bp
-from auth import auth_bp
-from auth.models import db, bcrypt, User
-from auth.utils import login_required, init_mail
+from datetime import timedelta
 from flask_jwt_extended import JWTManager
 from flask_wtf import CSRFProtect
+
+# from admin import admin_bp
+from auth import auth_bp
+from auth.models import db, bcrypt
+from auth.utils import login_required, init_mail, init_jwt_manager, init_mail
+from tools import tools_bp
+
 # load .env variables
 load_dotenv()
-from datetime import timedelta
+
 
 # create Flask extensions (they'll be initialized in create_app)
 
 migrate = Migrate()
-from auth.utils import init_jwt_manager
-from auth.models import User, RefreshToken
-from auth.utils import init_mail
+
 
 # from extensions import limiter, csrf
 
@@ -40,19 +42,23 @@ def create_app():
         JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15),
         JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7),
     )
+    app.config['UPLOAD_FOLDER'] = '/tmp/recon_uploads'
+
     csrf = CSRFProtect(app)  
     csrf.exempt(auth_bp)
-    # ensure instance folder exists
+    csrf.exempt(tools_bp)
+
     os.makedirs(app.instance_path, exist_ok=True)
     jwt = JWTManager(app)
-    # init extensions with app
+    
     db.init_app(app)
     bcrypt.init_app(app)
     init_mail(app)
     migrate.init_app(app, db)
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(admin_bp, url_prefix='/admin')
+    # app.register_blueprint(admin_bp, url_prefix='/admin')
+    app.register_blueprint(tools_bp, url_prefix='/tools')
 
     init_jwt_manager(app, jwt)
 
