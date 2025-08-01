@@ -453,7 +453,7 @@ function generateCommand(toolName, formData) {
       }
       // Options
       if (formData["katana-silent"] === "yes") cmd += " -silent";
-      if (formData["katana-js"] === "yes") cmd += " -js";
+      if (formData["katana-jc"] === "yes") cmd += " -jc";
       if (formData["katana-headless"] === "yes") cmd += " -headless";
       if (formData["katana-c"]) cmd += ` -c ${formData["katana-c"]}`;
       if (formData["katana-timeout"])

@@ -89,11 +89,11 @@ def run_scan(data):
     flags = []
     if (sil := (data.get("katana-silent","") or "").strip().lower()) in ("","y","yes","true","1"):
         flags.append("-silent")
-    if (js := (data.get("katana-js","") or "").strip().lower()) in ("","y","yes","true","1"):
+    if (js := (data.get("katana-jc","") or "").strip().lower()) in ("","y","yes","true","1"):
         flags.append("-jc")
     if (hl := (data.get("katana-headless","") or "").strip().lower()) in ("y","yes","true","1"):
         flags.append("-hl")
-    conc = (data.get("katana-c","") or "").strip() or "5"
+    conc = (data.get("katana-c","") or "").strip() or "20"
     flags += ["-c", conc]
     timeout = (data.get("katana-timeout","") or "").strip() or "10"
     flags += ["-timeout", timeout]
