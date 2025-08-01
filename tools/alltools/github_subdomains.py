@@ -86,11 +86,13 @@
 
 
 
-# github_subdomains.py
 import subprocess
 import os
 import traceback
 from urllib.parse import urlparse
+import dotenv
+
+dotenv.load_dotenv()
 
 def _s(data, key):
     v = data.get(key, "")
@@ -112,6 +114,8 @@ def run_scan(data):
     if _s(data, "github-raw").lower() in ("y","yes","true","1"):
         flags.append("-raw")
 
+    token = os.getenv('GITHUB_SUBDOMAIN_TOKEN')
+
     # Derive output filename
     if target.startswith(("http://","https://")):
         p = urlparse(target)
@@ -122,7 +126,7 @@ def run_scan(data):
     flags += ["-o", out_file]
 
     # Hard-coded token
-    flags += ["-t", "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"]
+    flags += ["-t", token]
 
     cmd = ["github-subdomains"] + flags
 
@@ -137,7 +141,7 @@ def run_scan(data):
             disp += ["-o", os.path.basename(v)]
         else:
             disp.append(f)
-    display_cmd = f"hacker@gg > github-subdomains {' '.join(disp)}"
+    display_cmd = f"hackr@gg > github-subdomains {' '.join(disp)}"
 
     try:
         res = subprocess.run(

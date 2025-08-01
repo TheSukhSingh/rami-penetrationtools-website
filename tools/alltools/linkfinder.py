@@ -4,52 +4,56 @@ import traceback
 import sys
 
 def run_scan(data):
-    # Validate targets file
-    targets = data.get("targets", "").strip()
-    if not targets or not os.path.exists(targets):
-        return {"status": "error", "message": "LinkFinder: targets file is missing or invalid."}
+    """
+    Run LinkFinder against a domain with optional regex filtering, Burp output,
+    cookies, and custom timeout.
+
+    Expected data keys:
+      - linkfinder-domain: (string) target domain/URL (required)
+      - linkfinder-regex: (string) regex filter for URLs
+      - linkfinder-burp: ("yes"/"no") enable Burp-compatible output
+      - linkfinder-cookies: (string) cookie header value
+      - linkfinder-timeout: (string/int) request timeout in seconds (default: 10)
+    """
+    # ─── Required domain ───
+    domain = data.get("linkfinder-domain", "").strip()
+    if not domain:
+        return {"status": "error", "message": "LinkFinder: Domain is required."}
 
     flags = []
 
-    # ─── domain flag (-d) to crawl entire site (default: off) ───
-    domain_flag = data.get("domain", "").strip().lower()
-    if domain_flag == "y":
-        flags.append("-d")
-
-    # ─── regex filter (-r) (optional) ───
-    regex = data.get("regex", "").strip()
+    # ─── Regex filter (-r) ───
+    regex = data.get("linkfinder-regex", "").strip()
     if regex:
         flags += ["-r", regex]
 
-    # ─── burp compatible output (-b) (optional) ───
-    burp = data.get("burp", "").strip().lower()
-    if burp == "y":
+    # ─── Burp format (-b) ───
+    burp = data.get("linkfinder-burp", "no").strip().lower()
+    if burp in ("yes", "y"):
         flags.append("-b")
 
-    # ─── cookies for authenticated JS (-c) (optional) ───
-    cookies = data.get("cookies", "").strip()
+    # ─── Cookies (-c) ───
+    cookies = data.get("linkfinder-cookies", "").strip()
     if cookies:
         flags += ["-c", cookies]
 
-    # ─── timeout (-t) seconds (default: 10) ───
-    timeout = data.get("timeout", "").strip() or "10"
+    # ─── Timeout (-t) ───
+    timeout = data.get("linkfinder-timeout", "").strip() or "10"
     flags += ["-t", timeout]
 
-    # Build command via Python -m
-    command = [sys.executable, "-m", "linkfinder"] + flags + ["-i", targets]
-
-    # Prepare UI‑friendly command string with basename
-    display_tgt = os.path.basename(targets)
+    # ─── Build command and UI preview ───
+    cmd = [sys.executable, "-m", "linkfinder", "-i", domain] + flags
     flag_str = " ".join(flags)
-    command_str = f"hacker@gg > linkfinder {flag_str} -i {display_tgt}"
+    command_str = f"hacker@gg > linkfinder -i {domain}" + (f" {flag_str}" if flag_str else "")
 
     try:
         result = subprocess.run(
-            command,
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
         )
+
         if result.returncode != 0:
             err = result.stderr.strip() or result.stdout.strip() or "Unknown LinkFinder error"
             return {"status": "error", "message": f"LinkFinder error:\n{err}"}
