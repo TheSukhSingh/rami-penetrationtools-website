@@ -9,7 +9,7 @@
       <h2>Login to Your Account</h2>
       <form id="loginForm" class="auth-form"
             method="POST"
-            action="{{ url_for('auth.login_local') }}">
+            action="{{ url_for('auth.login_page') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="form-group">

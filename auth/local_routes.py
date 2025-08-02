@@ -31,71 +31,63 @@ from flask_jwt_extended import (
 
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
-    if request.method == 'POST':
-        username = request.form.get('username','').strip()
-        name     = request.form.get('name', '').strip()
-        email    = request.form.get('email', '').strip().lower()
-        password = request.form.get('password', '')
-        confirm  = request.form.get('confirm_password', '')
 
-        # Basic validation
-        if not all([username, name, email, password, confirm]):
-            flash('All fields are required.', 'warning')
-            return redirect(url_for('auth.signup'))
-        
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered.', 'warning')
-            return redirect(url_for('auth.signup'))
-        
-        if password != confirm:
-            flash('Passwords do not match.', 'warning')
-            return redirect(url_for('auth.signup'))
-        
-        try:
-            User._validate_username(username)
-        except ValueError as ve:
-            flash(str(ve), 'warning')
-            return redirect(url_for('auth.signup'))
-        
-        if User.query.filter_by(username=username).first():
-            flash('Username already taken.', 'warning')
-            return redirect(url_for('auth.signup'))
-        
+    data = request.get_json() or {}
+    username = data.get('username', '').strip()
+    name     = data.get('name', '').strip()
+    email    = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    confirm  = data.get('confirm_password', '')
 
-        
-        # Create and persist new user
-        # todo 1 - i don't have provider field, i have table for local auth
-        user = User(username=username, email=email, name=name)
-        db.session.add(user)
-        db.session.flush()  
+    # 1) Required fields
+    if not all([username, name, email, password, confirm]):
+        return jsonify(message="All fields are required."), 400
 
-        role = Role.query.filter_by(name='user').first()
-        if not role:
-            role = Role(name='user', description='Default user role')
-            db.session.add(role)
-            db.session.flush()
-        user.roles.append(role)
+    # 2) Unique email
+    if User.query.filter_by(email=email).first():
+        return jsonify(message="Email already registered."), 400
+
+    # 3) Password match
+    if password != confirm:
+        return jsonify(message="Passwords do not match."), 400
+    
+    # 4) Username validity & uniqueness
+    try:
+        User._validate_username(username)
+    except ValueError as ve:
+        return jsonify(message=str(ve)), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify(message="Username already taken."), 400
+
+    # Create and persist new user
+    user = User(username=username, email=email, name=name)
+    db.session.add(user)
+    db.session.flush()  
+
+    role = Role.query.filter_by(name='user').first()
+    if not role:
+        role = Role(name='user', description='Default user role')
+        db.session.add(role)
+        db.session.flush()
+    user.roles.append(role)
+
+    if not validate_and_set_password(user, password, confirm, commit=False):
+        db.session.rollback()
+        return jsonify(message="Password does not meet requirements."), 400
+    
+    db.session.add(user.local_auth)
+    db.session.commit()
+
+    # Send email confirmation link
+    token       = generate_confirmation_token(user.email)
+    confirm_url = url_for('auth.confirm_email', token=token, _external=True)
+    html        = render_template('auth/activate.html', confirm_url=confirm_url)
+    send_email(user.email, 'Please confirm your email', html)
+
+    return jsonify(message="Signup successful! Check your email to confirm your account."), 201
 
 
-        if not validate_and_set_password(user, password, confirm, commit=False):
-            db.session.rollback()
-            return redirect(url_for('auth.signup'))
-        
-        db.session.add(user.local_auth)
-
-        db.session.commit()
-
-
-        # Send email confirmation link
-        token       = generate_confirmation_token(user.email)
-        confirm_url = url_for('auth.confirm_email', token=token, _external=True)
-        html        = render_template('auth/activate.html', confirm_url=confirm_url)
-        send_email(user.email, 'Please confirm your email', html)
-
-        flash('Signup successful! Check your email to confirm your account.', 'success')
-        return redirect(url_for('auth.login_page'))
-
-    return render_template('auth/signup.html')
 
 
 @auth_bp.route('/confirm/<token>')
@@ -128,8 +120,9 @@ def confirm_email(token):
 #     error_message="Too many login attempts; try again later."
 # )
 def local_login():
-    email    = request.form.get('email', '').strip().lower()
-    password = request.form.get('password', '')
+    data = request.get_json() or {}
+    email    = data.get('email', '').strip().lower()
+    password = data.get('password', '')
 
     tokens, err = util_login_local(email, password)
     if err:
@@ -189,6 +182,20 @@ def reset_password(token):
         return redirect(url_for('auth.login_page'))
 
     return render_template('auth/reset_password.html', token=token)
+
+
+@auth_bp.route('/me', methods=['GET'])
+@jwt_required()
+def get_me():
+    user = get_current_user()
+    return jsonify({
+        'id': user.id,
+        'email': user.email,
+        'username': user.username,
+        'name': user.name
+    }), 200
+
+
 
 
 # @auth_bp.route('/mfa-setup')

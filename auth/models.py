@@ -1,18 +1,16 @@
-import re
-import uuid
+import re, uuid
 from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from .passwords import COMMON_PASSWORDS
 from hashlib import sha256
 from sqlalchemy import Table, Column, Integer, ForeignKey, String, UniqueConstraint, CheckConstraint, Boolean, DateTime
-from sqlalchemy.orm import relationship, validates
+from sqlalchemy.orm import relationship
 
 
 db = SQLAlchemy()
 bcrypt = Bcrypt()
 
-# forbidden usernames
 RESERVED_USERNAMES = {
     'admin','administrator','root','system','support',
     'null','none','user','username','test','info','sys'
@@ -42,9 +40,9 @@ user_roles = Table(
 class Role(db.Model):
     __tablename__ = 'roles'
     id   = Column(Integer, primary_key=True)
+
     name = Column(String(50), unique=True, nullable=False, index=True) 
     description = Column(String(255), nullable=True)
-
     users = relationship('User', secondary=user_roles, back_populates='roles')
 
 class User(TimestampMixin, db.Model):
@@ -60,22 +58,18 @@ class User(TimestampMixin, db.Model):
     email          = db.Column(db.String(255), unique=True, nullable=False, index=True)
     username       = db.Column(db.String(15), unique=True, nullable=False, index=True, doc="4-15 chars, letters/numbers/underscore only")
     name           = db.Column(db.String(255), nullable=True)
-    roles = relationship(
-      'Role',
-      secondary=user_roles,
-      back_populates='users',
-      cascade='all'
-    )
+
     is_blocked     = db.Column(db.Boolean, default=False, nullable=False)
     is_deactivated = db.Column(db.Boolean, default=False, nullable=False)
 
     # relationships
-    local_auth    = db.relationship('LocalAuth', uselist=False , back_populates='user', cascade='all, delete-orphan')
-    oauth_accounts = db.relationship('OAuthAccount', back_populates='user', cascade='all, delete-orphan')
-    mfa_setting   = db.relationship('MFASetting', uselist=False , back_populates='user', cascade='all, delete-orphan')
-    reset_tokens  = db.relationship('PasswordReset', back_populates='user', cascade='all, delete-orphan')
-    login_events  = db.relationship('LoginEvent', back_populates='user', cascade='all, delete-orphan')
+    local_auth    = relationship('LocalAuth', uselist=False , back_populates='user', cascade='all, delete-orphan')
+    oauth_accounts = relationship('OAuthAccount', back_populates='user', cascade='all, delete-orphan')
+    mfa_setting   = relationship('MFASetting', uselist=False , back_populates='user', cascade='all, delete-orphan')
+    reset_tokens  = relationship('PasswordReset', back_populates='user', cascade='all, delete-orphan')
+    login_events  = relationship('LoginEvent', back_populates='user', cascade='all, delete-orphan')
     refresh_tokens = relationship('RefreshToken', back_populates='user', cascade='all, delete-orphan')
+    roles = relationship('Role', secondary=user_roles, back_populates='users', cascade='all')
 
     @staticmethod
     def _validate_username(u: str):
@@ -132,10 +126,15 @@ class LocalAuth(db.Model):
         lower = pw.lower()
         if lower in COMMON_PASSWORDS:
             raise ValueError("That password is too common; please choose a stronger one.")
-        if self.name and self.name.lower() in lower:
-            raise ValueError("Password must not contain your name.")
-        if self.email and self.email.lower() in lower:
-            raise ValueError("Password must not contain your email address.")
+        user = self.user or User.query.get(self.user_id)
+        if user:
+            # don’t allow name, username or email fragments
+            if user.name and user.name.lower() in lower:
+                raise ValueError("Password must not contain your name.")
+            if user.username and user.username.lower() in lower:
+                raise ValueError("Password must not contain your username.")
+            if user.email and user.email.lower() in lower:
+                raise ValueError("Password must not contain your email address.")
     
     def set_password(self, raw: str) -> None:
         self._validate_password(raw)

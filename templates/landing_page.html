@@ -757,12 +757,22 @@
     </div>
 
     <form id="authForm" class="auth-form">
-      <div id="usernameField" class="form-group" style="display: none">
+      <div id="nameField" class="form-group" style="display: none">
         <label>Hunter Name</label>
         <input
           type="text"
-          id="username"
+          id="name" name="name"
           placeholder="Enter your hunter name"
+          class="form-input glass"
+        />
+      </div>
+
+      <div id="usernameField" class="form-group" style="display: none">
+        <label>Hunter Handle</label>
+        <input
+          type="text"
+          id="username" name="username"
+          placeholder="Enter your username"
           class="form-input glass"
         />
       </div>
@@ -771,7 +781,7 @@
         <label>Email Address</label>
         <input
           type="email"
-          id="email"
+          id="email" name="email"
           placeholder="hunter@terminal.com"
           class="form-input glass"
           required
@@ -783,7 +793,7 @@
         <div class="password-input">
           <input
             type="password"
-            id="password"
+            id="password" name="password"
             placeholder="Enter your password"
             class="form-input glass"
             required
@@ -829,7 +839,7 @@
         <div class="password-input">
           <input
             type="password"
-            id="confirmPassword"
+            id="confirmPassword" name="confirm_password"
             placeholder="Confirm your password"
             class="form-input glass"
           />

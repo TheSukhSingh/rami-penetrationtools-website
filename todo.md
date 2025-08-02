@@ -1,8 +1,10 @@
 AUTH
 1. seed.py needs improvements
 2. user deactivated logic to be written in local_routes
-2. mfa not set yet
+3. mfa not set yet
 
+
+- jsonify on mail verification, it's typing "Your account has been confirmed!" on top of the screen, above navbar
 
 
 admin

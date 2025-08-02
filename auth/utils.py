@@ -39,7 +39,10 @@ def send_email(to: str, subject: str, html_body: str) -> None:
         html=html_body,
         sender=current_app.config['MAIL_DEFAULT_SENDER']
     )
-    mail.send(msg)
+    try:
+        mail.send(msg)
+    except Exception as e:
+        print("Email send failed - {e}")
 
 def login_required(func):
     @wraps(func)
@@ -62,10 +65,14 @@ def init_jwt_manager(app, jwt):
     """
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
-        jti = jwt_payload["jti"]
-        token = RefreshToken.query.filter_by(token_hash=jti).first()
-        # treat missing or revoked tokens as blocked
-        return token is None or token.revoked
+        jti = jwt_payload.get("jti")
+        token_type = jwt_payload.get("type")
+        # Only refresh tokens are stored/persisted
+        if token_type == "refresh":
+            token = RefreshToken.query.filter_by(token_hash=jti).first()
+            return token is None or token.revoked
+        # Access tokens are stateless; treat as not revoked
+        return False
 
     @jwt.revoked_token_loader
     def revoked_token_callback(jwt_header, jwt_payload):
@@ -77,7 +84,7 @@ def init_jwt_manager(app, jwt):
 
     @jwt.invalid_token_loader
     def invalid_token_callback(err):
-        return jsonify({"msg": "Invalid token"}), 422
+        return jsonify({"msg": f"Invalid token"}), 422
 
     @jwt.unauthorized_loader
     def missing_token_callback(err):
@@ -93,8 +100,9 @@ def jwt_login(user: User) -> Dict[str, str]:
         user.local_auth.last_login_at = datetime.utcnow()
         db.session.add(user.local_auth)
 
-    access_token = create_access_token(identity=user.id)
-    refresh_token = create_refresh_token(identity=user.id)
+    str_id = str(user.id)
+    access_token  = create_access_token(identity=str_id)
+    refresh_token = create_refresh_token(identity=str_id)
 
     # decode JTI & expiry from the refresh token
     data = decode_token(refresh_token)
@@ -196,8 +204,12 @@ def get_current_user() -> Optional[User]:
     Return the User object for the current valid JWT, or None if no token/invalid.
     Use inside @jwt_required‑protected endpoints.
     """
-    user_id = get_jwt_identity()
-    return User.query.get(user_id) if user_id else None
+    raw_id = get_jwt_identity()
+    try:
+        user_id = int(raw_id)
+    except (TypeError, ValueError):
+        return None
+    return User.query.get(user_id)
 
 def validate_and_set_password(user, password, confirm, commit=True):
     """
@@ -249,13 +261,22 @@ def validate_and_set_password(user, password, confirm, commit=True):
         return False
 
     # OK: hash & store it
+    # try:
+    #     la = user.local_auth or LocalAuth(user_id=user.id)
+    #     la.set_password(password)
+    # except ValueError as ve:
+    #     flash(str(ve), 'warning')
+    #     return False
+
     try:
         la = user.local_auth or LocalAuth(user_id=user.id)
+        # **attach it to the user relationship so `user.local_auth` is never None**
+        user.local_auth = la
         la.set_password(password)
     except ValueError as ve:
         flash(str(ve), 'warning')
         return False
-
+    
     if commit:
         db.session.add(la)
         db.session.commit()

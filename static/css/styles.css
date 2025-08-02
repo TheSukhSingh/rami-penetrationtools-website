@@ -1700,3 +1700,39 @@ body {
         padding: 24px;
     }
 }
+/* Make the user‐avatar wrapper positionally aware */
+.user-menu {
+  position: relative;
+  display: inline-block;
+}
+
+/* Hide the dropdown until hover */
+.user-menu .dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background-color: var(--bg-primary);
+  border: 1px solid rgba(0, 255, 224, 0.2);
+  border-radius: 6px;
+  min-width: 120px;
+  box-shadow: 0 4px 12px rgba(0, 255, 224, 0.2);
+  z-index: 1000;
+}
+
+.user-menu:hover .dropdown-content {
+  display: block;
+}
+
+.user-menu .dropdown-content a {
+  display: block;
+  padding: 10px 16px;
+  color: var(--text-main);
+  text-decoration: none;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.user-menu .dropdown-content a:hover {
+  background: rgba(0, 255, 224, 0.1);
+}

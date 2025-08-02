@@ -1,48 +1,53 @@
 // Global state
-let currentPage = 'home';
+let currentPage = "home";
 let currentTestimonial = 0;
-let currentAuthMode = 'login';
+let currentAuthMode = "login";
 let likedPosts = new Set();
 let currentBlogPost = null;
 
 // Sample data
 const testimonials = [
-    {
-        name: 'Alex Chen',
-        role: 'Senior Penetration Tester • CyberSec Corp',
-        content: 'Hunter\'s Terminal has revolutionized our reconnaissance process. The automated chains save us hours of manual work while maintaining the precision we need.',
-        avatar: '🥷',
-        specialty: 'Network Security'
-    },
-    {
-        name: 'Sarah Rodriguez',
-        role: 'Bug Hunter • Independent',
-        content: 'The solo tools are incredibly powerful. I\'ve discovered vulnerabilities that other platforms missed. The stealth capabilities are unmatched.',
-        avatar: '🕵️',
-        specialty: 'Web Application Security'
-    },
-    {
-        name: 'Marcus Johnson',
-        role: 'CISO • TechGuard Solutions',
-        content: 'Our team\'s productivity has increased 300% since implementing Hunter\'s Terminal. The reporting features are enterprise-grade.',
-        avatar: '👨‍💼',
-        specialty: 'Enterprise Security'
-    },
-    {
-        name: 'Emma Thompson',
-        role: 'Red Team Lead • DefenseFirst',
-        content: 'The intelligence gathering capabilities are phenomenal. We can now correlate data from multiple sources seamlessly.',
-        avatar: '🔍',
-        specialty: 'Threat Intelligence'
-    }
+  {
+    name: "Alex Chen",
+    role: "Senior Penetration Tester • CyberSec Corp",
+    content:
+      "Hunter's Terminal has revolutionized our reconnaissance process. The automated chains save us hours of manual work while maintaining the precision we need.",
+    avatar: "🥷",
+    specialty: "Network Security",
+  },
+  {
+    name: "Sarah Rodriguez",
+    role: "Bug Hunter • Independent",
+    content:
+      "The solo tools are incredibly powerful. I've discovered vulnerabilities that other platforms missed. The stealth capabilities are unmatched.",
+    avatar: "🕵️",
+    specialty: "Web Application Security",
+  },
+  {
+    name: "Marcus Johnson",
+    role: "CISO • TechGuard Solutions",
+    content:
+      "Our team's productivity has increased 300% since implementing Hunter's Terminal. The reporting features are enterprise-grade.",
+    avatar: "👨‍💼",
+    specialty: "Enterprise Security",
+  },
+  {
+    name: "Emma Thompson",
+    role: "Red Team Lead • DefenseFirst",
+    content:
+      "The intelligence gathering capabilities are phenomenal. We can now correlate data from multiple sources seamlessly.",
+    avatar: "🔍",
+    specialty: "Threat Intelligence",
+  },
 ];
 
 const blogPosts = [
-    {
-        id: '1',
-        title: 'Advanced Port Scanning Techniques for 2025',
-        excerpt: 'Discover the latest stealth scanning methods that bypass modern firewalls and intrusion detection systems.',
-        content: `# Advanced Port Scanning Techniques for 2025
+  {
+    id: "1",
+    title: "Advanced Port Scanning Techniques for 2025",
+    excerpt:
+      "Discover the latest stealth scanning methods that bypass modern firewalls and intrusion detection systems.",
+    content: `# Advanced Port Scanning Techniques for 2025
 
 In the ever-evolving landscape of cybersecurity, port scanning remains one of the fundamental reconnaissance techniques. However, traditional scanning methods are increasingly detected by modern security systems.
 
@@ -90,20 +95,21 @@ With AI-powered security systems becoming common, we need to adapt:
 ## Conclusion
 
 The future of port scanning lies in intelligent, adaptive techniques that can evolve with defensive measures. Stay ahead by continuously updating your methodology and tools.`,
-        author: 'Alex Chen',
-        date: '2025-01-15',
-        readTime: '8 min read',
-        views: 2847,
-        likes: 156,
-        comments: 23,
-        tags: ['Port Scanning', 'Stealth', 'Nmap', 'Evasion'],
-        category: 'Reconnaissance'
-    },
-    {
-        id: '2',
-        title: 'Building Automated Reconnaissance Chains',
-        excerpt: 'Learn how to create powerful automation workflows that chain multiple tools together for comprehensive target analysis.',
-        content: `# Building Automated Reconnaissance Chains
+    author: "Alex Chen",
+    date: "2025-01-15",
+    readTime: "8 min read",
+    views: 2847,
+    likes: 156,
+    comments: 23,
+    tags: ["Port Scanning", "Stealth", "Nmap", "Evasion"],
+    category: "Reconnaissance",
+  },
+  {
+    id: "2",
+    title: "Building Automated Reconnaissance Chains",
+    excerpt:
+      "Learn how to create powerful automation workflows that chain multiple tools together for comprehensive target analysis.",
+    content: `# Building Automated Reconnaissance Chains
 
 Automation is the key to scaling reconnaissance operations. By chaining tools together, we can create powerful workflows that provide comprehensive target analysis.
 
@@ -197,20 +203,21 @@ class ReconChain:
 ## Conclusion
 
 Automated reconnaissance chains multiply your effectiveness while reducing manual effort. Start simple and gradually build more sophisticated workflows as your needs evolve.`,
-        author: 'Sarah Rodriguez',
-        date: '2025-01-12',
-        readTime: '12 min read',
-        views: 1923,
-        likes: 89,
-        comments: 15,
-        tags: ['Automation', 'Reconnaissance', 'Workflows', 'Python'],
-        category: 'Automation'
-    },
-    {
-        id: '3',
-        title: 'OSINT Gathering in the Age of Privacy',
-        excerpt: 'Navigate the challenges of modern OSINT collection while respecting privacy boundaries and legal constraints.',
-        content: `# OSINT Gathering in the Age of Privacy
+    author: "Sarah Rodriguez",
+    date: "2025-01-12",
+    readTime: "12 min read",
+    views: 1923,
+    likes: 89,
+    comments: 15,
+    tags: ["Automation", "Reconnaissance", "Workflows", "Python"],
+    category: "Automation",
+  },
+  {
+    id: "3",
+    title: "OSINT Gathering in the Age of Privacy",
+    excerpt:
+      "Navigate the challenges of modern OSINT collection while respecting privacy boundaries and legal constraints.",
+    content: `# OSINT Gathering in the Age of Privacy
 
 Open Source Intelligence (OSINT) gathering has become increasingly challenging as privacy awareness grows and platforms implement stronger protections.
 
@@ -314,156 +321,173 @@ class EthicalOSINT:
 OSINT remains a powerful technique when conducted ethically and legally. Focus on publicly available information, respect privacy boundaries, and always consider the legal implications of your activities.
 
 The future of OSINT lies in balancing effectiveness with ethical responsibility.`,
-        author: 'Marcus Johnson',
-        date: '2025-01-10',
-        readTime: '10 min read',
-        views: 3156,
-        likes: 201,
-        comments: 31,
-        tags: ['OSINT', 'Privacy', 'Ethics', 'Intelligence'],
-        category: 'Intelligence'
-    }
+    author: "Marcus Johnson",
+    date: "2025-01-10",
+    readTime: "10 min read",
+    views: 3156,
+    likes: 201,
+    comments: 31,
+    tags: ["OSINT", "Privacy", "Ethics", "Intelligence"],
+    category: "Intelligence",
+  },
 ];
 
 // Initialize the application
-document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
+document.addEventListener("DOMContentLoaded", function () {
+  initializeApp();
 });
 
 function initializeApp() {
-    setupEventListeners();
-    initializeHero();
-    initializeWireframeGlobe();
-    initializeTestimonials();
-    initializeRevealAnimation();
-    initializeParticles();
-    initializeBlog();
-    
-    // Handle scroll events
-    window.addEventListener('scroll', handleScroll);
+  setupEventListeners();
+  initializeHero();
+  initializeWireframeGlobe();
+  initializeTestimonials();
+  initializeRevealAnimation();
+  initializeParticles();
+  initializeBlog();
+
+  // Handle scroll events
+  window.addEventListener("scroll", handleScroll);
 }
 
 function setupEventListeners() {
-    // Navigation
-    document.getElementById('prevTestimonial').addEventListener('click', prevTestimonial);
-    document.getElementById('nextTestimonial').addEventListener('click', nextTestimonial);
-    
-    // Auth form
-    document.getElementById('authForm').addEventListener('submit', handleAuthSubmit);
-    
-    // Auto-advance testimonials
-    setInterval(nextTestimonial, 5000);
+  // Navigation
+  document
+    .getElementById("prevTestimonial")
+    .addEventListener("click", prevTestimonial);
+  document
+    .getElementById("nextTestimonial")
+    .addEventListener("click", nextTestimonial);
+
+  // Auth form
+//   document
+//     .getElementById("authForm")
+//     .addEventListener("submit", handleAuthSubmit);
+
+  // Auto-advance testimonials
+  setInterval(nextTestimonial, 5000);
 }
 
 function initializeHero() {
-    const typedTextElement = document.getElementById('typedText');
-    const fullText = '> scan-the-unseen --deep --stealth';
-    let index = 0;
-    
-    function typeText() {
-        if (index < fullText.length) {
-            typedTextElement.textContent = fullText.slice(0, index + 1);
-            index++;
-            setTimeout(typeText, 100);
-        } else {
-            typedTextElement.classList.add('typing');
-        }
+  const typedTextElement = document.getElementById("typedText");
+  const fullText = "> scan-the-unseen --deep --stealth";
+  let index = 0;
+
+  function typeText() {
+    if (index < fullText.length) {
+      typedTextElement.textContent = fullText.slice(0, index + 1);
+      index++;
+      setTimeout(typeText, 100);
+    } else {
+      typedTextElement.classList.add("typing");
     }
-    
-    typeText();
+  }
+
+  typeText();
+}
+
+// auth
+function initAuth() {
+  const token = localStorage.getItem("access_token");
+  const user = localStorage.getItem("user");
+  if (token && user) {
+    showUser(JSON.parse(user));
+  }
 }
 
 function initializeWireframeGlobe() {
-    const canvas = document.getElementById('wireframeGlobe');
-    const ctx = canvas.getContext('2d');
-    let rotation = 0;
-    
-    function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-    
-    function drawGlobe() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-        const radius = Math.min(canvas.width, canvas.height) * 0.3;
-        
-        ctx.strokeStyle = '#00FFE0';
-        ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.6;
-        
-        // Draw longitude lines
-        for (let i = 0; i < 16; i++) {
-            const angle = (i * Math.PI) / 8;
-            ctx.beginPath();
-            
-            for (let j = 0; j <= 100; j++) {
-                const phi = (j * Math.PI) / 100;
-                const x = centerX + radius * Math.sin(phi) * Math.cos(angle + rotation);
-                const y = centerY + radius * Math.cos(phi);
-                const z = radius * Math.sin(phi) * Math.sin(angle + rotation);
-                
-                const scale = 1 + z / (radius * 2);
-                const projectedX = centerX + (x - centerX) * scale;
-                const projectedY = centerY + (y - centerY) * scale;
-                
-                if (j === 0) {
-                    ctx.moveTo(projectedX, projectedY);
-                } else {
-                    ctx.lineTo(projectedX, projectedY);
-                }
-            }
-            ctx.stroke();
+  const canvas = document.getElementById("wireframeGlobe");
+  const ctx = canvas.getContext("2d");
+  let rotation = 0;
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  function drawGlobe() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = Math.min(canvas.width, canvas.height) * 0.3;
+
+    ctx.strokeStyle = "#00FFE0";
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.6;
+
+    // Draw longitude lines
+    for (let i = 0; i < 16; i++) {
+      const angle = (i * Math.PI) / 8;
+      ctx.beginPath();
+
+      for (let j = 0; j <= 100; j++) {
+        const phi = (j * Math.PI) / 100;
+        const x = centerX + radius * Math.sin(phi) * Math.cos(angle + rotation);
+        const y = centerY + radius * Math.cos(phi);
+        const z = radius * Math.sin(phi) * Math.sin(angle + rotation);
+
+        const scale = 1 + z / (radius * 2);
+        const projectedX = centerX + (x - centerX) * scale;
+        const projectedY = centerY + (y - centerY) * scale;
+
+        if (j === 0) {
+          ctx.moveTo(projectedX, projectedY);
+        } else {
+          ctx.lineTo(projectedX, projectedY);
         }
-        
-        // Draw latitude lines
-        for (let i = 1; i < 8; i++) {
-            const phi = (i * Math.PI) / 8;
-            const r = radius * Math.sin(phi);
-            const y = centerY + radius * Math.cos(phi);
-            
-            ctx.beginPath();
-            for (let j = 0; j <= 100; j++) {
-                const angle = (j * Math.PI * 2) / 100;
-                const x = centerX + r * Math.cos(angle + rotation);
-                const z = r * Math.sin(angle + rotation);
-                
-                const scale = 1 + z / (radius * 2);
-                const projectedX = centerX + (x - centerX) * scale;
-                const projectedY = centerY + (y - centerY) * scale;
-                
-                if (j === 0) {
-                    ctx.moveTo(projectedX, projectedY);
-                } else {
-                    ctx.lineTo(projectedX, projectedY);
-                }
-            }
-            ctx.stroke();
-        }
-        
-        rotation += 0.005;
-        requestAnimationFrame(drawGlobe);
+      }
+      ctx.stroke();
     }
-    
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    drawGlobe();
+
+    // Draw latitude lines
+    for (let i = 1; i < 8; i++) {
+      const phi = (i * Math.PI) / 8;
+      const r = radius * Math.sin(phi);
+      const y = centerY + radius * Math.cos(phi);
+
+      ctx.beginPath();
+      for (let j = 0; j <= 100; j++) {
+        const angle = (j * Math.PI * 2) / 100;
+        const x = centerX + r * Math.cos(angle + rotation);
+        const z = r * Math.sin(angle + rotation);
+
+        const scale = 1 + z / (radius * 2);
+        const projectedX = centerX + (x - centerX) * scale;
+        const projectedY = centerY + (y - centerY) * scale;
+
+        if (j === 0) {
+          ctx.moveTo(projectedX, projectedY);
+        } else {
+          ctx.lineTo(projectedX, projectedY);
+        }
+      }
+      ctx.stroke();
+    }
+
+    rotation += 0.005;
+    requestAnimationFrame(drawGlobe);
+  }
+
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+  drawGlobe();
 }
 
 function initializeTestimonials() {
-    updateTestimonial();
+  updateTestimonial();
 }
 
 function updateTestimonial() {
-    const testimonial = testimonials[currentTestimonial];
-    
-    document.getElementById('testimonialText').textContent = `"${testimonial.content}"`;
-    document.getElementById('testimonialName').textContent = testimonial.name;
-    document.getElementById('testimonialRole').textContent = testimonial.role;
-    document.getElementById('testimonialAvatar').textContent = testimonial.avatar;
-    document.getElementById('testimonialSpecialty').innerHTML = `
+  const testimonial = testimonials[currentTestimonial];
+
+  document.getElementById(
+    "testimonialText"
+  ).textContent = `"${testimonial.content}"`;
+  document.getElementById("testimonialName").textContent = testimonial.name;
+  document.getElementById("testimonialRole").textContent = testimonial.role;
+  document.getElementById("testimonialAvatar").textContent = testimonial.avatar;
+  document.getElementById("testimonialSpecialty").innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
             <circle cx="12" cy="16" r="1"></circle>
@@ -471,71 +495,76 @@ function updateTestimonial() {
         </svg>
         <span>${testimonial.specialty}</span>
     `;
-    
-    // Update dots
-    const dots = document.querySelectorAll('.dot');
-    dots.forEach((dot, index) => {
-        dot.classList.toggle('active', index === currentTestimonial);
-    });
+
+  // Update dots
+  const dots = document.querySelectorAll(".dot");
+  dots.forEach((dot, index) => {
+    dot.classList.toggle("active", index === currentTestimonial);
+  });
 }
 
 function nextTestimonial() {
-    currentTestimonial = (currentTestimonial + 1) % testimonials.length;
-    updateTestimonial();
+  currentTestimonial = (currentTestimonial + 1) % testimonials.length;
+  updateTestimonial();
 }
 
 function prevTestimonial() {
-    currentTestimonial = (currentTestimonial - 1 + testimonials.length) % testimonials.length;
-    updateTestimonial();
+  currentTestimonial =
+    (currentTestimonial - 1 + testimonials.length) % testimonials.length;
+  updateTestimonial();
 }
 
 function setTestimonial(index) {
-    currentTestimonial = index;
-    updateTestimonial();
+  currentTestimonial = index;
+  updateTestimonial();
 }
 
 function initializeRevealAnimation() {
-    const observerOptions = {
-        threshold: 0.1,
-        rootMargin: '0px 0px -50px 0px'
-    };
+  const observerOptions = {
+    threshold: 0.1,
+    rootMargin: "0px 0px -50px 0px",
+  };
 
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.classList.add('active');
-            }
-        });
-    }, observerOptions);
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("active");
+      }
+    });
+  }, observerOptions);
 
-    const revealElements = document.querySelectorAll('.reveal');
-    revealElements.forEach(el => observer.observe(el));
+  const revealElements = document.querySelectorAll(".reveal");
+  revealElements.forEach((el) => observer.observe(el));
 }
 
 function initializeParticles() {
-    const particlesContainer = document.getElementById('particles');
-    
-    for (let i = 0; i < 20; i++) {
-        const particle = document.createElement('div');
-        particle.className = 'particle';
-        particle.style.left = `${Math.random() * 100}%`;
-        particle.style.top = `${Math.random() * 100}%`;
-        particle.style.animationDelay = `${Math.random() * 3}s`;
-        particle.style.animationDuration = `${2 + Math.random() * 2}s`;
-        particlesContainer.appendChild(particle);
-    }
+  const particlesContainer = document.getElementById("particles");
+
+  for (let i = 0; i < 20; i++) {
+    const particle = document.createElement("div");
+    particle.className = "particle";
+    particle.style.left = `${Math.random() * 100}%`;
+    particle.style.top = `${Math.random() * 100}%`;
+    particle.style.animationDelay = `${Math.random() * 3}s`;
+    particle.style.animationDuration = `${2 + Math.random() * 2}s`;
+    particlesContainer.appendChild(particle);
+  }
 }
 
 function initializeBlog() {
-    renderBlogGrid();
+  renderBlogGrid();
 }
 
 function renderBlogGrid() {
-    const blogGrid = document.getElementById('blogGrid');
-    if (!blogGrid) return;
-    
-    blogGrid.innerHTML = blogPosts.map(post => `
-        <article class="blog-card glass card-hover" onclick="openBlogPost('${post.id}')">
+  const blogGrid = document.getElementById("blogGrid");
+  if (!blogGrid) return;
+
+  blogGrid.innerHTML = blogPosts
+    .map(
+      (post) => `
+        <article class="blog-card glass card-hover" onclick="openBlogPost('${
+          post.id
+        }')">
             <div class="blog-meta">
                 <span class="category-badge">${post.category}</span>
                 <div class="blog-views">
@@ -575,7 +604,9 @@ function renderBlogGrid() {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                         </svg>
-                        <span>${post.likes + (likedPosts.has(post.id) ? 1 : 0)}</span>
+                        <span>${
+                          post.likes + (likedPosts.has(post.id) ? 1 : 0)
+                        }</span>
                     </div>
                     <div class="stat comments">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -588,25 +619,34 @@ function renderBlogGrid() {
             </div>
 
             <div class="blog-tags">
-                ${post.tags.slice(0, 2).map(tag => `<span class="tag">#${tag}</span>`).join('')}
-                ${post.tags.length > 2 ? `<span class="tag">+${post.tags.length - 2}</span>` : ''}
+                ${post.tags
+                  .slice(0, 2)
+                  .map((tag) => `<span class="tag">#${tag}</span>`)
+                  .join("")}
+                ${
+                  post.tags.length > 2
+                    ? `<span class="tag">+${post.tags.length - 2}</span>`
+                    : ""
+                }
             </div>
         </article>
-    `).join('');
+    `
+    )
+    .join("");
 }
 
 function openBlogPost(postId) {
-    const post = blogPosts.find(p => p.id === postId);
-    if (!post) return;
-    
-    currentBlogPost = post;
-    
-    // Update views
-    post.views += 1;
-    
-    // Render blog post
-    const blogPostContent = document.getElementById('blogPostContent');
-    blogPostContent.innerHTML = `
+  const post = blogPosts.find((p) => p.id === postId);
+  if (!post) return;
+
+  currentBlogPost = post;
+
+  // Update views
+  post.views += 1;
+
+  // Render blog post
+  const blogPostContent = document.getElementById("blogPostContent");
+  blogPostContent.innerHTML = `
         <div class="blog-post-header">
             <div class="blog-post-meta">
                 <span class="category-badge">${post.category}</span>
@@ -656,7 +696,9 @@ function openBlogPost(postId) {
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                         </svg>
-                        <span>${post.likes + (likedPosts.has(post.id) ? 1 : 0)}</span>
+                        <span>${
+                          post.likes + (likedPosts.has(post.id) ? 1 : 0)
+                        }</span>
                     </div>
                     <div class="stat comments">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -671,15 +713,19 @@ function openBlogPost(postId) {
         <div class="blog-post-content-text">${post.content}</div>
 
         <div class="blog-post-tags">
-            ${post.tags.map(tag => `<span class="post-tag">#${tag}</span>`).join('')}
+            ${post.tags
+              .map((tag) => `<span class="post-tag">#${tag}</span>`)
+              .join("")}
         </div>
     `;
-    
-    // Render interactions
-    const blogInteractions = document.getElementById('blogInteractions');
-    blogInteractions.innerHTML = `
+
+  // Render interactions
+  const blogInteractions = document.getElementById("blogInteractions");
+  blogInteractions.innerHTML = `
         <div class="interaction-buttons">
-            <button class="interaction-btn ${likedPosts.has(post.id) ? 'liked' : ''}" onclick="toggleLike('${post.id}')">
+            <button class="interaction-btn ${
+              likedPosts.has(post.id) ? "liked" : ""
+            }" onclick="toggleLike('${post.id}')">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                 </svg>
@@ -705,22 +751,37 @@ function openBlogPost(postId) {
             <span>Share</span>
         </button>
     `;
-    
-    // Render comments
-    renderComments(post);
-    
-    showPage('blogPost');
+
+  // Render comments
+  renderComments(post);
+
+  showPage("blogPost");
 }
 
 function renderComments(post) {
-    const sampleComments = [
-        { author: 'CyberNinja', content: 'Excellent breakdown of modern evasion techniques. The timing-based approach has been game-changing for my assessments.', time: '2 hours ago' },
-        { author: 'RedTeamLead', content: 'Great article! Would love to see a follow-up on IPv6 scanning techniques.', time: '5 hours ago' },
-        { author: 'PentestPro', content: 'The decoy scanning section is particularly useful. Thanks for sharing these insights!', time: '1 day ago' }
-    ];
-    
-    const blogComments = document.getElementById('blogComments');
-    blogComments.innerHTML = `
+  const sampleComments = [
+    {
+      author: "CyberNinja",
+      content:
+        "Excellent breakdown of modern evasion techniques. The timing-based approach has been game-changing for my assessments.",
+      time: "2 hours ago",
+    },
+    {
+      author: "RedTeamLead",
+      content:
+        "Great article! Would love to see a follow-up on IPv6 scanning techniques.",
+      time: "5 hours ago",
+    },
+    {
+      author: "PentestPro",
+      content:
+        "The decoy scanning section is particularly useful. Thanks for sharing these insights!",
+      time: "1 day ago",
+    },
+  ];
+
+  const blogComments = document.getElementById("blogComments");
+  blogComments.innerHTML = `
         <h3 class="comments-header">Comments (${post.comments})</h3>
         
         <form class="comment-form" onsubmit="handleCommentSubmit(event)">
@@ -735,7 +796,9 @@ function renderComments(post) {
         </form>
 
         <div class="comments-list">
-            ${sampleComments.map(comment => `
+            ${sampleComments
+              .map(
+                (comment) => `
                 <div class="comment">
                     <div class="comment-header">
                         <div class="comment-author">
@@ -751,139 +814,148 @@ function renderComments(post) {
                     </div>
                     <p class="comment-content">${comment.content}</p>
                 </div>
-            `).join('')}
+            `
+              )
+              .join("")}
         </div>
     `;
 }
 
 function toggleLike(postId) {
-    if (likedPosts.has(postId)) {
-        likedPosts.delete(postId);
-    } else {
-        likedPosts.add(postId);
-    }
-    
-    // Update the current blog post view if it's open
-    if (currentBlogPost && currentBlogPost.id === postId) {
-        openBlogPost(postId);
-    }
-    
-    // Update blog grid if visible
-    if (currentPage === 'blog') {
-        renderBlogGrid();
-    }
+  if (likedPosts.has(postId)) {
+    likedPosts.delete(postId);
+  } else {
+    likedPosts.add(postId);
+  }
+
+  // Update the current blog post view if it's open
+  if (currentBlogPost && currentBlogPost.id === postId) {
+    openBlogPost(postId);
+  }
+
+  // Update blog grid if visible
+  if (currentPage === "blog") {
+    renderBlogGrid();
+  }
 }
 
 function handleCommentSubmit(event) {
-    event.preventDefault();
-    const commentText = document.getElementById('newComment').value.trim();
-    
-    if (commentText) {
-        // Simulate adding comment
-        currentBlogPost.comments += 1;
-        document.getElementById('newComment').value = '';
-        
-        // Re-render comments
-        renderComments(currentBlogPost);
-    }
+  event.preventDefault();
+  const commentText = document.getElementById("newComment").value.trim();
+
+  if (commentText) {
+    // Simulate adding comment
+    currentBlogPost.comments += 1;
+    document.getElementById("newComment").value = "";
+
+    // Re-render comments
+    renderComments(currentBlogPost);
+  }
 }
 
 function handleScroll() {
-    const navbar = document.getElementById('navbar');
-    if (window.scrollY > 20) {
-        navbar.classList.add('scrolled');
-    } else {
-        navbar.classList.remove('scrolled');
-    }
+  const navbar = document.getElementById("navbar");
+  if (window.scrollY > 20) {
+    navbar.classList.add("scrolled");
+  } else {
+    navbar.classList.remove("scrolled");
+  }
 }
 
 function showPage(page) {
-    // Hide all pages
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    
-    // Show selected page
-    const pageElement = document.getElementById(page + 'Page');
-    if (pageElement) {
-        pageElement.classList.add('active');
-        currentPage = page;
-    }
-    
-    // Scroll to top
-    window.scrollTo(0, 0);
+  // Hide all pages
+  document
+    .querySelectorAll(".page")
+    .forEach((p) => p.classList.remove("active"));
+
+  // Show selected page
+  const pageElement = document.getElementById(page + "Page");
+  if (pageElement) {
+    pageElement.classList.add("active");
+    currentPage = page;
+  }
+
+  // Scroll to top
+  window.scrollTo(0, 0);
 }
 
 function scrollToSection(sectionId) {
-    if (currentPage !== 'home') {
-        showPage('home');
-        setTimeout(() => {
-            const element = document.getElementById(sectionId);
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth' });
-            }
-        }, 100);
-    } else {
-        const element = document.getElementById(sectionId);
-        if (element) {
-            element.scrollIntoView({ behavior: 'smooth' });
-        }
+  if (currentPage !== "home") {
+    showPage("home");
+    setTimeout(() => {
+      const element = document.getElementById(sectionId);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
+    }, 100);
+  } else {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" });
     }
+  }
 }
 
 function toggleMobileMenu() {
-    const navMenu = document.getElementById('navMenu');
-    const navToggle = document.getElementById('navToggle');
-    
-    navMenu.classList.toggle('active');
-    navToggle.classList.toggle('active');
+  const navMenu = document.getElementById("navMenu");
+  const navToggle = document.getElementById("navToggle");
+
+  navMenu.classList.toggle("active");
+  navToggle.classList.toggle("active");
 }
 
 // Auth functions
 function showAuth(mode) {
-    currentAuthMode = mode;
-    updateAuthModal();
-    document.getElementById('authModal').classList.add('active');
+  currentAuthMode = mode;
+  updateAuthModal();
+  document.getElementById("authModal").classList.add("active");
 }
 
 function closeAuth() {
-    document.getElementById('authModal').classList.remove('active');
+  document.getElementById("authModal").classList.remove("active");
 }
 
 function updateAuthModal() {
-    const titles = {
-        login: 'Access Terminal',
-        signup: 'Join the Hunt',
-        forgot: 'Reset Access'
-    };
-    
-    const subtitles = {
-        login: 'Enter your credentials to continue',
-        signup: 'Create your hunter account',
-        forgot: 'Recover your terminal access'
-    };
-    
-    const buttonTexts = {
-        login: 'Access Terminal',
-        signup: 'Create Account',
-        forgot: 'Send Reset Link'
-    };
-    
-    document.getElementById('authTitle').textContent = titles[currentAuthMode];
-    document.getElementById('authSubtitle').textContent = subtitles[currentAuthMode];
-    document.getElementById('authButtonText').textContent = buttonTexts[currentAuthMode];
-    
-    // Show/hide fields based on mode
-    const usernameField = document.getElementById('usernameField');
-    const passwordField = document.getElementById('passwordField');
-    const confirmPasswordField = document.getElementById('confirmPasswordField');
-    
-    usernameField.style.display = currentAuthMode === 'signup' ? 'flex' : 'none';
-    passwordField.style.display = currentAuthMode === 'forgot' ? 'none' : 'flex';
-    confirmPasswordField.style.display = currentAuthMode === 'signup' ? 'flex' : 'none';
-    
-    // Update links
-    const authLinks = document.getElementById('authLinks');
-    if (currentAuthMode === 'login') {
-        authLinks.innerHTML = `
+  const titles = {
+    login: "Access Terminal",
+    signup: "Join the Hunt",
+    forgot: "Reset Access",
+  };
+
+  const subtitles = {
+    login: "Enter your credentials to continue",
+    signup: "Create your hunter account",
+    forgot: "Recover your terminal access",
+  };
+
+  const buttonTexts = {
+    login: "Access Terminal",
+    signup: "Create Account",
+    forgot: "Send Reset Link",
+  };
+
+  document.getElementById("authTitle").textContent = titles[currentAuthMode];
+  document.getElementById("authSubtitle").textContent =
+    subtitles[currentAuthMode];
+  document.getElementById("authButtonText").textContent =
+    buttonTexts[currentAuthMode];
+
+  // Show/hide fields based on mode
+  const nameField = document.getElementById("nameField");
+  const passwordField = document.getElementById("passwordField");
+  const confirmPasswordField = document.getElementById("confirmPasswordField");
+  const usernameField = document.getElementById("usernameField");
+
+  usernameField.style.display = currentAuthMode === "signup" ? "flex" : "none";
+  passwordField.style.display = currentAuthMode === "forgot" ? "none" : "flex";
+  nameField.style.display = currentAuthMode === "signup" ? "flex" : "none";
+  confirmPasswordField.style.display =
+    currentAuthMode === "signup" ? "flex" : "none";
+
+  // Update links
+  const authLinks = document.getElementById("authLinks");
+  if (currentAuthMode === "login") {
+    authLinks.innerHTML = `
             <div>
                 <a href="#" class="auth-link" onclick="updateAuthMode('forgot')">Forgot your password?</a>
             </div>
@@ -892,68 +964,144 @@ function updateAuthModal() {
                 <a href="#" class="auth-link" onclick="updateAuthMode('signup')">Join the hunt</a>
             </div>
         `;
-    } else if (currentAuthMode === 'signup') {
-        authLinks.innerHTML = `
+  } else if (currentAuthMode === "signup") {
+    authLinks.innerHTML = `
             <div class="auth-text">
                 Already have an account? 
                 <a href="#" class="auth-link" onclick="updateAuthMode('login')">Sign in</a>
             </div>
         `;
-    } else if (currentAuthMode === 'forgot') {
-        authLinks.innerHTML = `
+  } else if (currentAuthMode === "forgot") {
+    authLinks.innerHTML = `
             <div class="auth-text">
                 Remember your password? 
                 <a href="#" class="auth-link" onclick="updateAuthMode('login')">Sign in</a>
             </div>
         `;
-    }
+  }
 }
 
 function updateAuthMode(mode) {
-    currentAuthMode = mode;
-    updateAuthModal();
+  currentAuthMode = mode;
+  updateAuthModal();
 }
 
 function togglePassword(fieldId) {
-    const field = document.getElementById(fieldId);
-    const button = field.nextElementSibling;
-    const eyeOpen = button.querySelector('.eye-open');
-    const eyeClosed = button.querySelector('.eye-closed');
-    
-    if (field.type === 'password') {
-        field.type = 'text';
-        eyeOpen.style.display = 'none';
-        eyeClosed.style.display = 'block';
-    } else {
-        field.type = 'password';
-        eyeOpen.style.display = 'block';
-        eyeClosed.style.display = 'none';
-    }
+  const field = document.getElementById(fieldId);
+  const button = field.nextElementSibling;
+  const eyeOpen = button.querySelector(".eye-open");
+  const eyeClosed = button.querySelector(".eye-closed");
+
+  if (field.type === "password") {
+    field.type = "text";
+    eyeOpen.style.display = "none";
+    eyeClosed.style.display = "block";
+  } else {
+    field.type = "password";
+    eyeOpen.style.display = "block";
+    eyeClosed.style.display = "none";
+  }
 }
 
-function handleAuthSubmit(event) {
-    event.preventDefault();
-    
-    const submitButton = document.getElementById('authSubmit');
-    const buttonText = document.getElementById('authButtonText');
-    const buttonIcon = document.getElementById('authButtonIcon');
-    const spinner = document.getElementById('authSpinner');
-    
-    // Show loading state
-    buttonText.style.display = 'none';
-    buttonIcon.style.display = 'none';
-    spinner.style.display = 'block';
-    submitButton.disabled = true;
-    
-    // Simulate API call
-    setTimeout(() => {
-        // Reset button state
-        buttonText.style.display = 'inline';
-        buttonIcon.style.display = 'inline';
-        spinner.style.display = 'none';
-        submitButton.disabled = false;
-        
-        // Close modal
-        closeAuth();
-    }, 2000);
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+
+  const submitButton = document.getElementById("authSubmit");
+  const buttonText = document.getElementById("authButtonText");
+  const buttonIcon = document.getElementById("authButtonIcon");
+  const spinner = document.getElementById("authSpinner");
+
+  buttonText.style.display = "none";
+  buttonIcon.style.display = "none";
+  spinner.style.display = "block";
+  submitButton.disabled = true;
+
+  const urlMap = {
+    login: "/auth/signin",
+    signup: "/auth/signup",
+    forgot: "/auth/forgot-password",
+  };
+  const url = urlMap[currentAuthMode];
+  const form = document.getElementById('authForm');
+  const formData = new FormData(form);
+  const payload = {};
+  formData.forEach((v,k) => { payload[k] = v; });
+
+  try {
+    const res = await fetch(url, {
+      method: currentAuthMode === 'login'?'POST':'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+      // body: formData
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.msg || data.message);
+
+    if (currentAuthMode === 'login') {
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
+      // fetch user profile
+      const meRes = await fetch('/auth/me', {
+        headers: { 'Authorization': `Bearer ${data.access_token}` }
+      });
+      const me = await meRes.json();
+      localStorage.setItem('user', JSON.stringify(me));
+      showUser(me);
+    }
+
+    closeAuth();
+    // alert(currentAuthMode === 'signup'
+    //   ? 'Account created! Check your email to confirm.'
+    //   : 'Success!'
+    // );
+
+  } catch(err) {
+    alert(err.message);
+  }
+
+  // Simulate API call
+  setTimeout(() => {
+    // Reset button state
+    buttonText.style.display = "inline";
+    buttonIcon.style.display = "inline";
+    spinner.style.display = "none";
+    submitButton.disabled = false;
+
+    // Close modal
+    closeAuth();
+  }, 2000);
 }
+
+
+function showUser(user) {
+  document.getElementById('loginButton').style.display = 'none';
+  const navMenu = document.getElementById('navMenu');
+  const username = user.username;   
+
+  // const initial = user.name ? user.name.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase();
+  const userElem = document.createElement('div');
+  userElem.id = 'userMenu';
+  userElem.className = 'user-menu';
+  userElem.innerHTML = `
+    <button id="userBtn" class="cyber-button">${username}</button>
+    <div id="userDropdown" class="dropdown-content">
+      <a href="#" id="logoutBtn">Logout</a>
+    </div>
+  `;
+  navMenu.appendChild(userElem);
+
+  document.getElementById('logoutBtn').onclick = async () => {
+    const refresh = localStorage.getItem('refresh_token');
+    await fetch('/auth/logout', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${refresh}` }
+    });
+    localStorage.clear();
+    location.reload();
+  };
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initAuth();
+  document.getElementById('authForm').addEventListener('submit', handleAuthSubmit);
+});
