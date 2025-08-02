@@ -279,11 +279,11 @@ function executeScan() {
   `;
   scanBtn.disabled = true;
 
-  fetch("/tools/api/scan", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tool: currentTool, options: formData }),
-  })
+  // fetch("/tools/api/scan", {
+  //   method: "POST",
+  //   headers: { "Content-Type": "application/json" },
+  //   body: JSON.stringify({ tool: currentTool, options: formData }),
+  // })
   fetch("/tools/api/scan", {
     method: "POST",
     body: formData,
@@ -438,6 +438,26 @@ function generateCommand(toolName, formData) {
       if (formData["naabu-rate"]) cmd += ` -rate ${formData["naabu-rate"]}`;
       if (formData["naabu-timeout"])
         cmd += ` -timeout ${formData["naabu-timeout"]}`;
+      break;
+      
+    case "httpx":
+      // Targets
+      if (formData["httpx-input-method"] === "manual") {
+        (formData["httpx-manual"] || "")
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .forEach((h) => (cmd += ` -host ${h}`));
+      } else if (formData["httpx-file"]) {
+        cmd += ` -l ${formData["httpx-file"]}`;
+      }
+      // Options
+      if (formData["httpx-silent"] === "yes") cmd += " -silent";
+      if (formData["httpx-status-code"] === "yes") cmd += " -status-code";
+      if (formData["httpx-title"] === "yes") cmd += " -title";
+      if (formData["httpx-threads"]) cmd += ` -t ${formData["httpx-threads"]}`;
+      if (formData["httpx-timeout"])
+        cmd += ` -timeout ${formData["httpx-timeout"]}`;
       break;
 
     case "katana":

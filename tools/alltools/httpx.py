@@ -1,65 +1,4 @@
-# import subprocess
-# import os
 
-# def run_scan(data):
-#     targets = data.get("targets", "").strip()
-#     if not targets or not os.path.exists(targets):
-#         return {"status": "error", "message": f"Targets file '{targets}' does not exist or is missing."}
-
-#     # default blank or "y" → yes
-#     sil_raw = data.get("silent", "").strip().lower()
-#     status_raw = data.get("status_code", "").strip().lower()
-#     silent_flag      = (sil_raw == "" or sil_raw == "y")
-#     status_code_flag = (status_raw == "" or status_raw == "y")
-
-#     # use user value or fallback
-#     threads = data.get("threads", "").strip() or "50"
-#     timeout = data.get("timeout", "").strip() or "10"
-#     title   = data.get("title", "n").strip().lower()
-
-
-#     flags = []
-#     if silent_flag:
-#         flags.append("-silent")
-#     if status_code_flag:
-#         flags.append("-status-code")
-#     if title == 'y':
-#         flags.append("-title")
-#     flags.extend(["-t", threads])
-#     flags.extend(["-timeout", timeout])
-#     flags.append("-no-color")
-
-#     flags_str = " ".join(flags)
-#     # only show the basename in the UI
-#     display_target = os.path.basename(targets)
-#     command_str    = f"hacker@gg > httpx {flags_str} -l {display_target}"
-
-#     try:
-#         command = ["httpx"] + flags + ["-l", targets]
-#         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-#         if result.returncode != 0:
-#             # show stderr OR stdout (in case help/usage went to stdout)
-#             err = result.stderr.strip() or result.stdout.strip() or "Unknown error"
-#             return {"status": "error", "message": f"httpx error:\n{err}"}
-
-
-#         output = result.stdout.strip() or "No output captured."
-#         return {
-#             "status": "success",
-#             "command": command_str,
-#             "output": output,
-#             "message": "Scan completed successfully."
-#         }
-
-#     except FileNotFoundError:
-#         return {"status": "error", "message": "httpx is not installed or not found in PATH."}
-#     except Exception as e:
-#         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
-
-
-
-
-# httpx.py
 import subprocess
 import os
 
@@ -102,6 +41,7 @@ def run_scan(data):
 
     display = os.path.basename(targets)
     cmd_str = f"hacker@gg > httpx {' '.join(flags)} -l {display}"
+    print(cmd_str)
 
     try:
         res = subprocess.run(
