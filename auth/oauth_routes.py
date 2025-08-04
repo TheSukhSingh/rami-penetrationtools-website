@@ -1,4 +1,5 @@
 from flask import flash, request, session, render_template, redirect, jsonify, url_for
+from flask_jwt_extended import jwt_required, unset_jwt_cookies
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import os, secrets, requests
@@ -117,9 +118,16 @@ def google_callback():
     # 6) return JSON (or set cookies and redirect)
     return jsonify(tokens), 200
 
+# @auth_bp.route('/logout', methods=['POST'])
+# def logout():
+#     return jwt_logout()
+
 @auth_bp.route('/logout', methods=['POST'])
+@jwt_required(refresh=True)
 def logout():
-    return jwt_logout()
+    resp = jsonify({"msg":"Logout successful"})
+    unset_jwt_cookies(resp)
+    return resp, 200
 
 @auth_bp.route('/github-login')
 def github_login():

@@ -1,20 +1,18 @@
 import os
 from flask import Flask, render_template
-from flask_migrate      import Migrate
-from flask_bcrypt import Bcrypt
 from dotenv import load_dotenv
 from datetime import timedelta
 from flask_jwt_extended import JWTManager
 from flask_wtf import CSRFProtect
 
 from auth import auth_bp
-from auth.models import db, bcrypt
-from auth.utils import login_required, init_mail, init_jwt_manager
 from tools import tools_bp
 
-load_dotenv()
+from extensions import db, bcrypt, migrate
 
-migrate = Migrate()
+from auth.utils import login_required, init_mail, init_jwt_manager
+
+load_dotenv()
 
 def create_app():
     app = Flask(
@@ -42,6 +40,15 @@ def create_app():
         JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15),
         JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7),
     )
+    # ───────── COOKIE SETTINGS ─────────
+    app.config.update({
+        "JWT_TOKEN_LOCATION": ["cookies"],            # read/write JWTs from cookies
+        "JWT_COOKIE_SECURE": True,                    # only send over HTTPS
+        "JWT_COOKIE_SAMESITE": "Lax",                 # CSRF protection level
+        "JWT_COOKIE_CSRF_PROTECT": True,              # enable double-submit CSRF
+        "JWT_ACCESS_COOKIE_PATH": "/",                # where access cookie is sent
+        "JWT_REFRESH_COOKIE_PATH": "/auth/refresh",   # refresh endpoint path
+    })
     app.config['UPLOAD_FOLDER'] = '/tmp/recon_uploads'
 
     csrf = CSRFProtect(app)  
@@ -54,8 +61,10 @@ def create_app():
     
     db.init_app(app)
     bcrypt.init_app(app)
-    init_mail(app)
     migrate.init_app(app, db)
+
+
+    init_mail(app)
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     # app.register_blueprint(admin_bp, url_prefix='/admin')

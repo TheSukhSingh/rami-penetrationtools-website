@@ -2,6 +2,7 @@ from functools import wraps
 import re
 from datetime import datetime, timedelta 
 from typing import Optional, Dict, Tuple
+from hashlib import sha256
 
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from flask import current_app, flash, redirect, request, url_for, jsonify
@@ -65,11 +66,12 @@ def init_jwt_manager(app, jwt):
     """
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
-        jti = jwt_payload.get("jti")
+        raw_jti  = jwt_payload.get("jti")
+        hashed_jti = sha256(raw_jti.encode('utf-8')).hexdigest()
         token_type = jwt_payload.get("type")
         # Only refresh tokens are stored/persisted
         if token_type == "refresh":
-            token = RefreshToken.query.filter_by(token_hash=jti).first()
+            token = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
             return token is None or token.revoked
         # Access tokens are stateless; treat as not revoked
         return False
@@ -100,16 +102,19 @@ def jwt_login(user: User) -> Dict[str, str]:
         user.local_auth.last_login_at = datetime.utcnow()
         db.session.add(user.local_auth)
 
-    str_id = str(user.id)
+    str_id        = str(user.id)
     access_token  = create_access_token(identity=str_id)
     refresh_token = create_refresh_token(identity=str_id)
 
     # decode JTI & expiry from the refresh token
-    data = decode_token(refresh_token)
+    data       = decode_token(refresh_token)
+    raw_jti    = data['jti']
+    hashed_jti = sha256(raw_jti.encode('utf-8')).hexdigest()
+
     rt = RefreshToken(
-        user_id=user.id,
-        token_hash=data['jti'],
-        expires_at=datetime.fromtimestamp(data['exp'])
+        user_id    = user.id,
+        token_hash = hashed_jti,
+        expires_at = datetime.fromtimestamp(data['exp'])
     )
     db.session.add(rt)
     db.session.commit()
@@ -122,7 +127,8 @@ def jwt_logout():
     Revoke the current refresh token. Requires @jwt_required(refresh=True) context.
     """
     jti = get_jwt()['jti']
-    token_row = RefreshToken.query.filter_by(token_hash=jti).first()
+    hashed_jti = sha256(jti.encode('utf-8')).hexdigest()
+    token_row = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
     if token_row:
         token_row.revoked = True
         db.session.commit()

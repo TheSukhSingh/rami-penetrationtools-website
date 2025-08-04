@@ -207,6 +207,12 @@ function showToolForm(toolName) {
     targetForm.classList.add("active");
   }
 }
+function getCookie(name) {
+  return document.cookie
+    .split('; ')
+    .find(row => row.startsWith(name + '='))
+    ?.split('=')[1];
+}
 
 function toggleInputMethod(toolName, method) {
   const manualInput = document.getElementById(`${toolName}-manual-input`);
@@ -221,18 +227,62 @@ function toggleInputMethod(toolName, method) {
   }
 }
 
+async function authFetch(url, opts = {}) {
+  // 1) Attach the current access token to the headers
+  opts.credentials = 'include';   
+  opts.headers = opts.headers || {};
+  // opts.headers.Authorization = 'Bearer ' + localStorage.getItem('access_token');
+  opts.headers['X-CSRF-TOKEN'] = getCookie('csrf_access_token');
+  // 2) Do the fetch
+  let res = await fetch(url, opts);
+
+  // 3) If it failed with 401 → try to refresh
+  if (res.status === 401) {
+    // const refreshRes = await fetch('/auth/refresh', {
+    //   method: 'POST',
+    //   headers: {
+    //     Authorization: 'Bearer ' + localStorage.getItem('refresh_token')
+    //   }
+    // });
+
+    // if (refreshRes.ok) {
+    //   // 4) We got a new access token…
+    //   const { access_token } = await refreshRes.json();
+    //   localStorage.setItem('access_token', access_token);
+
+    //   // 5) …and retry the original call with the fresh token
+    //   opts.headers.Authorization = 'Bearer ' + access_token;
+    //   res = await fetch(url, opts);
+    // } else {
+    //   // 6) Refresh failed (expired, revoked): clear out and force a full reload
+    //   localStorage.clear();
+    //   window.location.reload();
+    // }
+
+
+        // access expired → try refresh
+    await fetch('/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': getCookie('csrf_refresh_token') }
+    });
+    // retry original with fresh cookie + CSRF
+    opts.headers['X-CSRF-TOKEN'] = getCookie('csrf_access_token');
+    res = await fetch(url, opts);
+  }
+
+  // 7) Return whatever response we ended up with (success or other error)
+  return res;
+}
+
+
 function executeScan() {
   const activeForm = document.querySelector(".tool-form.active");
   if (!activeForm) return;
 
-  // const formData = collectFormData(activeForm);
-  // const command = generateCommand(currentTool, formData);
-
-  // build a FormData payload
   const formData = new FormData();
-  // tell the backend which tool
   formData.append("tool", currentTool);
-  // collect all fields, including files
+
   activeForm.querySelectorAll("input, textarea, select").forEach((input) => {
     if (input.type === "file") {
       if (input.files.length > 0) {
@@ -242,32 +292,27 @@ function executeScan() {
       (input.type === "radio" || input.type === "checkbox") &&
       !input.checked
     ) {
-      return; // skip unchecked
+      return;
     } else {
       formData.append(input.name, input.value);
     }
   });
-  // for your terminal UI, still generate the CLI preview
-  // build preview-friendly options
+
   const previewOptions = {};
   for (let [key, value] of formData.entries()) {
-  // if it’s a File, swap in just the name
-  if (value instanceof File) value = value.name;
+    if (value instanceof File) value = value.name;
 
-  // if we’ve never seen this key, just set it
-  if (!(key in previewOptions)) {
-    previewOptions[key] = value;
-  } else {
-    // if it was a scalar, turn it into a 2-item array
-    if (!Array.isArray(previewOptions[key])) {
-      previewOptions[key] = [previewOptions[key]];
+    if (!(key in previewOptions)) {
+      previewOptions[key] = value;
+    } else {
+      if (!Array.isArray(previewOptions[key])) {
+        previewOptions[key] = [previewOptions[key]];
+      }
+      previewOptions[key].push(value);
     }
-    // now push the new one
-    previewOptions[key].push(value);
   }
-}
   const command = generateCommand(currentTool, previewOptions);
-
+  formData.append("cmd", command);
   clearTerminal();
   appendToTerminal(command, true);
 
@@ -279,60 +324,40 @@ function executeScan() {
   `;
   scanBtn.disabled = true;
 
-  // fetch("/tools/api/scan", {
-  //   method: "POST",
-  //   headers: { "Content-Type": "application/json" },
-  //   body: JSON.stringify({ tool: currentTool, options: formData }),
-  // })
-  fetch("/tools/api/scan", {
+  authFetch("/tools/api/scan", {
     method: "POST",
-    body: formData,
+    body: formData
   })
-    .then((res) => res.json())
+    .then((res) => {
+      if (!res.ok) {
+        // our “not logged in” case
+        // appendToTerminal("Login to do your scan");
+        // throw new Error("Unauthorized");
+        throw new Error('Scan Failed: ' + res.status);
+      }
+      return res.json();
+    })
     .then((data) => {
-      if (data.status === "error") {
+      console.log(`this is data -> ${JSON.stringify(data, null, 2)}`);
+      if (data.msg) {
+        appendToTerminal(data.msg);
+      } else if (data.status === "error") {
         appendToTerminal(`Error: ${data.message}`);
       } else {
-        data.output.split("\n").forEach((line) => appendToTerminal(line));
+        if (data.output) {
+          data.output.split("\n").forEach((line) => appendToTerminal(line));
+        } else {
+          appendToTerminal("No output.");
+        }
       }
     })
     .catch((err) => {
-      appendToTerminal(`Fetch error: ${err.message}`);
+      console.error(err);
     })
     .finally(() => {
       scanBtn.innerHTML = orig;
       scanBtn.disabled = false;
     });
-  // fetch("/tools/api/scan", {
-  //   method: "POST",
-  //   body: formData,
-  // })
-  //   .then((resp) =>
-  //     resp.text().then((text) => {
-  //       if (!resp.ok) {
-  //         // HTTP 4xx/5xx → show raw HTML or error message
-  //         throw new Error(text);
-  //       }
-  //       // try to parse JSON; if it fails, return raw text
-  //       try {
-  //         return JSON.parse(text);
-  //       } catch {
-  //         return { output: text };
-  //       }
-  //     })
-  //   )
-  //   .then((result) => {
-  //     // result is either your JSON {status,output,…} or {output:rawText}
-  //     appendToTerminal(result.output || JSON.stringify(result));
-  //     // re-render prompt…
-  //   })
-  //   .catch((err) => {
-  //     appendToTerminal(`Error: ${err.message}`);
-  //   })
-  //   .finally(() => {
-  //     scanBtn.innerHTML = orig;
-  //     scanBtn.disabled = false;
-  //   });
 }
 
 function collectFormData(form) {
@@ -439,7 +464,7 @@ function generateCommand(toolName, formData) {
       if (formData["naabu-timeout"])
         cmd += ` -timeout ${formData["naabu-timeout"]}`;
       break;
-      
+
     case "httpx":
       // Targets
       if (formData["httpx-input-method"] === "manual") {

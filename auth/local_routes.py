@@ -1,30 +1,25 @@
-import datetime
 from io import BytesIO
 from flask import (
     render_template, redirect, send_file,
     url_for, request, jsonify, current_app, flash, session
 )
-import pyotp
-import qrcode
 
+from flask_jwt_extended import set_access_cookies, set_refresh_cookies
 from . import auth_bp
 from .models import (
-    db, User, Role, LocalAuth, LoginEvent,
-    PasswordReset, MFASetting, RefreshToken
+    db, User, Role,
+    PasswordReset,
 )
 
 from .utils import (
     generate_confirmation_token,
     confirm_token,
     send_email,
-    login_required,
+    
     validate_and_set_password,
     login_local as util_login_local,
-    jwt_logout,
     get_current_user
 )
-from extensions import limiter
-from flask_limiter.util import get_remote_address
 from flask_jwt_extended import (
     create_access_token, jwt_required, get_jwt_identity
 )
@@ -128,16 +123,30 @@ def local_login():
     if err:
         # all errors come back as err string; adjust status if you want 403 for locked/blocked, etc.
         return jsonify({"msg": err}), 401
+    
+    # issue cookies instead of JSON body
+    resp = jsonify({"msg":"Login successful"})
+    set_access_cookies(resp, tokens["access_token"])
+    set_refresh_cookies(resp, tokens["refresh_token"])
 
-    return jsonify(tokens), 200
+    return resp, 200
 
 
-@auth_bp.route('/refresh', methods=['POST'])
+# @auth_bp.route('/refresh', methods=['POST'])
+# @jwt_required(refresh=True)
+# def refresh():
+#     identity     = get_jwt_identity()
+#     access_token = create_access_token(identity=identity)
+#     return jsonify(access_token=access_token), 200
+
+
 @jwt_required(refresh=True)
 def refresh():
-    identity     = get_jwt_identity()
-    access_token = create_access_token(identity=identity)
-    return jsonify(access_token=access_token), 200
+    new_at = create_access_token(identity=get_jwt_identity())
+    resp = jsonify({"msg":"Token refreshed"})
+    set_access_cookies(resp, new_at)
+    return resp, 200
+
 
 
 

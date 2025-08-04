@@ -1,15 +1,11 @@
 import re, uuid
 from datetime import datetime, timedelta
-from flask_sqlalchemy import SQLAlchemy
-from flask_bcrypt import Bcrypt
 from .passwords import COMMON_PASSWORDS
 from hashlib import sha256
 from sqlalchemy import Table, Column, Integer, ForeignKey, String, UniqueConstraint, CheckConstraint, Boolean, DateTime
 from sqlalchemy.orm import relationship
+from extensions import db, bcrypt
 
-
-db = SQLAlchemy()
-bcrypt = Bcrypt()
 
 RESERVED_USERNAMES = {
     'admin','administrator','root','system','support',
@@ -70,6 +66,7 @@ class User(TimestampMixin, db.Model):
     login_events  = relationship('LoginEvent', back_populates='user', cascade='all, delete-orphan')
     refresh_tokens = relationship('RefreshToken', back_populates='user', cascade='all, delete-orphan')
     roles = relationship('Role', secondary=user_roles, back_populates='users', cascade='all')
+    scan_history = relationship('ToolScanHistory', back_populates='user', lazy="dynamic")
 
     @staticmethod
     def _validate_username(u: str):

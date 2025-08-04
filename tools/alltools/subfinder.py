@@ -36,6 +36,7 @@ def run_scan(data):
         command.extend(["-d", domain])
 
     command_str = " ".join(command)
+
     print(f"DEBUG: subfinder command → {command_str}")
 
     try:
@@ -45,8 +46,14 @@ def run_scan(data):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            timeout=60
+            # timeout=60
         )
+        print()
+        print("→ returncode:", result.returncode)
+        print("→ stdout repr:", repr(result.stdout))
+        print("→ stderr repr:", repr(result.stderr))
+        print()
+        print()
 
         output = result.stdout.strip() or "No output captured."
 
@@ -72,7 +79,7 @@ def run_scan(data):
     except subprocess.TimeoutExpired:
         return {
             "status": "error",
-            "message": "Subfinder timed out after 60 seconds."
+            "message": "Subfinder timed out."
         }
     except Exception as e:
         return {

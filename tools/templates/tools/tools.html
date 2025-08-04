@@ -1,11 +1,6 @@
 {% extends 'main.html' %} {% block title %}Reconnaissance Tools - Hunter's
 Arsenal{% endblock %} {% block head_extra %}
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link
-  href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
-  rel="stylesheet"
-/>
+
 <link
   rel="stylesheet"
   href="{{ url_for('tools.static', filename='tools/css/tools.css') }}"
@@ -494,7 +489,7 @@ Arsenal{% endblock %} {% block head_extra %}
             </form>
 
             <!-- HTTPX Form -->
-            <form id="httpx-form" class="tool-form active">
+            <form id="httpx-form" class="tool-form">
               <div class="form-section">
                 <h4 class="section-title">Target Configuration</h4>
 
@@ -2095,6 +2090,8 @@ Arsenal{% endblock %} {% block head_extra %}
   </section>
 </main>
 
-{% endblock %} {% block scripts %}
+{% endblock %} 
+
+{% block scripts %}
 <script src="{{ url_for('tools.static', filename='tools/js/tools.js') }}"></script>
 {% endblock %}

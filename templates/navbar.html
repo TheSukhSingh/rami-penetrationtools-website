@@ -1,37 +1,260 @@
-   <nav id="navbar" class="navbar">
-        <div class="nav-container">
-            <div class="nav-brand" onclick="showPage('home')">
-                <div class="nav-logo glass glow-cyan">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="4,17 10,11 4,5"></polyline>
-                        <line x1="12" y1="19" x2="20" y2="19"></line>
-                    </svg>
-                </div>
-                <span class="nav-title">Hunter's Terminal</span>
-            </div>
-            
-            <div class="nav-menu" id="navMenu">
-                <a href="#" onclick="scrollToSection('tools')" class="nav-link">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="13,2 3,14 12,14 11,22 21,10 12,10 13,2"></polygon>
-                    </svg>
-                    <span>Tools</span>
-                </a>
-                <a href="#" onclick="showPage('blog')" class="nav-link">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-                    </svg>
-                    <span>Blog</span>
-                </a>
+<nav id="navbar" class="navbar">
+  <div class="nav-container">
+    <a href="{{ url_for('index') }}" class="nav-brand">
+      <div class="nav-logo glass glow-cyan">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="4,17 10,11 4,5"></polyline>
+          <line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+      </div>
+      <span class="nav-title">Hunter's Terminal</span>
+    </a>
 
-                <button class="cyber-button" id="loginButton" onclick="showAuth('login')">Sign In</button>
-            </div>
-            
-            <button class="nav-toggle" id="navToggle" onclick="toggleMobileMenu()">
-                <span></span>
-                <span></span>
-                <span></span>
-            </button>
+    <div class="nav-menu" id="navMenu">
+      <a href="{{ url_for('tools.tools_index') }}" class="nav-link">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polygon points="13,2 3,14 12,14 11,22 21,10 12,10 13,2"></polygon>
+        </svg>
+        <span>Tools</span>
+      </a>
+      <a href="#" onclick="showPage('blog')" class="nav-link">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path
+            d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
+          ></path>
+        </svg>
+        <span>Blog</span>
+      </a>
+
+      <button class="cyber-button" id="loginButton" onclick="showAuth('login')">
+        Sign In
+      </button>
+    </div>
+
+    <button class="nav-toggle" id="navToggle" onclick="toggleMobileMenu()">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </div>
+</nav>
+
+
+
+
+
+
+
+<!-- Auth Modal -->
+<div id="authModal" class="modal">
+  <div class="modal-backdrop" onclick="closeAuth()"></div>
+  <div class="scan-lines"></div>
+  <div class="auth-panel glass card-hover">
+    <div class="auth-header">
+      <div class="auth-icon glass glow-cyan">
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="4,17 10,11 4,5"></polyline>
+          <line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+      </div>
+      <h2 id="authTitle">Access Terminal</h2>
+      <p id="authSubtitle">Enter your credentials to continue</p>
+    </div>
+
+    <form id="authForm" class="auth-form">
+      <div id="nameField" class="form-group" style="display: none">
+        <label>Hunter Name</label>
+        <input
+          type="text"
+          id="name" name="name"
+          placeholder="Enter your hunter name"
+          class="form-input glass"
+        />
+      </div>
+
+      <div id="usernameField" class="form-group" style="display: none">
+        <label>Hunter Handle</label>
+        <input
+          type="text"
+          id="username" name="username"
+          placeholder="Enter your username"
+          class="form-input glass"
+        />
+      </div>
+
+      <div class="form-group">
+        <label>Email Address</label>
+        <input
+          type="email"
+          id="email" name="email"
+          placeholder="hunter@terminal.com"
+          class="form-input glass"
+          required
+        />
+      </div>
+
+      <div id="passwordField" class="form-group">
+        <label>Password</label>
+        <div class="password-input">
+          <input
+            type="password"
+            id="password" name="password"
+            placeholder="Enter your password"
+            class="form-input glass"
+            required
+          />
+          <button
+            type="button"
+            class="password-toggle"
+            onclick="togglePassword('password')"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="eye-open"
+            >
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="eye-closed"
+              style="display: none"
+            >
+              <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
+              ></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+          </button>
         </div>
-    </nav>
+      </div>
+
+      <div id="confirmPasswordField" class="form-group" style="display: none">
+        <label>Confirm Password</label>
+        <div class="password-input">
+          <input
+            type="password"
+            id="confirmPassword" name="confirm_password"
+            placeholder="Confirm your password"
+            class="form-input glass"
+          />
+          <button
+            type="button"
+            class="password-toggle"
+            onclick="togglePassword('confirmPassword')"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="eye-open"
+            >
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              class="eye-closed"
+              style="display: none"
+            >
+              <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
+              ></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="cyber-button full-width" id="authSubmit">
+        <span id="authButtonText">Access Terminal</span>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          id="authButtonIcon"
+        >
+          <polyline points="9,18 15,12 9,6"></polyline>
+        </svg>
+        <div
+          class="loading-spinner"
+          id="authSpinner"
+          style="display: none"
+        ></div>
+      </button>
+    </form>
+    <div class="auth-footer">
+  <div id="authLinks">
+    <!-- Auth links will be populated by JavaScript -->
+  </div>
+  <!-- <div class="security-notice">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          class="text-green"
+        >
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <circle cx="12" cy="16" r="1"></circle>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span>256-bit encrypted connection</span>
+      </div> -->
+</div>
+
+
+  </div>
+</div>

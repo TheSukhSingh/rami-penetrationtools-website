@@ -156,7 +156,7 @@ body {
 }
 
 /* Navigation */
-.navbar {
+/* .navbar {
     position: fixed;
     top: 0;
     left: 0;
@@ -231,7 +231,7 @@ body {
     height: 2px;
     background: linear-gradient(90deg, var(--cyber-cyan), var(--plasma-violet));
     border-radius: 1px;
-}
+} */
 
 /* Cyber Button */
 .cyber-button {
