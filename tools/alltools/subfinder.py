@@ -8,6 +8,9 @@ def run_scan(data):
 
     print("→ Using subfinder at:", shutil.which("subfinder"))
 
+    SUBFINDER_BIN = r"/usr/local/bin/subfinder"
+
+
     raw = data.get("subfinder-manual", "").strip()
     domains = [d.strip() for d in raw.splitlines() if d.strip()]
     if not domains:
@@ -22,7 +25,7 @@ def run_scan(data):
     max_time = data.get("subfinder-max-time", "").strip() or "10"
 
     # 3) Build the command
-    command = ["subfinder"]
+    command = [SUBFINDER_BIN]
     if silent_flag:
         command.append("-silent")
 
