@@ -34,6 +34,7 @@ def run_scan(data):
 
     command.extend(["-t", threads, "-timeout", timeout_opt])
     command.extend(["-max-time", max_time])
+    command.append("-nc")
 
     for domain in domains:
         command.extend(["-d", domain])

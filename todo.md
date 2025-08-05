@@ -7,13 +7,16 @@
 
 
 
-
+TOOLS
+- FE Loading something when tool is run and until we receive the output
+- BE Subfinder needs silent all the time - leaking server location and stuff...
 
 
 AUTH
-1. user deactivated logic to be written in local_routes
-2. mfa not set yet
-3. On register (fe), create checks on frontend too so backend does little work (like pw checks, both pw same, etc)
+- user deactivated logic to be written in local_routes
+- mfa not set yet
+- On register (fe), create checks on frontend too so backend does little work (like pw checks, both pw same, etc)
+- refresh token not working 
 
 
 NAVBAR
