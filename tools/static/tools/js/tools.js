@@ -338,7 +338,7 @@ function executeScan() {
       return res.json();
     })
     .then((data) => {
-      console.log(`this is data -> ${JSON.stringify(data, null, 2)}`);
+      // console.log(`this is data -> ${JSON.stringify(data, null, 2)}`);
       if (data.msg) {
         appendToTerminal(data.msg);
       } else if (data.status === "error") {

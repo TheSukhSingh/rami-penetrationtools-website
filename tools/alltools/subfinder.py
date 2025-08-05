@@ -49,6 +49,7 @@ def run_scan(data):
             # timeout=60
         )
         print()
+        print("→ cmd:", command)
         print("→ returncode:", result.returncode)
         print("→ stdout repr:", repr(result.stdout))
         print("→ stderr repr:", repr(result.stderr))
