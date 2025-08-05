@@ -11,7 +11,8 @@ TOOLS
 - FE Loading something when tool is run and until we receive the output
 - FE Upload file not aligned in center both
 - BE Subfinder needs silent all the time - leaking server location and stuff...
-
+- Launch button pressed multiple times without changing parameters is throwing errors
+- backend commands are being fixed rn, update frontend command with backend commands
 
 AUTH
 - user deactivated logic to be written in local_routes
