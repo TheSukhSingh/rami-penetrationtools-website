@@ -1,4 +1,5 @@
 
+import os
 import subprocess
 import shutil
 
@@ -11,10 +12,32 @@ def run_scan(data):
     SUBFINDER_BIN = r"/usr/local/bin/subfinder"
 
 
-    raw = data.get("subfinder-manual", "").strip()
-    domains = [d.strip() for d in raw.splitlines() if d.strip()]
-    if not domains:
-        return {"status": "error", "message": "At least one domain is required."}
+    # raw = data.get("subfinder-manual", "").strip()
+    # domains = [d.strip() for d in raw.splitlines() if d.strip()]
+    # if not domains:
+    #     return {"status": "error", "message": "At least one domain is required."}
+
+    method = data.get('input_method', 'manual')
+    command = [SUBFINDER_BIN]
+
+    if method == 'file':
+        filepath = data.get('file_path', '')
+        if not filepath or not os.path.exists(filepath):
+            return {"status": "error", "message": "Upload file not found."}
+        command.extend(['-f', filepath])
+    else:
+        raw = data.get("subfinder-manual", "").strip()
+        domains = [d.strip() for d in raw.splitlines() if d.strip()]
+        if not domains:
+            return {"status": "error", "message": "At least one domain is required."}
+        for d in domains:
+            command.extend(['-d', d])
+
+
+
+
+
+
 
     # 2) Parse options
     silent_flag = data.get("subfinder-silent", "").strip().lower() == "yes"
@@ -25,7 +48,6 @@ def run_scan(data):
     max_time = data.get("subfinder-max-time", "").strip() or "10"
 
     # 3) Build the command
-    command = [SUBFINDER_BIN]
     if silent_flag:
         command.append("-silent")
 
@@ -36,8 +58,8 @@ def run_scan(data):
     command.extend(["-max-time", max_time])
     command.append("-nc")
 
-    for domain in domains:
-        command.extend(["-d", domain])
+    # for domain in domains:
+    #     command.extend(["-d", domain])
 
     command_str = " ".join(command)
 

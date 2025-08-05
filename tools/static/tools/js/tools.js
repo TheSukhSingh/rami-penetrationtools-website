@@ -209,9 +209,9 @@ function showToolForm(toolName) {
 }
 function getCookie(name) {
   return document.cookie
-    .split('; ')
-    .find(row => row.startsWith(name + '='))
-    ?.split('=')[1];
+    .split("; ")
+    .find((row) => row.startsWith(name + "="))
+    ?.split("=")[1];
 }
 
 function toggleInputMethod(toolName, method) {
@@ -229,10 +229,10 @@ function toggleInputMethod(toolName, method) {
 
 async function authFetch(url, opts = {}) {
   // 1) Attach the current access token to the headers
-  opts.credentials = 'include';   
+  opts.credentials = "include";
   opts.headers = opts.headers || {};
   // opts.headers.Authorization = 'Bearer ' + localStorage.getItem('access_token');
-  opts.headers['X-CSRF-TOKEN'] = getCookie('csrf_access_token');
+  opts.headers["X-CSRF-TOKEN"] = getCookie("csrf_access_token");
   // 2) Do the fetch
   let res = await fetch(url, opts);
 
@@ -259,15 +259,14 @@ async function authFetch(url, opts = {}) {
     //   window.location.reload();
     // }
 
-
-        // access expired → try refresh
-    await fetch('/auth/refresh', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'X-CSRF-TOKEN': getCookie('csrf_refresh_token') }
+    // access expired → try refresh
+    await fetch("/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      headers: { "X-CSRF-TOKEN": getCookie("csrf_refresh_token") },
     });
     // retry original with fresh cookie + CSRF
-    opts.headers['X-CSRF-TOKEN'] = getCookie('csrf_access_token');
+    opts.headers["X-CSRF-TOKEN"] = getCookie("csrf_access_token");
     res = await fetch(url, opts);
   }
 
@@ -275,10 +274,29 @@ async function authFetch(url, opts = {}) {
   return res;
 }
 
-
 function executeScan() {
   const activeForm = document.querySelector(".tool-form.active");
   if (!activeForm) return;
+
+  const method = activeForm.querySelector(
+    `input[name="${currentTool}-input-method"]:checked`
+  ).value;
+  if (method === "manual") {
+    const txt = activeForm
+      .querySelector(`textarea[name="${currentTool}-manual"]`)
+      .value.trim();
+    if (!txt) {
+      return alert(
+        "Please enter at least one domain by typing or uploading a file."
+      );
+    }
+  } else {
+    // file
+    const fileInput = activeForm.querySelector(`input[name="${currentTool}-file"]`);
+    if (!fileInput.files.length) {
+      return alert("Please choose a .txt file of targets.");
+    }
+  }
 
   const formData = new FormData();
   formData.append("tool", currentTool);
@@ -326,14 +344,14 @@ function executeScan() {
 
   authFetch("/tools/api/scan", {
     method: "POST",
-    body: formData
+    body: formData,
   })
     .then((res) => {
       if (!res.ok) {
         // our “not logged in” case
         // appendToTerminal("Login to do your scan");
         // throw new Error("Unauthorized");
-        throw new Error('Scan Failed: ' + res.status);
+        throw new Error("Scan Failed: " + res.status);
       }
       return res.json();
     })

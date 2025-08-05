@@ -9,6 +9,7 @@
 
 TOOLS
 - FE Loading something when tool is run and until we receive the output
+- FE Upload file not aligned in center both
 - BE Subfinder needs silent all the time - leaking server location and stuff...
 
 
