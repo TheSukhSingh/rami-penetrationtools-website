@@ -43,7 +43,7 @@ def send_email(to: str, subject: str, html_body: str) -> None:
     try:
         mail.send(msg)
     except Exception as e:
-        print("Email send failed - {e}")
+        print(f"Email send failed - {e}")
 
 def login_required(func):
     @wraps(func)
