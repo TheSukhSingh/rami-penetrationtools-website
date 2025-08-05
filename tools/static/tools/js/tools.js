@@ -337,7 +337,7 @@ function executeScan() {
   const scanBtn = document.querySelector(".scan-btn");
   const orig = scanBtn.innerHTML;
   scanBtn.innerHTML = `
-    <div class="loading-spinner"></div>
+    <div class="loading-spinner" style="color: var(--text-main);"></div>
     <span>Scanning…<span>
   `;
   scanBtn.disabled = true;

@@ -24,7 +24,7 @@ def run_scan(data):
         filepath = data.get('file_path', '')
         if not filepath or not os.path.exists(filepath):
             return {"status": "error", "message": "Upload file not found."}
-        command.extend(['-f', filepath])
+        command.extend(['-dL', filepath])
     else:
         raw = data.get("subfinder-manual", "").strip()
         domains = [d.strip() for d in raw.splitlines() if d.strip()]
