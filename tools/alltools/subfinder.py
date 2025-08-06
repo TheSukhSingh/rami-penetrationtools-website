@@ -2,7 +2,7 @@
 import os
 import subprocess
 import shutil
-
+import time
 
 def run_scan(data):
     # 1) Extract domains from the textarea
@@ -24,10 +24,14 @@ def run_scan(data):
         filepath = data.get('file_path', '')
         if not filepath or not os.path.exists(filepath):
             return {"status": "error", "message": "Upload file not found."}
+        domain_count = sum(1 for _ in open(filepath))
+        file_size_b  = os.path.getsize(filepath)
         command.extend(['-dL', filepath])
     else:
         raw = data.get("subfinder-manual", "").strip()
-        domains = [d.strip() for d in raw.splitlines() if d.strip()]
+        domains = [d for d in raw.splitlines() if d.strip()]
+        domain_count = len(domains)
+        file_size_b  = None
         if not domains:
             return {"status": "error", "message": "At least one domain is required."}
         for d in domains:
@@ -65,6 +69,7 @@ def run_scan(data):
 
     print(f"DEBUG: subfinder command → {command_str}")
 
+    start = time.time()
     try:
         # 4) Run it, merging stderr into stdout and enforce a 60s timeout
         result = subprocess.run(
@@ -72,8 +77,9 @@ def run_scan(data):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            # timeout=60
+            timeout=60
         )
+        execution_ms = int((time.time() - start) * 1000)
         print()
         print("→ cmd:", command)
         print("→ returncode:", result.returncode)
@@ -88,30 +94,56 @@ def run_scan(data):
         if result.returncode != 0:
             return {
                 "status": "error",
-                "message": f"Subfinder error:\n{output}"
+                "message": f"Subfinder error:\n{output}",
+                "domain_count": domain_count,
+                "file_size_b":  file_size_b,
+                "execution_ms": execution_ms,
+                "error_reason": "OTHER",
+                "error_detail": output
             }
 
         return {
             "status": "success",
             "command": command_str,
             "output": output,
-            "message": "Scan completed successfully."
+            "message": "Scan completed successfully.",
+            "domain_count": domain_count,
+            "file_size_b":  file_size_b,
+            "execution_ms": execution_ms,
+            "error_reason": None,
+            "error_detail": None
         }
 
     except FileNotFoundError:
         return {
             "status": "error",
-            "message": "Subfinder is not installed or not found in PATH."
+            "message": "Subfinder is not installed or not found in PATH.",
+            "domain_count": domain_count,
+            "file_size_b":  file_size_b,
+            "execution_ms": 0,
+            "error_reason": "INVALID_PARAMS",
+            "error_detail": FileNotFoundError
         }
     except subprocess.TimeoutExpired:
+        execution_ms = int((time.time() - start) * 1000)
         return {
             "status": "error",
-            "message": "Subfinder timed out."
+            "message": "Subfinder timed out.",
+            "domain_count": domain_count,
+            "file_size_b":  file_size_b,
+            "execution_ms": execution_ms,
+            "error_reason": "TIMEOUT",
+            "error_detail": subprocess.TimeoutExpired
         }
     except Exception as e:
         return {
             "status": "error",
-            "message": f"Unexpected error: {str(e)}"
+            "message": f"Unexpected error: {str(e)}",
+            "domain_count": domain_count,
+            "file_size_b":  file_size_b,
+            "execution_ms": 0,
+            "error_reason": "INVALID_PARAMS",
+            "error_detail": e
         }
 
 

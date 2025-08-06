@@ -49,7 +49,13 @@ def create_app():
         "JWT_ACCESS_COOKIE_PATH": "/",                # where access cookie is sent
         "JWT_REFRESH_COOKIE_PATH": "/auth/refresh",   # refresh endpoint path
     })
-    app.config['UPLOAD_FOLDER'] = '/tmp/recon_uploads'
+    # app.config['UPLOAD_FOLDER'] = '/tmp/recon_uploads'
+    app.config['UPLOAD_INPUT_FOLDER']  = '/tmp/recon_uploads/user_uploads'
+    app.config['UPLOAD_OUTPUT_FOLDER'] = '/tmp/recon_uploads/results'
+
+    os.makedirs(app.config['UPLOAD_INPUT_FOLDER'],  exist_ok=True)
+    os.makedirs(app.config['UPLOAD_OUTPUT_FOLDER'], exist_ok=True)
+
 
     csrf = CSRFProtect(app)  
     csrf.exempt(auth_bp)

@@ -1,7 +1,13 @@
 from datetime import datetime
 from flask import render_template, request, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
-from tools.models import ToolScanHistory, db
+from tools.models import (
+    ToolScanHistory, 
+    ScanDiagnostics, 
+    ScanStatus, 
+    ErrorReason, 
+    db
+)
 from . import tools_bp
 from .alltools import (
     dnsx, 
@@ -15,6 +21,7 @@ from .alltools import (
     naabu, 
     subfinder
 )
+import time
 
 @tools_bp.route('/', methods=['GET'])
 def tools_index():
@@ -54,7 +61,8 @@ def api_scan():
     #         filepath = os.path.join(upload_dir, filename)
     #         uploaded.save(filepath)
     #         options[file_field] = filepath
-
+    
+    orig_filename = None
     if file_field in request.files:
         uploaded = request.files[file_field]
         if uploaded.filename:
@@ -74,7 +82,7 @@ def api_scan():
             # note we’ll later look for options['file_path'] in subfinder.py
             options['input_method'] = 'file'
             options['file_path'] = filepath
-
+    start_req = time.time()
     try:
         if tool == 'dnsx':                result = dnsx.run_scan(options)
         elif tool == 'gau':               result = gau.run_scan(options)
@@ -116,6 +124,18 @@ def api_scan():
         scan_success_state= success
     )
     db.session.add(scan)
+    db.session.flush()
+
+    diag = ScanDiagnostics(
+        scan_id        = scan.id,
+        status         = ScanStatus.SUCCESS   if success else ScanStatus.FAILURE,
+        domain_count   = result.get('domain_count', 0),
+        file_size_b    = result.get('file_size_b'),
+        execution_ms   = result.get('execution_ms', int((time.time() - start_req)*1000)),
+        error_reason   = (ErrorReason[result.get('error_reason')]),
+        error_detail   = result.get('error_detail')
+    )
+    db.session.add(diag)
     db.session.commit()
 
     return jsonify(result)
