@@ -13,19 +13,21 @@ TOOLS
 - BE Subfinder needs silent all the time - leaking server location and stuff...
 - Launch button pressed multiple times without changing parameters is throwing errors
 - backend commands are being fixed rn, update frontend command with backend commands
+- use celery to run the processes in backend
 
 AUTH
 - user deactivated logic to be written in local_routes
 - mfa not set yet
 - On register (fe), create checks on frontend too so backend does little work (like pw checks, both pw same, etc)
 - refresh token not working 
-
+- unable to logout
 
 NAVBAR
 - Dropdown from User needs design update (Also Dashboard option required)
 
 
-
+LANDING PAGE
+- hero section touching navbar in laptop screen
 
 
 

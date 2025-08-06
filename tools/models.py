@@ -66,7 +66,11 @@ class ScanDiagnostics(db.Model):
                           db.Enum(ScanStatus, name="scan_status_enum"),
                           nullable=False
                        )
-    domain_count     = db.Column(db.Integer, nullable=False)
+    total_domain_count     = db.Column(db.Integer, nullable=True)
+    valid_domain_count     = db.Column(db.Integer, nullable=True)
+    invalid_domain_count     = db.Column(db.Integer, nullable=True)
+    duplicate_domain_count = db.Column(db.Integer, nullable=True)
+    
     file_size_b      = db.Column(db.Integer, nullable=True)
     execution_ms     = db.Column(db.Integer, nullable=False)
     error_reason     = db.Column(
@@ -74,6 +78,7 @@ class ScanDiagnostics(db.Model):
                           nullable=True
                        )
     error_detail     = db.Column(db.Text, nullable=True)
+    value_entered    = db.Column(db.Integer, nullable=True)
     created_at       = db.Column(
                           db.DateTime,
                           default=datetime.utcnow,
