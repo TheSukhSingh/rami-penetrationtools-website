@@ -346,30 +346,13 @@ function executeScan() {
     method: "POST",
     body: formData,
   })
-    .then(async res => {
-    if (!res.ok) {
-      // read the body exactly once—try JSON, fall back to text
-      let bodyText;
-      try {
-        bodyText = JSON.stringify(await res.clone().json(), null, 2);
-      } catch {
-        bodyText = await res.clone().text();
-      }
-      throw new Error(
-        `Scan Failed: ${res.status} ${res.statusText}\n` +
-        bodyText
-      );
-    }
-    return res.json();
-  })
     .then((res) => {
       if (!res.ok) {
-        throw new Error("Scan Failed: " + res.status + JSON.stringify(res, null, 2) + res + res.text() + res.json());
+        throw new Error("Scan Failed: " + res.status);
       }
       return res.json();
     })
     .then((data) => {
-      // console.log(`this is data -> ${JSON.stringify(data, null, 2)}`);
       if (data.msg) {
         appendToTerminal(data.msg);
       } else if (data.status === "error") {
