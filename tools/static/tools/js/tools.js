@@ -347,9 +347,11 @@ function executeScan() {
     body: formData,
   })
     .then((res) => {
-      // if (!res.ok) {
-      //   throw new Error("Scan Failed: " + res.status);
-      // }
+      var yo = res
+      if (!res.ok) {
+        throw new Error("Scan Failed: " + res.status);
+      }
+      console.log(yo.text())
       return res.json();
     })
     .then((data) => {

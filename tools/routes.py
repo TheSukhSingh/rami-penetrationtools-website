@@ -83,7 +83,7 @@ def api_scan():
             'message': str(e),
             'output': ''
         }
-        success = False
+        success = (result.get('status') != 'error')
 
     if success:
         result.setdefault('status', 'success')
