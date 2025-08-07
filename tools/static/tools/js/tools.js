@@ -351,7 +351,7 @@ function executeScan() {
       if (!res.ok) {
         throw new Error("Scan Failed: " + res.status);
       }
-      console.log(yo.text())
+      appendToTerminal(yo.text());
       return res.json();
     })
     .then((data) => {
