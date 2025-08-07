@@ -257,9 +257,15 @@ function executeScan() {
   const activeForm = document.querySelector(".tool-form.active");
   if (!activeForm) return;
 
-  const method = activeForm.querySelector(
+  var metho = activeForm.querySelector(
     `input[name="${currentTool}-input-method"]:checked`
-  ).value;
+  )
+
+  var method;
+  if (metho){
+    method = metho.value;
+  }
+
   if (method === "manual") {
     const txt = activeForm
       .querySelector(`textarea[name="${currentTool}-manual"]`)
