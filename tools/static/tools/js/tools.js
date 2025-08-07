@@ -355,7 +355,7 @@ function executeScan() {
     })
     .then((data) => {
         var yo = data
-        appendToTerminal(yo.text());
+        appendToTerminal(yo);
         return data;
 
     })
