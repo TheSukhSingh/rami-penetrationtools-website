@@ -48,7 +48,7 @@ def api_scan():
             from werkzeug.utils import secure_filename
             import os
             from flask import current_app
-            base = current_app.config['UPLOAD_FOLDER']
+            base = current_app.config['UPLOAD_INPUT_FOLDER']
             user_folder = os.path.join(base, str(user_id))
             os.makedirs(user_folder, exist_ok=True)
             base_name = secure_filename(uploaded.filename)

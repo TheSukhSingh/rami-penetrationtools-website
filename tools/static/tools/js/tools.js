@@ -291,7 +291,6 @@ function executeScan() {
       );
     }
   } else {
-    // file
     const fileInput = activeForm.querySelector(`input[name="${currentTool}-file"]`);
     if (!fileInput.files.length) {
       return alert("Please choose a .txt file of targets.");
