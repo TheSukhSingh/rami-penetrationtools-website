@@ -150,7 +150,7 @@ def run_scan(data):
         
         file_size_b  = None
         for d in valid:
-            command.extend(['-d', d])
+            command.extend(['-s', d])
 
     threads     = data.get("gospider-threads", "").strip()  or "10" #2 10 50
     concurrency = data.get("gospider-c", "").strip() or "10" # 2 10 20
@@ -178,7 +178,7 @@ def run_scan(data):
             "error_detail": f"Threads must be between 2-50",
             "value_entered": t
         }
-    command.extend(['-t', t])
+    command.extend(['-t', threads])
 
     try:
         t2 = int(concurrency)
@@ -198,7 +198,7 @@ def run_scan(data):
             "error_detail": f"Concurrency must be between 2-20",
             "value_entered": t2
         }
-    command.extend(['-c', t2])
+    command.extend(['-c', concurrency])
 
     try:
         t3 = int(depth)
@@ -218,7 +218,7 @@ def run_scan(data):
             "error_detail": f"Depth must be between 1-10",
             "value_entered": t3
         }
-    command.extend(['-d', t3])
+    command.extend(['-d', depth])
 
     try:
         t4 = int(timeout)
@@ -238,7 +238,7 @@ def run_scan(data):
             "error_detail": f"Timeout must be between 5-30",
             "value_entered": t4
         }
-    command.extend(['-m', t4])
+    command.extend(['-m', timeout])
 
     if subdomains:
         command.append('--subs')

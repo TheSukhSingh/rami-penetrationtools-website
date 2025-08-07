@@ -200,7 +200,7 @@ def run_scan(data):
             "execution_ms": 0,
             "error_reason": "INVALID_PARAMS",
             "error_detail": f"Threads must be between 1-20",
-            "value_entered": t
+            "value_entered": t2
         }
 
 
@@ -222,7 +222,7 @@ def run_scan(data):
     if silent_flag:
         command.append("-silent")
 
-    command.extend(["-t", t, "-retry", t2])
+    command.extend(["-t", threads, "-retry", retry])
     command_str = " ".join(command)
 
     print(f"DEBUG: dnsx command → {command_str}")

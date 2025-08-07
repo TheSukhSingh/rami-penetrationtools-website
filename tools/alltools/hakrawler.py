@@ -3,7 +3,7 @@ import subprocess
 import os
 import tempfile
 import time
-from tools.utils.domain_classification import classify_lines
+from utils.domain_classification import classify_lines
 
 
 
@@ -187,7 +187,7 @@ def run_scan(data):
             "error_detail": f"Depth must be between 1-5",
             "value_entered": t
         }
-    command.extend(["-d", t])
+    command.extend(["-d", depth])
 
     try:
         t2 = int(threads)
@@ -207,7 +207,7 @@ def run_scan(data):
             "error_detail": f"Threads must be between 2-50",
             "value_entered": t2
         }
-    command.extend(["-t", t2])
+    command.extend(["-t", threads])
 
     try:
         t3 = int(timeout)
@@ -227,7 +227,7 @@ def run_scan(data):
             "error_detail": f"Timeout must be between 3-60",
             "value_entered": t3
         }
-    command.extend(["-timeout", t3])
+    command.extend(["-timeout", timeout])
 
 
 

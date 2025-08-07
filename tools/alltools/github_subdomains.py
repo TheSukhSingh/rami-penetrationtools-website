@@ -2,7 +2,6 @@ import shutil
 import subprocess
 import os
 import time
-from urllib.parse import urlparse
 import dotenv
 
 dotenv.load_dotenv()
@@ -45,7 +44,7 @@ def run_scan(data):
     
     token = os.getenv('GITHUB_SUBDOMAIN_TOKEN')
 
-    command.extend("-t", token)
+    command.extend(["-t", token])
 
     command_str = " ".join(command)
 

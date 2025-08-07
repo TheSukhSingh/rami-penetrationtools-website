@@ -1,7 +1,7 @@
 import shutil
 import subprocess
 import time
-
+from utils.domain_classification import classify_lines
 
 def run_scan(data):
     print("→ Using linkfinder at:", shutil.which("linkfinder"))
@@ -23,7 +23,22 @@ def run_scan(data):
             "value_entered":        None
         }
     
-
+    valid, invalid, _ = classify_lines([domain])
+    if invalid:
+        return {
+            "status": "error",
+            "message": "Invalid domain provided.",
+            "total_domain_count": 1,
+            "valid_domain_count": 0,
+            "invalid_domain_count": 1,
+            "duplicate_domain_count": 0,
+            "file_size_b": None,
+            "execution_ms": 0,
+            "error_reason": "INVALID_PARAMS",
+            "error_detail": "Invalid domain provided.",
+            "value_entered": None,
+        }
+    command.extend(["-i", domain])
     # ─── Regex filter (-r) ───
     regex = data.get("linkfinder-regex", "").strip()
     if regex:

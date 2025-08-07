@@ -14,7 +14,7 @@ def run_scan(data):
     file_size_b = None
     tmp = None
     method = data.get('input_method', 'manual')
-    command = []
+    command = [GAU_BIN]
 
     if method == 'file':
         # 1) locate the file
@@ -94,11 +94,16 @@ def run_scan(data):
             }
 
         # 6) rebuild a filtered temp file containing only the valid list
-        tmp = filepath + ".filtered"
-        with open(tmp, 'w') as f:
-            f.write("\n".join(valid))
-        filepath = tmp
-        command.extend(['cat', filepath, "|", GAU_BIN])
+        # tmp = filepath + ".filtered"
+        # with open(tmp, 'w') as f:
+        #     f.write("\n".join(valid))
+        # filepath = tmp
+        # command.extend(['cat', filepath, "|", GAU_BIN])
+
+        for d in valid:
+            command.append(d)
+
+
     else:
         raw = data.get("gau-manual", "")
         lines = [l.strip() for l in raw.splitlines() if l.strip()]
@@ -155,17 +160,16 @@ def run_scan(data):
             }
         
         file_size_b  = None
-        command.append(GAU_BIN)
         for d in valid:
             command.append(d)
 
 
 
-    threads     = data.get("gau-threads", "").strip()  or "50"   # 2 10 50
-    timeout = data.get("gau-timeout", "").strip() or "30"        # 5 30 60
+    threads     = data.get("gau-threads", "").strip()  or "50"  
+    timeout = data.get("gau-timeout", "").strip() or "30"       
     subdomains = data.get("gau-subs", "").strip().lower() == "yes"
     providers = data.get("gau-providers",   "").strip().lower() or ""
-    retries = data.get("gau-retries", "").strip() or "3"         # 0 1 3
+    retries = data.get("gau-retries", "").strip() or "3"       
     blacklist = data.get("gau-blacklist", "").strip() or ""
 
 
@@ -240,7 +244,7 @@ def run_scan(data):
         command.append(f"--blacklist {sanitized2}")
 
     
-    command.extend(["--threads", t, "--timeout", t2, "--retries", t3])
+    command.extend(["--threads", threads, "--timeout", timeout, "--retries", retries])
 
     command_str = " ".join(command)
 
