@@ -40,7 +40,7 @@ def run_scan(data):
 
     raw = data.get("github-raw", "").strip().lower() == "yes"
     if raw:
-        command.append("-raw")
+        command.append("--raw")
     
     token = os.getenv('GITHUB_SUBDOMAIN_TOKEN')
 
