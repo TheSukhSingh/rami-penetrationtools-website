@@ -9,30 +9,14 @@ import time
 def run_scan(data):
     print("→ Using katana at:", shutil.which("katana"))
 
-    KATANA_BIN = r"/usr/local/bin/katana"
+    KATANA_BIN = shutil.which("katana") 
     total_domain_count = valid_domain_count = invalid_domain_count = duplicate_domain_count = 0
     file_size_b = None
     tmp = None
     method = data.get('input_method', 'manual')
-    command = [KATANA_BIN]
+    command = [KATANA_BIN, "-config", "/dev/null"]
 
-    # manual = (data.get("katana-manual", "") or "").strip()
-    # filein = (data.get("katana-file", "") or "").strip()
-
-    # if filein:
-    #     targets = filein
-    # elif manual:
-    #     tmp = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".txt")
-    #     tmp.write(manual)
-    #     tmp.close()
-    #     targets = tmp.name
-    # else:
-    #     return {"status":"error","message":"Katana: no targets supplied. Provide manual or file input."}
-
-    # if not os.path.exists(targets):
-    #     return {"status":"error","message":"Katana: targets file is missing or invalid."}
     if method == 'file':
-        # 1) locate the file
         filepath = data.get('file_path', '')
         if not filepath or not os.path.exists(filepath):
             return {
