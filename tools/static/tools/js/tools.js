@@ -347,12 +347,17 @@ function executeScan() {
     body: formData,
   })
     .then((res) => {
-      var yo = res
-      appendToTerminal(yo.text());
-      if (!res.ok) {
-        throw new Error("Scan Failed: " + res.status);
-      }
-      return res.json();
+      // if (!res.ok) {
+      //   throw new Error("Scan Failed: " + res.status);
+      // }
+      // return res.json();
+      return res.text();
+    })
+    .then((data) => {
+        var yo = data
+        appendToTerminal(yo.text());
+        return data;
+
     })
     .then((data) => {
       if (data.msg) {
