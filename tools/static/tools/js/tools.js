@@ -334,7 +334,6 @@ function executeScan() {
   })
     .then((res) => {
       if (!res.ok) {
-        appendToTerminal('Scan Failed');
         throw new Error("Scan Failed: " + res.status);
       }
       return res.json();
@@ -354,7 +353,8 @@ function executeScan() {
       }
     })
     .catch((err) => {
-      appendToTerminal(err)
+
+      appendToTerminal("Login first to do your scan");
       console.error(err);
     })
     .finally(() => {
