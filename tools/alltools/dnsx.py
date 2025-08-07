@@ -5,7 +5,7 @@ import time
 import subprocess
 import os
 
-from utils.domain_classification import classify_lines
+from tools.utils.domain_classification import classify_lines
 
 
 def run_scan(data):

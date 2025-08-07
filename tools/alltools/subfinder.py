@@ -1,6 +1,6 @@
 
 import os
-from utils.domain_classification import classify_lines
+from tools.utils.domain_classification import classify_lines
 import subprocess
 import shutil
 import time

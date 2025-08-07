@@ -2,7 +2,7 @@ import shutil
 import subprocess
 import os
 import time
-from utils.domain_classification import classify_lines
+from tools.utils.domain_classification import classify_lines
 
 def run_scan(data):
     print("→ Using gospider at:", shutil.which("gospider"))

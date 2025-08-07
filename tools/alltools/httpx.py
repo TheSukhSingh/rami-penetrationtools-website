@@ -1,5 +1,5 @@
 
-from utils.domain_classification import classify_lines
+from tools.utils.domain_classification import classify_lines
 import shutil
 import subprocess
 import os
