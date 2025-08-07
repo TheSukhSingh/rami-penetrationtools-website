@@ -92,12 +92,6 @@ def run_scan(data):
                 "value_entered":        valid_domain_count
             }
 
-        # 6) rebuild a filtered temp file containing only the valid list
-        tmp = filepath + ".filtered"
-        with open(tmp, 'w') as f:
-            f.write("\n".join(valid))
-        filepath = tmp
-        command.extend(['-l', filepath])
     else:
         raw = data.get("dnsx-manual", "")
         lines = [l.strip() for l in raw.splitlines() if l.strip()]
@@ -153,8 +147,6 @@ def run_scan(data):
             }
         
         file_size_b  = None
-        for d in valid:
-            command.extend(['-l', d])
 
 
 
@@ -225,11 +217,14 @@ def run_scan(data):
     command.extend(["-t", threads, "-retry", retry])
     command_str = " ".join(command)
 
+    stdin_data = "\n".join(valid)
+
     print(f"DEBUG: dnsx command → {command_str}")
     start = time.time()
     try:
         result = subprocess.run(
             command,
+            input=stdin_data,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
