@@ -422,7 +422,7 @@ function generateCommand(toolName, formData) {
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean)
-          .forEach((d) => (cmd += ` -d ${d}`));
+          .forEach((d) => (cmd += ` -l ${d}`));
       } else if (formData["dnsx-file"]) {
         cmd += ` -l ${formData["dnsx-file"]}`;
       }

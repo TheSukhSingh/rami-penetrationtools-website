@@ -154,7 +154,7 @@ def run_scan(data):
         
         file_size_b  = None
         for d in valid:
-            command.extend(['-d', d])
+            command.extend(['-l', d])
 
 
 
