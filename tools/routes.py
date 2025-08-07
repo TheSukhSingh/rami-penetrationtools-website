@@ -34,6 +34,9 @@ def api_scan():
     tool    = request.form.get('tool')
     cmd     = request.form.get('cmd')  
     
+    base_name = ''
+    filename  = ''
+
     options = {}
     for key, vals in request.form.lists():
         if key in ('tool', 'cmd'):
