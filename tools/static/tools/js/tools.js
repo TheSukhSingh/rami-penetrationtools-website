@@ -348,10 +348,7 @@ function executeScan() {
   })
     .then((res) => {
       if (!res.ok) {
-        // our “not logged in” case
-        // appendToTerminal("Login to do your scan");
-        // throw new Error("Unauthorized");
-        throw new Error("Scan Failed: " + res.status);
+        throw new Error("Scan Failed: " + res.status + JSON.stringify(res, null, 2));
       }
       return res.json();
     })
