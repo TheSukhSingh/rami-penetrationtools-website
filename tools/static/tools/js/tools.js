@@ -348,10 +348,10 @@ function executeScan() {
   })
     .then((res) => {
       var yo = res
+      appendToTerminal(yo.text());
       if (!res.ok) {
         throw new Error("Scan Failed: " + res.status);
       }
-      appendToTerminal(yo.text());
       return res.json();
     })
     .then((data) => {
