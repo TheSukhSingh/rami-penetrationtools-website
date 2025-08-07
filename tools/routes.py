@@ -105,14 +105,24 @@ def api_scan():
     db.session.add(scan)
     db.session.flush()
 
+    # error_reason_value = result.get('error_reason'),
+
     diag = ScanDiagnostics(
         scan_id        = scan.id,
         status         = ScanStatus.SUCCESS   if success else ScanStatus.FAILURE,
-        domain_count   = result.get('domain_count', 0),
+        total_domain_count   = result.get('total_domain_count', None),
+        valid_domain_count   = result.get('valid_domain_count', None),
+        invalid_domain_count   = result.get('invalid_domain_count', None),
+        duplicate_domain_count   = result.get('duplicate_domain_count', None),
         file_size_b    = result.get('file_size_b'),
         execution_ms   = result.get('execution_ms', int((time.time() - start_req)*1000)),
         error_reason   = (ErrorReason[result.get('error_reason')]),
-        error_detail   = result.get('error_detail')
+        # error_reason   = ErrorReason[error_reason_value]
+        #                  if error_reason_value in ErrorReason.__members__
+        #                  else None,
+        error_detail   = result.get('error_detail'),
+        value_entered   = result.get('value_entered')
+
     )
     db.session.add(diag)
     db.session.commit()

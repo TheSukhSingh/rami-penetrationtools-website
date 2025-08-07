@@ -195,12 +195,10 @@ class PasswordReset(db.Model):
 
         if not pr:
             return None
-
-        # 2) Mark it used immediately (atomic enough for most apps)
+        
         pr.used = True
         db.session.commit()
 
-        # 3) Return the associated user
         return pr.user
 
 class LoginEvent(db.Model):
