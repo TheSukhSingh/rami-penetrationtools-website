@@ -37,7 +37,7 @@ def create_app():
         MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
         MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
         MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
-        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15),
+        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=1440),
         JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7),
     )
     # ───────── COOKIE SETTINGS ─────────
