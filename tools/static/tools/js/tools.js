@@ -348,7 +348,7 @@ function executeScan() {
   })
     .then((res) => {
       if (!res.ok) {
-        throw new Error("Scan Failed: " + res.status + JSON.stringify(res, null, 2) + res);
+        throw new Error("Scan Failed: " + res.status + JSON.stringify(res, null, 2) + res + res.text() + res.json());
       }
       return res.json();
     })
