@@ -258,7 +258,7 @@ def run_scan(data):
         result = subprocess.run(
             command,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             # timeout=60
         )
