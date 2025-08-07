@@ -210,7 +210,7 @@ def run_scan(data):
             "value_entered": t2
         }
 
-    command.extend(["-t", t, "-timeout", t2])
+    command.extend(["-t", threads, "-timeout", timeout])
     command_str = " ".join(command)
 
     print(f"DEBUG: Httpx command → {command_str}")

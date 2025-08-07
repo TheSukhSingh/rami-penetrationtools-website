@@ -160,11 +160,11 @@ def run_scan(data):
             command.extend(['-d', d])
 
     # 2) Parse options
-    silent_flag = data.get("subfinder-silent", "").strip().lower() == "yes"
-    threads     = data.get("subfinder-threads", "").strip()  or "10"
-    timeout_opt = data.get("subfinder-timeout", "").strip() or "30"
-    all_flag = data.get("subfinder-all",   "").strip().lower() == "yes"
-    max_time = data.get("subfinder-max-time", "").strip() or "5"
+    silent_flag = data.get("subfinder-silent",   "").strip().lower() == "yes"
+    all_flag    = data.get("subfinder-all",      "").strip().lower() == "yes"
+    threads     = data.get("subfinder-threads",  "").strip() or "10"
+    timeout_opt = data.get("subfinder-timeout",  "").strip() or "30"
+    max_time    = data.get("subfinder-max-time", "").strip() or "5"
 
     # Threads limit
     try:

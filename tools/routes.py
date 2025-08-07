@@ -30,13 +30,7 @@ def tools_index():
 @tools_bp.route('/api/scan', methods=['POST'])
 @jwt_required()
 def api_scan():
-    user_id = get_jwt_identity()
-    # if not user_id:
-    #     return jsonify({
-    #         'status': 'error',
-    #         'message': 'Login to do your scan'
-    #     }), 401
-    
+    user_id = get_jwt_identity()    
     tool    = request.form.get('tool')
     cmd     = request.form.get('cmd')  
     
@@ -46,45 +40,28 @@ def api_scan():
             continue
         options[key] = vals if len(vals) > 1 else vals[0]
 
-    # handle uploaded .txt file, if any
     file_field = f"{tool}-file"
-    # if file_field in request.files:
-    #     uploaded = request.files[file_field]
-    #     if uploaded.filename:
-    #         from werkzeug.utils import secure_filename
-    #         import os
-    #         from flask import current_app
-    #         # choose your upload folder, e.g. in Flask config
-    #         upload_dir = current_app.config.get('UPLOAD_FOLDER', '/tmp')
-    #         os.makedirs(upload_dir, exist_ok=True)
-    #         filename = secure_filename(uploaded.filename)
-    #         filepath = os.path.join(upload_dir, filename)
-    #         uploaded.save(filepath)
-    #         options[file_field] = filepath
-    
-    orig_filename = None
+
     if file_field in request.files:
         uploaded = request.files[file_field]
         if uploaded.filename:
             from werkzeug.utils import secure_filename
             import os
             from flask import current_app
-            # put it under UPLOAD_FOLDER/<user_id>/
             base = current_app.config['UPLOAD_FOLDER']
             user_folder = os.path.join(base, str(user_id))
             os.makedirs(user_folder, exist_ok=True)
-            # filename = secure_filename(uploaded.filename)
             base_name = secure_filename(uploaded.filename)
             timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
             filename = f"{timestamp}_{base_name}"
             filepath = os.path.join(user_folder, filename)
             uploaded.save(filepath)
-            # note we’ll later look for options['file_path'] in subfinder.py
             options['input_method'] = 'file'
             options['file_path'] = filepath
+
     start_req = time.time()
     try:
-        if tool == 'dnsx':                result = dnsx.run_scan(options)
+        if   tool == 'dnsx':              result = dnsx.run_scan(options)
         elif tool == 'gau':               result = gau.run_scan(options)
         elif tool == 'github-subdomains': result = github_subdomains.run_scan(options)
         elif tool == 'gospider':          result = gospider.run_scan(options)
@@ -108,20 +85,19 @@ def api_scan():
         }
         success = False
 
-    
     if success:
         result.setdefault('status', 'success')
         result.setdefault('output', '')
 
-    # 7) Persist the scan record
     scan = ToolScanHistory(
-        user_id           = user_id,
-        tool_name         = tool,
-        parameters        = options,
-        command           = cmd,
-        raw_output        = (result.get('output') or result.get('message')),
-        scanned_at        = datetime.utcnow(),
-        scan_success_state= success
+        user_id            = user_id,
+        tool_name          = tool,
+        parameters         = options,
+        command            = cmd,
+        raw_output         = (result.get('output') or result.get('message')),
+        scan_success_state = success,
+        filename_by_user   = base_name,
+        filename_by_be     = filename
     )
     db.session.add(scan)
     db.session.flush()

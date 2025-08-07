@@ -163,11 +163,11 @@ def run_scan(data):
 
 
     # 2) Parse options
-    depth = data.get("hakrawler-silent", "").strip() or "2" # 1 2 5
-    subdomains     = data.get("hakrawler-threads", "").strip().lower() == "yes"
-    threads = data.get("hakrawler-timeout", "").strip() or "8" # 2 8 50
-    timeout = data.get("hakrawler-all",   "").strip() or "15" # 3 15 60
-    unique = data.get("hakrawler-max-time", "").strip().lower() == "yes"
+    depth = data.get("hakrawler-d", "").strip() or "2" # 1 2 5
+    subdomains     = data.get("hakrawler-subs", "").strip().lower() == "yes"
+    threads = data.get("hakrawler-threads", "").strip() or "8" # 2 8 50
+    timeout = data.get("hakrawler-timeout",   "").strip() or "15" # 3 15 60
+    unique = data.get("hakrawler-unique", "").strip().lower() == "yes"
 
     try:
         t = int(depth)

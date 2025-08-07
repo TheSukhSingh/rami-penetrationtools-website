@@ -57,6 +57,7 @@ Arsenal{% endblock %} {% block head_extra %}
           </div>
 
           <div class="tools-list">
+            
             <div class="tool-item glass active" data-tool="subfinder">
               <div class="tool-icon">
                 <svg
@@ -453,36 +454,36 @@ Arsenal{% endblock %} {% block head_extra %}
                     placeholder="10"
                     name="subfinder-threads"
                     min="1"
-                    max="100"
+                    max="200"
                   />
                 </div>
 
                 <div class="form-group">
                   <label class="form-label"
-                    >Timeout (-timeout) (default: 10)</label
+                    >Timeout (-timeout) (default: 30)</label
                   >
                   <input
                     type="number"
                     name="subfinder-timeout"
                     class="form-input glass"
-                    value="10"
-                    placeholder="10"
+                    value="30"
+                    placeholder="30"
                     min="1"
                     max="300"
                   />
                 </div>
                 <div class="form-group">
                   <label class="form-label"
-                    >Max Time (-max-time) (default: 1)</label
+                    >Max Time (-max-time) (default: 5)</label
                   >
                   <input
                     type="number"
                     name="subfinder-max-time"
                     class="form-input glass"
-                    value="1"
-                    placeholder="1"
+                    value="5"
+                    placeholder="5"
                     min="1"
-                    max="10"
+                    max="50"
                   />
                 </div>
               </div>
@@ -623,7 +624,7 @@ Arsenal{% endblock %} {% block head_extra %}
                     placeholder="50"
                     name="httpx-threads"
                     min="1"
-                    max="100"
+                    max="200"
                   />
                 </div>
 
@@ -815,15 +816,15 @@ Arsenal{% endblock %} {% block head_extra %}
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label">Retry (-retry) (default: 3)</label>
+                  <label class="form-label">Retry (-retry) (default: 2)</label>
                   <input
                     type="number"
                     name="dnsx-retry"
                     class="form-input glass"
-                    value="3"
-                    placeholder="3"
+                    value="2"
+                    placeholder="2"
                     min="1"
-                    max="10"
+                    max="50"
                   />
                 </div>
               </div>
@@ -951,7 +952,7 @@ Arsenal{% endblock %} {% block head_extra %}
 
                 <div class="form-group">
                   <label class="form-label"
-                    >Timeout (-timeout) (default: 5)</label
+                    >Timeout (-timeout) (default: 1000)</label
                   >
                   <input
                     type="number"
@@ -960,144 +961,7 @@ Arsenal{% endblock %} {% block head_extra %}
                     value="5"
                     placeholder="5"
                     min="1"
-                    max="300"
-                  />
-                </div>
-              </div>
-            </form>
-
-            <!-- Httpx Form -->
-            <form id="httpx-form" class="tool-form">
-              <div class="form-section">
-                <h4 class="section-title">Target Configuration</h4>
-
-                <div class="form-group">
-                  <label class="form-label">Input Method:</label>
-                  <div class="radio-group">
-                    <label class="radio-option">
-                      <input
-                        type="radio"
-                        name="httpx-input-method"
-                        value="manual"
-                        checked
-                      />
-                      <span class="radio-custom"></span>
-                      <span class="radio-label">Manual Input</span>
-                    </label>
-                    <label class="radio-option">
-                      <input
-                        type="radio"
-                        name="httpx-input-method"
-                        value="file"
-                      />
-                      <span class="radio-custom"></span>
-                      <span class="radio-label">Upload .txt file</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div class="form-group" id="httpx-manual-input">
-                  <label class="form-label"
-                    >Manual Domains (one per line):</label
-                  >
-                  <textarea
-                    class="form-textarea glass"
-                    name="httpx-manual"
-                    placeholder="example.com"
-                    rows="4"
-                  ></textarea>
-                </div>
-
-                <div class="form-group hidden" id="httpx-file-input">
-                  <label class="form-label">Upload Targets (.txt file):</label>
-                  <div class="file-input-wrapper">
-                    <input
-                      type="file"
-                      name="httpx-file"
-                      class="file-input"
-                      accept=".txt"
-                    />
-                    <div class="file-input-display glass">
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                      >
-                        <path
-                          d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"
-                        ></path>
-                      </svg>
-                      <span>Choose file or drag here</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="form-section">
-                <h4 class="section-title">Port Scan Options</h4>
-
-                <div class="form-group">
-                  <label class="form-label">-silent?</label>
-                  <div class="radio-group">
-                    <label class="radio-option">
-                      <input
-                        type="radio"
-                        name="httpx-silent"
-                        value="yes"
-                        checked
-                      />
-                      <span class="radio-custom"></span>
-                      <span class="radio-label">Yes</span>
-                    </label>
-                    <label class="radio-option">
-                      <input type="radio" name="httpx-silent" value="no" />
-                      <span class="radio-custom"></span>
-                      <span class="radio-label">No</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label">-top-ports (default: 100)</label>
-                  <input
-                    type="number"
-                    name="httpx-top-ports"
-                    class="form-input glass"
-                    value="100"
-                    placeholder="100"
-                    min="1"
-                    max="65535"
-                  />
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label">-rate (default: 1000)</label>
-                  <input
-                    type="number"
-                    name="httpx-rate"
-                    class="form-input glass"
-                    value="1000"
-                    placeholder="1000"
-                    min="1"
                     max="10000"
-                  />
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label"
-                    >Timeout (-timeout) (default: 5)</label
-                  >
-                  <input
-                    type="number"
-                    name="httpx-timeout"
-                    class="form-input glass"
-                    value="5"
-                    placeholder="5"
-                    min="1"
-                    max="300"
                   />
                 </div>
               </div>
@@ -1241,16 +1105,16 @@ Arsenal{% endblock %} {% block head_extra %}
 
                 <div class="form-group">
                   <label class="form-label"
-                    >Concurrency (-c) (default: 20)</label
+                    >Concurrency (-c) (default: 10)</label
                   >
                   <input
                     type="number"
                     name="katana-c"
                     class="form-input glass"
-                    value="20"
-                    placeholder="20"
+                    value="10"
+                    placeholder="10"
                     min="1"
-                    max="50"
+                    max="100"
                   />
                 </div>
 
@@ -1367,13 +1231,26 @@ Arsenal{% endblock %} {% block head_extra %}
                     type="number"
                     name="gau-timeout"
                     class="form-input glass"
-                    value="10"
+                    value="30"
                     placeholder="30"
                     min="1"
                     max="300"
                   />
                 </div>
-
+                <div class="form-group">
+                  <label class="form-label"
+                    >Retries (-retries) (default: 2)</label
+                  >
+                  <input
+                    type="number"
+                    name="gau-retries"
+                    class="form-input glass"
+                    value="2"
+                    placeholder="2"
+                    min="0"
+                    max="10"
+                  />
+                </div>
                 <div class="form-group">
                   <label class="form-label">Include subdomains (--subs)?</label>
                   <div class="radio-group">
@@ -1400,20 +1277,7 @@ Arsenal{% endblock %} {% block head_extra %}
                   />
                 </div>
 
-                <div class="form-group">
-                  <label class="form-label"
-                    >Retries (-retries) (default: 3)</label
-                  >
-                  <input
-                    type="number"
-                    name="gau-retries"
-                    class="form-input glass"
-                    value="3"
-                    placeholder="3"
-                    min="1"
-                    max="10"
-                  />
-                </div>
+
 
                 <div class="form-group">
                   <label class="form-label">Blacklist (--blacklist)</label>
@@ -1425,21 +1289,7 @@ Arsenal{% endblock %} {% block head_extra %}
                   />
                 </div>
 
-                <div class="form-group">
-                  <label class="form-label">JSON output (--json)</label>
-                  <div class="radio-group">
-                    <label class="radio-option">
-                      <input type="radio" name="gau-json" value="yes" />
-                      <span class="radio-custom"></span>
-                      <span class="radio-label">Yes</span>
-                    </label>
-                    <label class="radio-option">
-                      <input type="radio" name="gau-json" value="no" checked />
-                      <span class="radio-custom"></span>
-                      <span class="radio-label">No</span>
-                    </label>
-                  </div>
-                </div>
+
               </div>
             </form>
 
@@ -1533,27 +1383,27 @@ Arsenal{% endblock %} {% block head_extra %}
 
                 <div class="form-group">
                   <label class="form-label"
-                    >Concurrency (-c) (default: 5)</label
+                    >Concurrency (-c) (default: 10)</label
                   >
                   <input
                     type="number"
                     name="gospider-c"
                     class="form-input glass"
-                    value="5"
-                    placeholder="5"
+                    value="10"
+                    placeholder="10"
                     min="1"
                     max="50"
                   />
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label">Depth (-d) (default: 1)</label>
+                  <label class="form-label">Depth (-d) (default: 3)</label>
                   <input
                     type="number"
                     name="gospider-d"
                     class="form-input glass"
-                    value="1"
-                    placeholder="1"
+                    value="3"
+                    placeholder="3"
                     min="1"
                     max="10"
                   />
@@ -1702,7 +1552,35 @@ Arsenal{% endblock %} {% block head_extra %}
                     max="10"
                   />
                 </div>
+                <div class="form-group">
+                  <label class="form-label"
+                    >Threads (-threads) (default: 8)</label
+                  >
+                  <input
+                    type="number"
+                    name="hakrawler-threads"
+                    class="form-input glass"
+                    value="8"
+                    placeholder="8"
+                    min="1"
+                    max="100"
+                  />
+                </div>
 
+                <div class="form-group">
+                  <label class="form-label"
+                    >Timeout (-timeout) (default: 15)</label
+                  >
+                  <input
+                    type="number"
+                    name="hakrawler-timeout"
+                    class="form-input glass"
+                    value="15"
+                    placeholder="15"
+                    min="1"
+                    max="300"
+                  />
+                </div>
                 <div class="form-group">
                   <label class="form-label">Include subdomains (--subs)?</label>
                   <div class="radio-group">
@@ -1724,35 +1602,7 @@ Arsenal{% endblock %} {% block head_extra %}
                   </div>
                 </div>
 
-                <div class="form-group">
-                  <label class="form-label"
-                    >Threads (-threads) (default: 8)</label
-                  >
-                  <input
-                    type="number"
-                    name="hakrawler-threads"
-                    class="form-input glass"
-                    value="8"
-                    placeholder="8"
-                    min="1"
-                    max="100"
-                  />
-                </div>
 
-                <div class="form-group">
-                  <label class="form-label"
-                    >Timeout (-timeout) (default: 30)</label
-                  >
-                  <input
-                    type="number"
-                    name="hakrawler-timeout"
-                    class="form-input glass"
-                    value="30"
-                    placeholder="30"
-                    min="1"
-                    max="300"
-                  />
-                </div>
 
                 <div class="form-group">
                   <label class="form-label">Unique (--unique)?</label>
@@ -1775,26 +1625,6 @@ Arsenal{% endblock %} {% block head_extra %}
                   </div>
                 </div>
 
-                <div class="form-group">
-                  <label class="form-label">JSON output (--json)?</label>
-                  <div class="radio-group">
-                    <label class="radio-option">
-                      <input type="radio" name="hakrawler-json" value="yes" />
-                      <span class="radio-custom"></span>
-                      <span class="radio-label">Yes</span>
-                    </label>
-                    <label class="radio-option">
-                      <input
-                        type="radio"
-                        name="hakrawler-json"
-                        value="no"
-                        checked
-                      />
-                      <span class="radio-custom"></span>
-                      <span class="radio-label">No</span>
-                    </label>
-                  </div>
-                </div>
               </div>
             </form>
 

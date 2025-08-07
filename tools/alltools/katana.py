@@ -227,7 +227,7 @@ def run_scan(data):
     if headless:
         command.append("-headless")
 
-    command.extend(["-c", t, "-timeout", t2])
+    command.extend(["-c", concurrency, "-timeout", timeout])
     command.append("-nc")
 
     command_str = " ".join(command)

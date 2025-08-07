@@ -1,9 +1,7 @@
 from datetime import datetime
-# from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import relationship
 from extensions import db
 import enum
-# db = SQLAlchemy()
 
 class ToolScanHistory(db.Model):
     """
@@ -20,10 +18,9 @@ class ToolScanHistory(db.Model):
     raw_output         = db.Column(db.Text, nullable=False)
     scanned_at         = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     scan_success_state = db.Column(db.Boolean, nullable=False, default=False)
-    filename           = db.Column(db.String(255), nullable=True)
-    input_path         = db.Column(db.String(512), nullable=True)
-    output_path        = db.Column(db.String(512), nullable=True)
-
+    filename_by_user   = db.Column(db.String(255), nullable=True)
+    filename_by_be     = db.Column(db.String(255), nullable=True)
+    
     user = relationship('User', back_populates='scan_history', passive_deletes=True)
 
     scan_diagnostics = db.relationship(

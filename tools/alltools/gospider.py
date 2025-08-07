@@ -154,7 +154,7 @@ def run_scan(data):
 
     threads     = data.get("gospider-threads", "").strip()  or "10" #2 10 50
     concurrency = data.get("gospider-c", "").strip() or "10" # 2 10 20
-    depth       = data.get("gospider-d", "").strip() or "1" # 1 3 10
+    depth       = data.get("gospider-d", "").strip() or "3" # 1 3 10
     timeout     = data.get("gospider-m",   "").strip() or "15" # 5 10 30
     subdomains  = data.get("gospider-subs", "").strip().lower() == "yes" 
     useragent   = data.get("gospider-u").strip() or ""

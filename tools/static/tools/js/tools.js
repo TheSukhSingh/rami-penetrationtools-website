@@ -440,7 +440,7 @@ function generateCommand(toolName, formData) {
           .filter(Boolean)
           .forEach((d) => (cmd += ` -d ${d}`));
       } else if (formData["subfinder-file"]) {
-        cmd += ` -f ${formData["subfinder-file"]}`;
+        cmd += ` -dL ${formData["subfinder-file"]}`;
       }
       // Options
       if (formData["subfinder-silent"] === "yes") cmd += " -silent";
@@ -462,7 +462,7 @@ function generateCommand(toolName, formData) {
           .filter(Boolean)
           .forEach((d) => (cmd += ` -d ${d}`));
       } else if (formData["dnsx-file"]) {
-        cmd += ` -f ${formData["dnsx-file"]}`;
+        cmd += ` -l ${formData["dnsx-file"]}`;
       }
       // Record types
       if (Array.isArray(formData["dnsx-record-types"])) {
@@ -503,9 +503,9 @@ function generateCommand(toolName, formData) {
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean)
-          .forEach((h) => (cmd += ` -host ${h}`));
+          .forEach((h) => (cmd += ` -u ${h}`));
       } else if (formData["httpx-file"]) {
-        cmd += ` -l ${formData["httpx-file"]}`;
+        cmd += ` -dL ${formData["httpx-file"]}`;
       }
       // Options
       if (formData["httpx-silent"] === "yes") cmd += " -silent";
@@ -525,7 +525,7 @@ function generateCommand(toolName, formData) {
           .filter(Boolean)
           .forEach((u) => (cmd += ` -u ${u}`));
       } else if (formData["katana-file"]) {
-        cmd += ` -f ${formData["katana-file"]}`;
+        cmd += ` -u ${formData["katana-file"]}`;
       }
       // Options
       if (formData["katana-silent"] === "yes") cmd += " -silent";
@@ -543,15 +543,15 @@ function generateCommand(toolName, formData) {
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean)
-          .forEach((d) => (cmd += ` -d ${d}`));
+          .forEach((d) => (cmd += ` ${d}`));
       } else if (formData["gau-file"]) {
-        cmd += ` -f ${formData["gau-file"]}`;
+        cmd += ` ${formData["gau-file"]}`;
       }
       // Options
       if (formData["gau-threads"])
-        cmd += ` -threads ${formData["gau-threads"]}`;
+        cmd += ` --threads ${formData["gau-threads"]}`;
       if (formData["gau-timeout"])
-        cmd += ` -timeout ${formData["gau-timeout"]}`;
+        cmd += ` --timeout ${formData["gau-timeout"]}`;
       if (formData["gau-subs"] === "yes") cmd += " --subs";
       if (formData["gau-providers"])
         cmd += ` --providers ${formData["gau-providers"]}`;
@@ -559,7 +559,6 @@ function generateCommand(toolName, formData) {
         cmd += ` --retries ${formData["gau-retries"]}`;
       if (formData["gau-blacklist"])
         cmd += ` --blacklist ${formData["gau-blacklist"]}`;
-      if (formData["gau-json"] === "yes") cmd += " --json";
       break;
 
     case "gospider":
@@ -569,13 +568,13 @@ function generateCommand(toolName, formData) {
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean)
-          .forEach((d) => (cmd += ` -d ${d}`));
+          .forEach((d) => (cmd += ` -s ${d}`));
       } else if (formData["gospider-file"]) {
         cmd += ` -f ${formData["gospider-file"]}`;
       }
       // Options
       if (formData["gospider-threads"])
-        cmd += ` --threads ${formData["gospider-threads"]}`;
+        cmd += ` -t ${formData["gospider-threads"]}`;
       if (formData["gospider-c"]) cmd += ` -c ${formData["gospider-c"]}`;
       if (formData["gospider-d"]) cmd += ` -d ${formData["gospider-d"]}`;
       if (formData["gospider-m"]) cmd += ` -m ${formData["gospider-m"]}`;
@@ -591,19 +590,18 @@ function generateCommand(toolName, formData) {
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean)
-          .forEach((d) => (cmd += ` -d ${d}`));
+          .forEach((d) => (cmd += ` -host ${d}`));
       } else if (formData["hakrawler-file"]) {
         cmd += ` -f ${formData["hakrawler-file"]}`;
       }
       // Options
       if (formData["hakrawler-d"]) cmd += ` -d ${formData["hakrawler-d"]}`;
-      if (formData["hakrawler-subs"] === "yes") cmd += " --subs";
+      if (formData["hakrawler-subs"] === "yes") cmd += " -subs";
       if (formData["hakrawler-threads"])
-        cmd += ` --threads ${formData["hakrawler-threads"]}`;
+        cmd += ` -t ${formData["hakrawler-threads"]}`;
       if (formData["hakrawler-timeout"])
-        cmd += ` --timeout ${formData["hakrawler-timeout"]}`;
-      if (formData["hakrawler-unique"] === "yes") cmd += " --unique";
-      if (formData["hakrawler-json"] === "yes") cmd += " --json";
+        cmd += ` -timeout ${formData["hakrawler-timeout"]}`;
+      if (formData["hakrawler-unique"] === "yes") cmd += " -u";
       break;
 
     case "linkfinder":
@@ -623,12 +621,12 @@ function generateCommand(toolName, formData) {
 
     case "github-subdomains":
       // URL (required)
-      if (formData["github-url"]) cmd += ` -u ${formData["github-url"]}`;
+      if (formData["github-url"]) cmd += ` -d ${formData["github-url"]}`;
       // Options
       if (formData["github-extended"] === "yes") cmd += " -e";
       if (formData["github-exit-disabled"] === "yes")
-        cmd += " --exit-on-disabled";
-      if (formData["github-raw"] === "yes") cmd += " -r";
+        cmd += " -k";
+      if (formData["github-raw"] === "yes") cmd += " -raw";
       break;
 
     default:

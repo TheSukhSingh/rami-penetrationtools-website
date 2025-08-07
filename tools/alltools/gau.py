@@ -169,7 +169,7 @@ def run_scan(data):
     timeout = data.get("gau-timeout", "").strip() or "30"       
     subdomains = data.get("gau-subs", "").strip().lower() == "yes"
     providers = data.get("gau-providers",   "").strip().lower() or ""
-    retries = data.get("gau-retries", "").strip() or "3"       
+    retries = data.get("gau-retries", "").strip() or "2"       
     blacklist = data.get("gau-blacklist", "").strip() or ""
 
 
