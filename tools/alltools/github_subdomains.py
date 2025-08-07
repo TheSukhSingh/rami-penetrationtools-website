@@ -1,71 +1,150 @@
+import shutil
 import subprocess
 import os
-import traceback
+import time
 from urllib.parse import urlparse
 import dotenv
 
 dotenv.load_dotenv()
 
-def _s(data, key):
-    v = data.get(key, "")
-    return v.strip() if isinstance(v, str) else ""
-
 def run_scan(data):
-    """
-    Execute a github-subdomains scan based on options provided by the front-end.
-    """
-    target = _s(data, "github-url")
+    print("→ Using github-subdomains at:", shutil.which("github-subdomains"))
+
+    GSD_BIN = r"/usr/local/bin/github-subdomains"
+    command = [GSD_BIN]
+
+    target = data.get("github-url", "").strip()
     if not target:
-        return {"status":"error","message":"GitHub-subdomains: URL/org-repo is required (via 'github-url')."}
+        return {
+            "status":"error",
+            "message":"Github url not entered",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": 0,
+            "error_reason": "INVALID_PARAMS",
+            "error_detail": f"Github url not entered",
+            "value_entered": None
+        }
 
-    flags = ["-d", target]
-    if _s(data, "github-extended").lower() in ("y","yes","true","1"):
-        flags.append("-e")
-    if _s(data, "github-exit-disabled").lower() in ("y","yes","true","1"):
-        flags.append("-k")
-    if _s(data, "github-raw").lower() in ("y","yes","true","1"):
-        flags.append("-raw")
+    command.extend(["-d", target])
+    
+    extended = data.get("github-extended", "").strip().lower() == "yes"
+    if extended:
+        command.append("-e")
+    
+    exit = data.get("github-exit-disabled", "").strip().lower() == "yes"
+    if exit:
+        command.append("-k")
 
+    raw = data.get("github-raw", "").strip().lower() == "yes"
+    if raw:
+        command.append("-raw")
+    
     token = os.getenv('GITHUB_SUBDOMAIN_TOKEN')
 
-    # Derive output filename
-    if target.startswith(("http://","https://")):
-        p = urlparse(target)
-        name = (p.path.lstrip("/") or p.netloc).replace("/", "_")
-    else:
-        name = target.replace("/", "_")
-    out_file = f"{name}.txt"
-    flags += ["-o", out_file]
+    command.extend("-t", token)
 
-    # Hard-coded token
-    flags += ["-t", token]
+    command_str = " ".join(command)
 
-    cmd = ["github-subdomains"] + flags
+    print(f"DEBUG: Github subdomain command → {command_str}")
 
-    # Mask display
-    disp, it = [], iter(flags)
-    for f in it:
-        if f == "-t":
-            next(it, None)
-            disp += ["-t", "<token>"]
-        elif f == "-o":
-            v = next(it, "")
-            disp += ["-o", os.path.basename(v)]
-        else:
-            disp.append(f)
-    display_cmd = f"hackr@gg > github-subdomains {' '.join(disp)}"
-
+    start = time.time()
     try:
-        res = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding="utf-8", errors="ignore"
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            # timeout=60
         )
-        if res.returncode != 0:
-            err = (res.stderr or res.stdout or "").strip() or "Unknown error"
-            return {"status":"error","message":f"GitHub-subdomains error:\n{err}"}
-        return {"status":"success","command":display_cmd,"output":res.stdout.strip() or "No output captured."}
+
+        execution_ms = int((time.time() - start) * 1000)
+
+        print()
+        print("→ cmd:", command)
+        print("→ returncode:", result.returncode)
+        print("→ stdout repr:", repr(result.stdout))
+        print("→ stderr repr:", repr(result.stderr))
+        print()
+        print()
+
+        output = result.stdout.strip() or "No output captured."
+
+        if result.returncode != 0:
+            return {
+                "status": "error",
+                "message": f"Github subdomain error:\n{output}",
+                "total_domain_count":   None ,
+                "valid_domain_count":   None,
+                "invalid_domain_count": None,
+                "duplicate_domain_count" : None,
+                "file_size_b":  None,
+                "execution_ms": execution_ms,
+                "error_reason": "OTHER",
+                "error_detail": output,
+                "value_entered": None
+            }
+
+        return {
+            "status": "success",
+            "output": output,
+            "message": "Scan completed successfully.",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": execution_ms,
+            "error_reason": None,
+            "error_detail": None,
+            "value_entered": None
+        }
+
     except FileNotFoundError:
-        return {"status":"error","message":"`github-subdomains` not found in your PATH."}
+        return {
+            "status": "error",
+            "message": "Github subdomain is not installed or not found in PATH.",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": 0,
+            "error_reason": "INVALID_PARAMS",
+            "error_detail": str(FileNotFoundError),
+            "value_entered": None
+        }
+    except subprocess.TimeoutExpired:
+        execution_ms = int((time.time() - start) * 1000)
+        return {
+            "status": "error",
+            "message": "Github subdomain timed out.",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": execution_ms,
+            "error_reason": "TIMEOUT",
+            "error_detail": str(subprocess.TimeoutExpired),
+            "value_entered": None
+        }
     except Exception as e:
-        traceback.print_exc()
-        return {"status":"error","message":f"Exception: {e}"}
+        return {
+            "status": "error",
+            "message": f"Unexpected error: {str(e)}",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": int((time.time() - start) * 1000),
+            "error_reason": "INVALID_PARAMS",
+            "error_detail": str(e),
+            "value_entered": None
+        }
+
+

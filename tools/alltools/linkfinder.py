@@ -1,72 +1,164 @@
+import shutil
 import subprocess
-import os
-import traceback
-import sys
+import time
+
 
 def run_scan(data):
-    """
-    Run LinkFinder against a domain with optional regex filtering, Burp output,
-    cookies, and custom timeout.
-
-    Expected data keys:
-      - linkfinder-domain: (string) target domain/URL (required)
-      - linkfinder-regex: (string) regex filter for URLs
-      - linkfinder-burp: ("yes"/"no") enable Burp-compatible output
-      - linkfinder-cookies: (string) cookie header value
-      - linkfinder-timeout: (string/int) request timeout in seconds (default: 10)
-    """
+    print("→ Using linkfinder at:", shutil.which("linkfinder"))
+    command = ["linkfinder"]
     # ─── Required domain ───
     domain = data.get("linkfinder-domain", "").strip()
     if not domain:
-        return {"status": "error", "message": "LinkFinder: Domain is required."}
-
-    flags = []
+        return {
+            "status":               "error",
+            "message":              "At least one domain is required.",
+            "total_domain_count":   None,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count": None,
+            "file_size_b":          None,
+            "execution_ms":         0,
+            "error_reason":         "INVALID_PARAMS",
+            "error_detail":         "No domains submitted",
+            "value_entered":        None
+        }
+    
 
     # ─── Regex filter (-r) ───
     regex = data.get("linkfinder-regex", "").strip()
     if regex:
-        flags += ["-r", regex]
+        command.extend(["-r", regex])
 
     # ─── Burp format (-b) ───
-    burp = data.get("linkfinder-burp", "no").strip().lower()
-    if burp in ("yes", "y"):
-        flags.append("-b")
+    burp = data.get("linkfinder-burp", "").strip().lower() == "yes"
+    if burp:
+        command.append("-b")
 
     # ─── Cookies (-c) ───
     cookies = data.get("linkfinder-cookies", "").strip()
     if cookies:
-        flags += ["-c", cookies]
+        command.extend(["-c", cookies])
 
     # ─── Timeout (-t) ───
     timeout = data.get("linkfinder-timeout", "").strip() or "10"
-    flags += ["-t", timeout]
+    try:
+        t = int(timeout)
+        if not (2 <= t <= 60):
+            raise ValueError
+    except ValueError:
+        return {
+            "status":"error",
+            "message":"Timeout must be between 2-60",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": 0,
+            "error_reason": "INVALID_PARAMS",
+            "error_detail": f"Timeout must be between 2-60",
+            "value_entered": t
+        }
+    command.extend(["-t", timeout])
 
-    # ─── Build command and UI preview ───
-    cmd = [sys.executable, "-m", "linkfinder", "-i", domain] + flags
-    flag_str = " ".join(flags)
-    command_str = f"hacker@gg > linkfinder -i {domain}" + (f" {flag_str}" if flag_str else "")
+    command_str = " ".join(command)
+
+    print(f"DEBUG: linkfinder command → {command_str}")
+
+    start = time.time()
 
     try:
         result = subprocess.run(
-            cmd,
+            command,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+            stderr=subprocess.STDOUT,
+            text=True,
+            # timeout=60
         )
+        execution_ms = int((time.time() - start) * 1000)
 
-        if result.returncode != 0:
-            err = result.stderr.strip() or result.stdout.strip() or "Unknown LinkFinder error"
-            return {"status": "error", "message": f"LinkFinder error:\n{err}"}
+        print()
+        print("→ cmd:", command)
+        print("→ returncode:", result.returncode)
+        print("→ stdout repr:", repr(result.stdout))
+        print("→ stderr repr:", repr(result.stderr))
+        print()
+        print()
 
         output = result.stdout.strip() or "No output captured."
+
+        if result.returncode != 0:
+            return {
+                "status": "error",
+                "message": f"linkfinder error:\n{output}",
+                "total_domain_count":   None ,
+                "valid_domain_count":   None,
+                "invalid_domain_count": None,
+                "duplicate_domain_count" : None,
+                "file_size_b":  None,
+                "execution_ms": execution_ms,
+                "error_reason": "OTHER",
+                "error_detail": output,
+                "value_entered": None
+            }
         return {
-            "status":  "success",
-            "command": command_str,
-            "output":  output
+            "status": "success",
+            "output": output,
+            "message": "Scan completed successfully.",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": execution_ms,
+            "error_reason": None,
+            "error_detail": None,
+            "value_entered": None
         }
 
     except FileNotFoundError:
-        return {"status": "error", "message": "Python interpreter not found or LinkFinder module missing."}
+        return {
+            "status": "error",
+            "message": "linkfinder is not installed or not found in PATH.",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": 0,
+            "error_reason": "INVALID_PARAMS",
+            "error_detail": str(FileNotFoundError),
+            "value_entered": None
+        }
+    except subprocess.TimeoutExpired:
+        execution_ms = int((time.time() - start) * 1000)
+        return {
+            "status": "error",
+            "message": "linkfinder timed out.",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": execution_ms,
+            "error_reason": "TIMEOUT",
+            "error_detail": str(subprocess.TimeoutExpired),
+            "value_entered": None
+        }
     except Exception as e:
-        traceback.print_exc()
-        return {"status": "error", "message": f"LinkFinder exception: {str(e)}"}
+        return {
+            "status": "error",
+            "message": f"Unexpected error: {str(e)}",
+            "total_domain_count":   None ,
+            "valid_domain_count":   None,
+            "invalid_domain_count": None,
+            "duplicate_domain_count" : None,
+            "file_size_b":  None,
+            "execution_ms": int((time.time() - start) * 1000),
+            "error_reason": "INVALID_PARAMS",
+            "error_detail": str(e),
+            "value_entered": None
+        }
+
+
+
