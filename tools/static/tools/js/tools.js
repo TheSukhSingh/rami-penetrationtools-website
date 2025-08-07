@@ -238,27 +238,6 @@ async function authFetch(url, opts = {}) {
 
   // 3) If it failed with 401 → try to refresh
   if (res.status === 401) {
-    // const refreshRes = await fetch('/auth/refresh', {
-    //   method: 'POST',
-    //   headers: {
-    //     Authorization: 'Bearer ' + localStorage.getItem('refresh_token')
-    //   }
-    // });
-
-    // if (refreshRes.ok) {
-    //   // 4) We got a new access token…
-    //   const { access_token } = await refreshRes.json();
-    //   localStorage.setItem('access_token', access_token);
-
-    //   // 5) …and retry the original call with the fresh token
-    //   opts.headers.Authorization = 'Bearer ' + access_token;
-    //   res = await fetch(url, opts);
-    // } else {
-    //   // 6) Refresh failed (expired, revoked): clear out and force a full reload
-    //   localStorage.clear();
-    //   window.location.reload();
-    // }
-
     // access expired → try refresh
     await fetch("/auth/refresh", {
       method: "POST",
@@ -346,16 +325,10 @@ function executeScan() {
     body: formData,
   })
     .then((res) => {
-      // if (!res.ok) {
-      //   throw new Error("Scan Failed: " + res.status);
-      // }
-      // return res.json();
-      return res.text();
-    })
-    .then((data) => {
-        var yo = data
-        appendToTerminal(yo);
-        return data;
+      if (!res.ok) {
+        throw new Error("Scan Failed: " + res.status);
+      }
+      return res.json();
 
     })
     .then((data) => {
