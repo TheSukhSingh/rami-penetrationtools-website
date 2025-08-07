@@ -262,7 +262,7 @@ function executeScan() {
   )
 
   var method;
-  if (metho){
+  if (metho) {
     method = metho.value;
   }
 
@@ -277,8 +277,10 @@ function executeScan() {
     }
   } else {
     const fileInput = activeForm.querySelector(`input[name="${currentTool}-file"]`);
-    if (!fileInput.files.length) {
-      return alert("Please choose a .txt file of targets.");
+    if (fileInput) {
+      if (!fileInput.files.length) {
+        return alert("Please choose a .txt file of targets.");
+      }
     }
   }
 
