@@ -40,14 +40,13 @@ def run_scan(data):
         }
     command.extend(["-i", domain])
     # ─── Regex filter (-r) ───
+    command.append("-d")
+    command.append("-o")
+    command.append("cli")
     regex = data.get("linkfinder-regex", "").strip()
     if regex:
         command.extend(["-r", regex])
 
-    # ─── Burp format (-b) ───
-    burp = data.get("linkfinder-burp", "").strip().lower() == "yes"
-    if burp:
-        command.append("-b")
 
     # ─── Cookies (-c) ───
     cookies = data.get("linkfinder-cookies", "").strip()

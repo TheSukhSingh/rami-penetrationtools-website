@@ -582,7 +582,6 @@ function generateCommand(toolName, formData) {
       if (formData["linkfinder-regex"])
         cmd += ` -r "${formData["linkfinder-regex"]}"`;
       // Options
-      if (formData["linkfinder-burp"] === "yes") cmd += " -b";
       if (formData["linkfinder-cookies"])
         cmd += ` -c "${formData["linkfinder-cookies"]}"`;
       if (formData["linkfinder-timeout"])
