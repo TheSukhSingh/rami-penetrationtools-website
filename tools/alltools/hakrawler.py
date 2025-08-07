@@ -112,7 +112,7 @@ def run_scan(data):
                 "valid_domain_count":   valid_domain_count,
                 "invalid_domain_count": invalid_domain_count,
                 "duplicate_domain_count": duplicate_domain_count,
-                "file_size_b":          file_size_b,
+                "file_size_b":          None,
                 "execution_ms":         0,
                 "error_reason":         "INVALID_PARAMS",
                 "error_detail":         "No domains submitted",

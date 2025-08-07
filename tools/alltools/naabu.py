@@ -29,7 +29,7 @@ def run_scan(data):
                 "valid_domain_count":   None,
                 "invalid_domain_count": None,
                 "duplicate_domain_count": None,
-                "file_size_b":          file_size_b,
+                "file_size_b":          None,
                 "execution_ms":         0,
                 "error_reason":         "INVALID_PARAMS",
                 "error_detail":         "Missing or inaccessible file",
@@ -225,7 +225,7 @@ def run_scan(data):
         }
     
     command.append("-nc")
-    command.extend(["-rate", t, "-timeout", t2, "-top-ports", t3])
+    command.extend(["-rate", rate, "-timeout", timeout, "-top-ports", top_ports])
     command_str = " ".join(command)
     print(f"DEBUG: naabu command → {command_str}")
     start = time.time()

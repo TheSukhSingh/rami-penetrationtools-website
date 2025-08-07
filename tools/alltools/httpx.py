@@ -27,7 +27,7 @@ def run_scan(data):
                 "valid_domain_count":   None,
                 "invalid_domain_count": None,
                 "duplicate_domain_count": None,
-                "file_size_b":          file_size_b,
+                "file_size_b":          None,
                 "execution_ms":         0,
                 "error_reason":         "INVALID_PARAMS",
                 "error_detail":         "Missing or inaccessible file",
@@ -198,7 +198,7 @@ def run_scan(data):
     except ValueError:
         return {
             "status":"error",
-            "message":"Threads must be between 2-30",
+            "message":"Timeout must be between 2-30",
             "total_domain_count":   total_domain_count ,
             "valid_domain_count":   valid_domain_count,
             "invalid_domain_count": invalid_domain_count,
@@ -206,7 +206,7 @@ def run_scan(data):
             "file_size_b":  file_size_b,
             "execution_ms": 0,
             "error_reason": "INVALID_PARAMS",
-            "error_detail": f"Threads must be between 2-30",
+            "error_detail": f"Timeout must be between 2-30",
             "value_entered": t2
         }
 

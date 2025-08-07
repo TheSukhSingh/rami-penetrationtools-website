@@ -24,7 +24,7 @@ def run_scan(data):
                 "valid_domain_count":   None,
                 "invalid_domain_count": None,
                 "duplicate_domain_count": None,
-                "file_size_b":          file_size_b,
+                "file_size_b":          None,
                 "execution_ms":         0,
                 "error_reason":         "INVALID_PARAMS",
                 "error_detail":         "Missing or inaccessible file",

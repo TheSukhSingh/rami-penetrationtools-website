@@ -214,7 +214,7 @@ def run_scan(data):
     except ValueError:
         return {
             "status":"error",
-            "message":"Timeout must be between 1-15 min",
+            "message":"Max time must be between 1-15 min",
             "total_domain_count":   total_domain_count ,
             "valid_domain_count":   valid_domain_count,
             "invalid_domain_count": invalid_domain_count,
@@ -222,7 +222,7 @@ def run_scan(data):
             "file_size_b":  file_size_b,
             "execution_ms": 0,
             "error_reason": "INVALID_PARAMS",
-            "error_detail": f"Timeout must be between 1-15 min",
+            "error_detail": f"Max time must be between 1-15 min",
             "value_entered": t3
         }
 
@@ -233,8 +233,8 @@ def run_scan(data):
     if all_flag:
         command.append("-all")
 
-    command.extend(["-t", t, "-timeout", t2])
-    command.extend(["-max-time", t3])
+    command.extend(["-t", threads, "-timeout", timeout_opt])
+    command.extend(["-max-time", max_time])
     command.append("-nc")
 
     command_str = " ".join(command)

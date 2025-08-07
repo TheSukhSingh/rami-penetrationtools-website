@@ -180,7 +180,7 @@ def run_scan(data):
     except ValueError:
         return {
             "status":"error",
-            "message":"Threads must be between 2-50",
+            "message":"Threads must be between 1-100",
             "total_domain_count":   total_domain_count ,
             "valid_domain_count":   valid_domain_count,
             "invalid_domain_count": invalid_domain_count,
@@ -188,7 +188,7 @@ def run_scan(data):
             "file_size_b":  file_size_b,
             "execution_ms": 0,
             "error_reason": "INVALID_PARAMS",
-            "error_detail": f"Threads must be between 2-50",
+            "error_detail": f"Threads must be between 1-100",
             "value_entered": t
         }
 
