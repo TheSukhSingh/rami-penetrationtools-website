@@ -10,9 +10,17 @@ DOMAIN_REGEX = re.compile(
 
 def classify_lines(lines):
     seen, valid, invalid, dupes = set(), [], [], 0
+    from urllib.parse import urlparse
     for l in lines:
         if l in seen:
-            dupes += 1; continue
+            dupes += 1
+            continue
         seen.add(l)
-        (valid if DOMAIN_REGEX.match(l) else invalid).append(l)
+        # strip scheme and path, keep only the hostname
+        parsed = urlparse(l if '://' in l else '//' + l)
+        hostname = parsed.netloc or parsed.path
+        if DOMAIN_REGEX.match(hostname):
+            valid.append(l)
+        else:
+            invalid.append(l)
     return valid, invalid, dupes
