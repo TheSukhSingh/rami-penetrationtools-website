@@ -94,7 +94,7 @@ def api_scan():
 
     scan = ToolScanHistory(
         user_id            = user_id,
-        tool_name          = tool,
+        tool          = tool,
         parameters         = options,
         command            = cmd,
         raw_output         = (result.get('output') or result.get('message')),
@@ -131,28 +131,3 @@ def api_scan():
 
     return jsonify(result)
 
-
-# @tools_bp.route('/api/history', methods=['GET'])
-# @jwt_required()
-# def get_scan_history():
-#     """
-#     Return the most recent 25 scans for the current user and (optional) tool.
-#     Query param: ?tool=<tool_name>
-#     """
-#     user_id = int(get_jwt_identity())
-#     tool = request.args.get('tool')
-
-#     q = ToolScanHistory.query.filter_by(user_id=user_id)
-#     if tool:
-#         q = q.filter_by(tool_name=tool)
-#     records = q.order_by(ToolScanHistory.scanned_at.desc()).limit(25).all()
-
-#     history = [{
-#         'id':      r.id,
-#         'tool':    r.tool_name,
-#         'command': r.command,
-#         'output':  r.raw_output,  # truncate for payload
-#         'when':    r.scanned_at.isoformat()
-#     } for r in records]
-
-#     return jsonify(status='ok', history=history)

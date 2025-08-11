@@ -139,7 +139,7 @@ def local_login():
 #     access_token = create_access_token(identity=identity)
 #     return jsonify(access_token=access_token), 200
 
-
+@auth_bp.route('/refresh-token', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
     new_at = create_access_token(identity=get_jwt_identity())

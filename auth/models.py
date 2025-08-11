@@ -74,14 +74,14 @@ class User(TimestampMixin, db.Model):
     is_protected   = db.Column(db.Boolean, default=False, nullable=False, index=True)
 
     # relationships
-    local_auth      = relationship('LocalAuth',       back_populates='users', uselist=False ,  cascade='all, delete-orphan')
-    oauth_accounts  = relationship('OAuthAccount',    back_populates='users',                  cascade='all, delete-orphan')
-    mfa_setting     = relationship('MFASetting',      back_populates='users', uselist=False ,  cascade='all, delete-orphan')
-    reset_tokens    = relationship('PasswordReset',   back_populates='users',                  cascade='all, delete-orphan')
-    login_events    = relationship('LoginEvent',      back_populates='users',                  cascade='all, delete-orphan')
-    refresh_tokens  = relationship('RefreshToken',    back_populates='users',                  cascade='all, delete-orphan')
-    roles           = relationship('Role',            back_populates='users', secondary=user_roles,  cascade='all')
-    scan_history    = relationship('ToolScanHistory', back_populates='users', lazy="dynamic")
+    local_auth      = relationship('LocalAuth',       back_populates='user', uselist=False ,  cascade='all, delete-orphan')
+    oauth_accounts  = relationship('OAuthAccount',    back_populates='user',                  cascade='all, delete-orphan')
+    mfa_setting     = relationship('MFASetting',      back_populates='user', uselist=False ,  cascade='all, delete-orphan')
+    reset_tokens    = relationship('PasswordReset',   back_populates='user',                  cascade='all, delete-orphan')
+    login_events    = relationship('LoginEvent',      back_populates='user',                  cascade='all, delete-orphan')
+    refresh_tokens  = relationship('RefreshToken',    back_populates='user',                  cascade='all, delete-orphan')
+    roles           = relationship('Role',            back_populates='user', secondary=user_roles,  cascade='all')
+    scan_history    = relationship('ToolScanHistory', back_populates='user', lazy="dynamic")
     ip_logs = relationship('UserIPLog',back_populates='user',cascade='all, delete-orphan')
 
     @staticmethod

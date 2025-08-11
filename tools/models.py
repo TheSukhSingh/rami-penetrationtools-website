@@ -118,7 +118,7 @@ class Tool(db.Model, TimestampMixin):
     repo_url = db.Column(db.String(255))
     last_update_at = db.Column(db.DateTime)
     usage_count = db.Column(db.Integer, default=0, nullable=False)  # denormalized total
-    metadata = db.Column(db.JSON)  # free-form config, defaults, flags
+    meta_info = db.Column(db.JSON)  # free-form config, defaults, flags
 
     # backrefs
     daily_usage = relationship("ToolUsageDaily", back_populates="tool", cascade="all, delete-orphan")

@@ -1,18 +1,47 @@
  # RBAC decorators & helpers (admin:view, admin:edit, etc.)
 
+from functools import wraps
+from typing import Iterable, Set
+from flask import jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from extensions import db
+from admin.errors import Forbidden, Unauthorized
 
+def _collect_scopes(user) -> Set[str]:
+    """
+    Your Role model stores JSON scopes. Union them for the user.
+    """
+    scopes = set()
+    for role in getattr(user, "roles", []):
+        payload = getattr(role, "scopes", None) or {}
+        # payload can be list or dict of {scope: true}
+        if isinstance(payload, dict):
+            scopes |= {k for k, v in payload.items() if v}
+        elif isinstance(payload, (list, tuple, set)):
+            scopes |= set(payload)
+    return scopes
 
-# from functools import wraps
-# from flask import abort
-# from auth.utils import get_current_user
-
-# def role_required(role_name):
-#     def decorator(f):
-#         @wraps(f)
-#         def wrapped(*args, **kwargs):
-#             user = get_current_user()
-#             if role_name not in [r.name for r in user.roles]:
-#                 abort(403)
-#             return f(*args, **kwargs)
-#         return wrapped
-#     return decorator
+def require_scopes(*required_scopes: str):
+    """
+    Decorator for API routes. Ensures JWT + required scopes.
+    """
+    def decorator(fn):
+        @wraps(fn)
+        @jwt_required()  # ensures we have an identity
+        def wrapper(*args, **kwargs):
+            from models import User  # local import to avoid circulars
+            user_id = get_jwt_identity()
+            if not user_id:
+                raise Unauthorized("Missing identity")
+            user = db.session.get(User, int(user_id))
+            if not user:
+                raise Unauthorized("User not found")
+            have = _collect_scopes(user)
+            missing = [s for s in required_scopes if s not in have]
+            if missing:
+                raise Forbidden("Insufficient permissions", details={"required": required_scopes, "missing": missing})
+            # make user available to the view if you like:
+            kwargs["_current_admin_user"] = user
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator

@@ -7,6 +7,8 @@ from flask_wtf import CSRFProtect
 
 from auth import auth_bp
 from tools import tools_bp
+from admin import admin_bp
+from admin.api import admin_api_bp
 
 from extensions import db, bcrypt, migrate
 
@@ -73,7 +75,8 @@ def create_app():
     init_mail(app)
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
-    # app.register_blueprint(admin_bp, url_prefix='/admin')
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(admin_api_bp)
     app.register_blueprint(tools_bp, url_prefix='/tools')
 
     init_jwt_manager(app, jwt)
