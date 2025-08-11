@@ -2,7 +2,7 @@ import re, uuid
 from datetime import datetime, timedelta
 from .passwords import COMMON_PASSWORDS
 from hashlib import sha256
-from sqlalchemy import Table, Column, Integer, ForeignKey, String, UniqueConstraint, CheckConstraint, Boolean, DateTime
+from sqlalchemy import Table, Column, Integer, ForeignKey, String, UniqueConstraint, CheckConstraint, Boolean, DateTime, Index
 from sqlalchemy.orm import relationship
 from extensions import db, bcrypt
 
@@ -33,13 +33,27 @@ user_roles = Table(
     UniqueConstraint('user_id', 'role_id', name='uq_user_role')
 )
 
-class Role(db.Model):
-    __tablename__ = 'roles'
-    id   = Column(Integer, primary_key=True)
 
-    name = Column(String(50), unique=True, nullable=False, index=True) 
-    description = Column(String(255), nullable=True)
+# --- RBAC --------------------------------------------------------------------
+
+class Role(db.Model, TimestampMixin):
+    """
+    Minimal RBAC role with fine-grained scopes stored as JSON.
+
+    Example scopes:
+      ["users.read","users.write","scans.read","tools.read","tools.write","settings.write","audit.read"]
+    """
+    __tablename__ = "roles"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    description = db.Column(db.String(255))
+    scopes = db.Column(db.JSON, nullable=False, default=list)  # array of strings
+
     users = relationship('User', secondary=user_roles, back_populates='roles')
+
+    def __repr__(self):
+        return f"<Role {self.name}>"
 
 class User(TimestampMixin, db.Model):
     __tablename__ = 'users'
@@ -57,16 +71,18 @@ class User(TimestampMixin, db.Model):
 
     is_blocked     = db.Column(db.Boolean, default=False, nullable=False)
     is_deactivated = db.Column(db.Boolean, default=False, nullable=False)
+    is_protected   = db.Column(db.Boolean, default=False, nullable=False, index=True)
 
     # relationships
-    local_auth    = relationship('LocalAuth', uselist=False , back_populates='user', cascade='all, delete-orphan')
-    oauth_accounts = relationship('OAuthAccount', back_populates='user', cascade='all, delete-orphan')
-    mfa_setting   = relationship('MFASetting', uselist=False , back_populates='user', cascade='all, delete-orphan')
-    reset_tokens  = relationship('PasswordReset', back_populates='user', cascade='all, delete-orphan')
-    login_events  = relationship('LoginEvent', back_populates='user', cascade='all, delete-orphan')
-    refresh_tokens = relationship('RefreshToken', back_populates='user', cascade='all, delete-orphan')
-    roles = relationship('Role', secondary=user_roles, back_populates='users', cascade='all')
-    scan_history = relationship('ToolScanHistory', back_populates='user', lazy="dynamic")
+    local_auth      = relationship('LocalAuth',       back_populates='users', uselist=False ,  cascade='all, delete-orphan')
+    oauth_accounts  = relationship('OAuthAccount',    back_populates='users',                  cascade='all, delete-orphan')
+    mfa_setting     = relationship('MFASetting',      back_populates='users', uselist=False ,  cascade='all, delete-orphan')
+    reset_tokens    = relationship('PasswordReset',   back_populates='users',                  cascade='all, delete-orphan')
+    login_events    = relationship('LoginEvent',      back_populates='users',                  cascade='all, delete-orphan')
+    refresh_tokens  = relationship('RefreshToken',    back_populates='users',                  cascade='all, delete-orphan')
+    roles           = relationship('Role',            back_populates='users', secondary=user_roles,  cascade='all')
+    scan_history    = relationship('ToolScanHistory', back_populates='users', lazy="dynamic")
+    ip_logs = relationship('UserIPLog',back_populates='user',cascade='all, delete-orphan')
 
     @staticmethod
     def _validate_username(u: str):
@@ -96,6 +112,32 @@ class User(TimestampMixin, db.Model):
     def is_oauth(self) -> bool:
         return bool(self.oauth_accounts)
 
+# --- User activity/IP history -------------------------------------------------
+
+class UserIPLog(db.Model):
+    """
+    Event-agnostic trail of where a user acted from (login, scans, admin UI, etc.).
+    """
+    __tablename__ = "user_ip_logs"
+    __table_args__ = (
+        Index("ix_user_ip_logs_user_created", "user_id", "created_at"),
+        Index("ix_user_ip_logs_ip", "ip"),
+    )
+
+    id          = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                           nullable=False, index=True)
+    ip          = db.Column(db.String(64), nullable=False)
+    user_agent  = db.Column(db.String(255))
+    device      = db.Column(db.String(128))              # parsed UA if you store it
+    geo_city    = db.Column(db.String(128))
+    geo_country = db.Column(db.String(128))
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship('User', back_populates='ip_logs')
+
+    def __repr__(self):
+        return f"<UserIPLog user={self.user_id} ip={self.ip} at={self.created_at:%Y-%m-%d %H:%M:%S}>"
 
 class LocalAuth(db.Model):
     __tablename__ = 'local_auth'
