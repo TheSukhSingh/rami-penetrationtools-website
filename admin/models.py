@@ -1,6 +1,7 @@
 from datetime import datetime
 from sqlalchemy import Index
 from extensions import db
+from sqlalchemy.orm import relationship
 
 class TimestampMixin:
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -19,18 +20,16 @@ class Setting(db.Model, TimestampMixin):
 
     key = db.Column(db.String(64), primary_key=True)
     value = db.Column(db.JSON, nullable=False) 
-    updated_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'),
-                           index=True) 
+    updated_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), index=True) 
 
     updated_by_user = relationship(
         'User',
         primaryjoin="User.id==Setting.updated_by",
         foreign_keys=[updated_by]
     ) 
-    
+
     def __repr__(self):
         return f"<Setting {self.key}>"
-
 
 class AdminAuditLog(db.Model):
     """
@@ -55,6 +54,4 @@ class AdminAuditLog(db.Model):
 
     def __repr__(self):
         return f"<AdminAuditLog action={self.action} subject={self.subject_type}:{self.subject_id}>"
-
-
 
