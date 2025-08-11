@@ -1,0 +1,1 @@
+# /scans list/detail/geo/activity

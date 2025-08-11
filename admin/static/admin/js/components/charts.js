@@ -1,0 +1,1 @@
+# small wrapper feeding your chart lib or simple SVG

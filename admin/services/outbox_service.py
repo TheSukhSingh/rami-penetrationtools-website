@@ -1,0 +1,1 @@
+# enqueue domain events for async processing (post-commit)

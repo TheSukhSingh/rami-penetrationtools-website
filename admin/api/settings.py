@@ -1,0 +1,1 @@
+ # /settings privacy/features/scan timeouts

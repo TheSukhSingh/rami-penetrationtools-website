@@ -1,0 +1,1 @@
+# server-side “1D/7D/30D/90D/custom → start/end (TZ aware)”

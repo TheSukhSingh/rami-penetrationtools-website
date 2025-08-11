@@ -1,0 +1,1 @@
+ # domain exceptions: BadRequest, NotFound, Conflict, etc.

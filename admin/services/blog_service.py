@@ -1,0 +1,1 @@
+# posts/comments moderation rules

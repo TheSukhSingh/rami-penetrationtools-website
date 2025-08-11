@@ -1,0 +1,1 @@
+  # HTTP error mappers or shared exceptions (optional)

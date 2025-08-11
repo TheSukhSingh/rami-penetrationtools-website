@@ -1,0 +1,1 @@
+# confirm dialogs for dangerous actions
