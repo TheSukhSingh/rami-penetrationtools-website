@@ -1,14 +1,16 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Index
 from extensions import db
 from sqlalchemy.orm import relationship
 
+utcnow = lambda: datetime.now(timezone.utc)
+
 class TimestampMixin:
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        db.DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
         nullable=False,
     )
 
@@ -50,7 +52,7 @@ class AdminAuditLog(db.Model):
     ip = db.Column(db.String(64))
     user_agent = db.Column(db.String(255))
     meta = db.Column(db.JSON)                                    # {"before": {...}, "after": {...}} or free-form
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
 
     def __repr__(self):
         return f"<AdminAuditLog action={self.action} subject={self.subject_type}:{self.subject_id}>"

@@ -1,13 +1,10 @@
- # RBAC decorators & helpers (admin:view, admin:edit, etc.)
 
 from functools import wraps
-from typing import Iterable, Set
-from flask import jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from admin.errors import Forbidden, Unauthorized
 
-def _collect_scopes(user) -> Set[str]:
+def _collect_scopes(user):
     """
     Your Role model stores JSON scopes. Union them for the user.
     """

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.hybrid import hybrid_property
 
 class PrettyIdMixin:
@@ -9,7 +9,7 @@ class PrettyIdMixin:
     def pretty_id(self):
         if not getattr(self, "id", None):
             return None
-        dt = getattr(self, self._pretty_date_attr, None) or datetime.utcnow()
+        dt = getattr(self, self._pretty_date_attr, None) or datetime.now(timezone.utc)
         return f"{self._pretty_prefix}-{dt.year}-{self.id:06d}"
 
     @classmethod

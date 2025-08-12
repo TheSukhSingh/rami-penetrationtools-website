@@ -1,8 +1,7 @@
-# admin/api/schemas.py
 """
 Tiny validation helpers (dependency-free). For larger/complex inputs, swap to Marshmallow/Pydantic later.
 """
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable
 from admin.errors import Unprocessable
 
 def require_fields(data: Dict[str, Any], required: Iterable[str]) -> None:

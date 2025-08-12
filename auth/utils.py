@@ -1,6 +1,6 @@
 from functools import wraps
 import re
-from datetime import datetime, timedelta 
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Tuple
 from hashlib import sha256
 
@@ -16,6 +16,7 @@ from .models import LoginEvent, RefreshToken, db, User, LocalAuth, OAuthAccount
 from .passwords import COMMON_PASSWORDS
 
 mail = Mail()
+utcnow = lambda: datetime.now(timezone.utc)
 
 def init_mail(app):
     mail.init_app(app)
@@ -99,7 +100,7 @@ def jwt_login(user: User) -> Dict[str, str]:
     # reset failure counters if present
     if user.local_auth:
         user.local_auth.failed_logins = 0
-        user.local_auth.last_login_at = datetime.utcnow()
+        user.local_auth.last_login_at = utcnow()
         db.session.add(user.local_auth)
 
     str_id        = str(user.id)
@@ -114,7 +115,7 @@ def jwt_login(user: User) -> Dict[str, str]:
     rt = RefreshToken(
         user_id    = user.id,
         token_hash = hashed_jti,
-        expires_at = datetime.fromtimestamp(data['exp'])
+        expires_at = datetime.fromtimestamp(data['exp'], tz=timezone.utc)
     )
     db.session.add(rt)
     db.session.commit()
@@ -146,15 +147,15 @@ def login_local(email: str, password: str) -> tuple[dict, str]:
         # record failed attempt
         if user and user.local_auth:
             user.local_auth.failed_logins += 1
-            user.local_auth.last_failed_at = datetime.utcnow()
+            user.local_auth.last_failed_at = utcnow()
             db.session.commit()
         return None, "Invalid credentials"
     if user.is_blocked or user.is_deactivated:
         return None, "Account is inactive"
     
     if la.failed_logins >= 3:
-        lock_expires = (la.last_failed_at or datetime.utcnow()) + timedelta(minutes=15)
-        if datetime.utcnow() < lock_expires:
+        lock_expires = (la.last_failed_at or utcnow()) + timedelta(minutes=15)
+        if utcnow() < lock_expires:
             return None, "Account locked. Try again later."
         la.failed_logins = 0
 
@@ -162,7 +163,7 @@ def login_local(email: str, password: str) -> tuple[dict, str]:
         return None, "Please verify your email first."
 
     la.failed_logins = 0
-    la.last_login_at = datetime.utcnow()
+    la.last_login_at = utcnow()
     db.session.add(LoginEvent(
         user_id    = user.id,
         ip_address = request.remote_addr,

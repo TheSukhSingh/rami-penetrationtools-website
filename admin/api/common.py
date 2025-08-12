@@ -1,11 +1,10 @@
-from typing import Any, Dict, Iterable, Optional, Tuple
 from flask import request, jsonify
 from admin.errors import BadRequest, Unprocessable
 
-def ok(data: Any = None, meta: Optional[Dict[str, Any]] = None, status: int = 200):
+def ok(data= None, meta= None, status = 200):
     return jsonify({"ok": True, "data": data, "meta": meta or {}}), status
 
-def get_json(*, required: Iterable[str] = (), optional: Iterable[str] = ()):
+def get_json(*, required = (), optional = ()):
     if not request.is_json:
         raise BadRequest("Expected JSON body")
     data = request.get_json(silent=True) or {}
@@ -19,7 +18,7 @@ def get_json(*, required: Iterable[str] = (), optional: Iterable[str] = ()):
         data["_unknown"] = unknown
     return data
 
-def parse_pagination(default_per_page: int = 20, max_per_page: int = 100) -> Tuple[int, int]:
+def parse_pagination(default_per_page = 20, max_per_page = 100) :
     page = request.args.get("page", default=1, type=int)
     per_page = request.args.get("per_page", default=default_per_page, type=int)
     if page < 1:
@@ -27,7 +26,7 @@ def parse_pagination(default_per_page: int = 20, max_per_page: int = 100) -> Tup
     per_page = max(1, min(per_page, max_per_page))
     return page, per_page
 
-def parse_sort(allowed_fields: Iterable[str], default: str = "created_at") -> Tuple[str, bool]:
+def parse_sort(allowed_fields, default = "created_at") :
     """
     Returns (field, desc). Accepts ?sort=field or ?sort=-field for DESC.
     """
@@ -38,7 +37,7 @@ def parse_sort(allowed_fields: Iterable[str], default: str = "created_at") -> Tu
         raise Unprocessable("Invalid sort field", details={"allowed": list(allowed_fields)})
     return field, desc
 
-def request_context() -> Dict[str, Any]:
+def request_context() :
     ip = request.headers.get("X-Forwarded-For", request.remote_addr)
     ua = request.headers.get("User-Agent")
     return {"ip": ip, "user_agent": ua}

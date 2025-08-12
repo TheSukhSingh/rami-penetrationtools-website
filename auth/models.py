@@ -1,11 +1,12 @@
 import re, uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from .passwords import COMMON_PASSWORDS
 from hashlib import sha256
 from sqlalchemy import Table, Column, Integer, ForeignKey, String, UniqueConstraint, CheckConstraint, Boolean, DateTime, Index
 from sqlalchemy.orm import relationship
 from extensions import db, bcrypt
 
+utcnow = lambda: datetime.now(timezone.utc)
 
 RESERVED_USERNAMES = {
     'admin','administrator','root','system','support',
@@ -14,14 +15,14 @@ RESERVED_USERNAMES = {
 
 class TimestampMixin:
     created_at = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
+        db.DateTime(timezone=True),
+        default=utcnow,
         nullable=False
     )
     updated_at = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        db.DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
         nullable=False
     )
 
@@ -132,7 +133,7 @@ class UserIPLog(db.Model):
     device      = db.Column(db.String(128))              # parsed UA if you store it
     geo_city    = db.Column(db.String(128))
     geo_country = db.Column(db.String(128))
-    created_at  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at  = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
 
     user = relationship('User', back_populates='ip_logs')
 
@@ -145,8 +146,8 @@ class LocalAuth(db.Model):
     password_hash = db.Column(db.String(128), nullable=False)
     email_verified = db.Column(db.Boolean, default=False, nullable=False)
     failed_logins = db.Column(db.Integer, default=0, nullable=False)
-    last_failed_at = db.Column(db.DateTime, nullable=True)
-    last_login_at  = db.Column(db.DateTime, nullable=True)
+    last_failed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_login_at  = db.Column(db.DateTime(timezone=True), nullable=True)
 
     user = db.relationship('User', back_populates='local_auth')
 
@@ -210,7 +211,7 @@ class PasswordReset(db.Model):
     id           = db.Column(db.Integer, primary_key=True)
     user_id      = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     token_hash   = db.Column(db.String(64), nullable=False, unique=True)
-    expires_at   = db.Column(db.DateTime, nullable=False)
+    expires_at   = db.Column(db.DateTime(timezone=True), nullable=False)
     used         = db.Column(db.Boolean, default=False, nullable=False)
 
     user = db.relationship('User', back_populates='reset_tokens')
@@ -219,7 +220,7 @@ class PasswordReset(db.Model):
         PasswordReset.query.filter_by(user_id=self.user_id, used=False).update({'used': True})
         token = str(uuid.uuid4())
         self.token_hash = sha256(token.encode()).hexdigest()
-        self.expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+        self.expires_at = utcnow() + timedelta(seconds=expires_in)
         self.used = False    
         db.session.add(self)
         db.session.commit()
@@ -232,7 +233,7 @@ class PasswordReset(db.Model):
         pr = PasswordReset.query.filter(
                PasswordReset.token_hash == hashed,
                PasswordReset.used      == False,
-               PasswordReset.expires_at > datetime.utcnow()
+               PasswordReset.expires_at > utcnow()
              ).first()
 
         if not pr:
@@ -247,7 +248,7 @@ class LoginEvent(db.Model):
     __tablename__ = 'login_events'
     id           = db.Column(db.Integer, primary_key=True)
     user_id      = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'))
-    occurred_at  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    occurred_at  = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     ip_address   = db.Column(db.String(45))
     successful   = db.Column(db.Boolean, nullable=False)
 
@@ -263,8 +264,8 @@ class RefreshToken(db.Model):
         index=True
     )
     token_hash   = db.Column(db.String(64), nullable=False, unique=True, index=True)
-    created_at   = db.Column(DateTime, default=datetime.utcnow, nullable=False)
-    expires_at   = db.Column(DateTime, nullable=False)
+    created_at   = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at   = db.Column(db.DateTime(timezone=True), nullable=False)
     revoked      = db.Column(Boolean, default=False, nullable=False)
 
     # backref to user

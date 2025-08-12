@@ -1,14 +1,16 @@
-from datetime import datetime, date
+from datetime import datetime, timezone, date
 import enum
 from sqlalchemy import UniqueConstraint, Index, ForeignKey
 from sqlalchemy.orm import relationship
 from extensions import db
 from mixin import PrettyIdMixin
 
+utcnow = lambda: datetime.now(timezone.utc)
+
 class TimestampMixin:
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
-                           onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow,
+                           onupdate=utcnow, nullable=False)
 
 class ToolScanHistory(db.Model, PrettyIdMixin):
     """
@@ -26,7 +28,7 @@ class ToolScanHistory(db.Model, PrettyIdMixin):
     parameters         = db.Column(db.JSON, nullable=False, default=dict)
     command            = db.Column(db.Text, nullable=False)
     raw_output         = db.Column(db.Text, nullable=False)
-    scanned_at         = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    scanned_at         = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False, index=True)
     scan_success_state = db.Column(db.Boolean, nullable=False, default=False)
     filename_by_user   = db.Column(db.String(255), nullable=True)
     filename_by_be     = db.Column(db.String(255), nullable=True)
@@ -93,8 +95,8 @@ class ScanDiagnostics(db.Model):
     error_detail     = db.Column(db.Text, nullable=True)
     value_entered    = db.Column(db.Integer, nullable=True)
     created_at       = db.Column(
-                          db.DateTime,
-                          default=datetime.utcnow,
+                          db.DateTime(timezone=True),
+                          default=utcnow,
                           nullable=False,
                           index=True
                        )
@@ -116,7 +118,7 @@ class Tool(db.Model, TimestampMixin):
     enabled = db.Column(db.Boolean, default=True, nullable=False, index=True)
     version = db.Column(db.String(64))
     repo_url = db.Column(db.String(255))
-    last_update_at = db.Column(db.DateTime)
+    last_update_at = db.Column(db.DateTime(timezone=True))
     usage_count = db.Column(db.Integer, default=0, nullable=False)  # denormalized total
     meta_info = db.Column(db.JSON)  # free-form config, defaults, flags
 

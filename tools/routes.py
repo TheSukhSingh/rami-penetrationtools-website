@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import render_template, request, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from tools.models import (
@@ -22,6 +22,7 @@ from .alltools import (
     subfinder
 )
 import time
+utcnow = lambda: datetime.now(timezone.utc)
 
 @tools_bp.route('/', methods=['GET'])
 def tools_index():
@@ -55,7 +56,7 @@ def api_scan():
             user_folder = os.path.join(base, str(user_id))
             os.makedirs(user_folder, exist_ok=True)
             base_name = secure_filename(uploaded.filename)
-            timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+            timestamp = utcnow().strftime('%Y%m%d%H%M%S%f')
             filename = f"{timestamp}_{base_name}"
             filepath = os.path.join(user_folder, filename)
             uploaded.save(filepath)
