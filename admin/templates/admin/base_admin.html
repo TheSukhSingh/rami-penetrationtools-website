@@ -1,0 +1,38 @@
+{% set title = title or "Admin Portal" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ title }} — Hunter's Terminal</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+  <link rel="stylesheet" href="{{ url_for('admin.static', filename='admin/css/admin.css') }}" />
+
+  {% block head_extras %}{% endblock %}
+</head>
+<body>
+
+  <div class="grid-bg"></div>
+  <div class="scan-lines"></div>
+  <div class="particles" id="particles"></div>
+
+  <div class="admin-dashboard">
+    <aside class="admin-sidebar glass">
+      {% include 'admin/partials/_sidebar.html' %}
+    </aside>
+
+    <main class="admin-main">
+      {% include 'admin/partials/_topbar.html' %}
+
+      <div id="view-root" class="admin-content" role="region" aria-live="polite"></div>
+    </main>
+  </div>
+
+  <script type="module" src="{{ url_for('admin.static', filename='admin/js/admin.js') }}"></script>
+  {% block scripts_extras %}{% endblock %}
+</body>
+</html>

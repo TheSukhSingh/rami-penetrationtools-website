@@ -1,10 +1,7 @@
-from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, List
 
-from sqlalchemy import func, select, exists, and_, or_, literal, case
-from sqlalchemy.orm import aliased
+from sqlalchemy import func, select, exists, and_, or_, case
 
 from extensions import db
 from admin.repositories import BaseRepo
