@@ -13,15 +13,24 @@ export function navigate(path) {
   mountByPath(path);
 }
 
+// export function setActiveNav(path) {
+//   document.querySelectorAll('.nav-link[data-nav]').forEach(a => a.classList.remove('active'));
+//   const el = document.querySelector(`.nav-link[href="${path}"]`);
+//   if (el) el.classList.add('active');
+// }
+
 export function setActiveNav(path) {
-  document.querySelectorAll('.nav-link[data-nav]').forEach(a => a.classList.remove('active'));
-  const el = document.querySelector(`.nav-link[href="${path}"]`);
-  if (el) el.classList.add('active');
+  const clean = (path.split('?')[0].replace(/\/$/, '')) || '/admin';
+  document.querySelectorAll('.nav-link[data-nav]').forEach(a => {
+    const href = a.getAttribute('href').split('?')[0].replace(/\/$/, '');
+    a.classList.toggle('active', href === clean);
+  });
 }
 
 async function mountByPath(path, { replace = false } = {}) {
   const name = routes[path] || routes['/admin'];
   if (current?.name === name) return;
+  if (replace) history.replaceState({}, '', path);
 
   // unmount previous
   if (current?.api?.unmount) current.api.unmount();

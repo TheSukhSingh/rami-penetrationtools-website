@@ -20,3 +20,5 @@ def handle_uncaught_error(err: Exception):
     if current_app and current_app.debug:
         payload["error"]["details"] = {"exception": repr(err)}
     return jsonify(payload), 500
+
+from . import overview
