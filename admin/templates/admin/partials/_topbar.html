@@ -6,19 +6,17 @@
   <div class="header-right">
     <div class="header-stats">
       <div class="stat-item">
-        <span class="stat-value" id="stat-uptime">99.8%</span>
-        <span class="stat-label">Uptime</span>
-      </div>
-      <div class="stat-item">
         <span class="stat-value" id="stat-active-users">1,247</span>
         <span class="stat-label">Active Users</span>
       </div>
     </div>
 
     <div class="time-filters" id="timeFilters" role="tablist" aria-label="Time range">
+      <button class="time-filter" data-period="1d" aria-selected="false">1D</button>
       <button class="time-filter active" data-period="7d" aria-selected="true">7D</button>
       <button class="time-filter" data-period="30d" aria-selected="false">30D</button>
       <button class="time-filter" data-period="90d" aria-selected="false">90D</button>
+      <button class="time-filter" data-period="all-time" aria-selected="false">All Time</button>
     </div>
   </div>
 </header>

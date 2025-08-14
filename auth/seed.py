@@ -36,15 +36,15 @@ from auth.models import Role
 
 ALL_SCOPES = {
     # Users
-    "users.read", "users.write", "users.delete",
+    "admin.users.read", "admin.users.write", "admin.users.delete",
     # Scans
-    "scans.read", "scans.delete",
+    "admin.scans.read", "admin.scans.delete",
     # Tools catalog/config
-    "tools.read", "tools.write", "tools.delete",
+    "admin.tools.read", "admin.tools.write", "admin.tools.delete",
     # Settings
-    "settings.read", "settings.write",
+    "admin.settings.read", "admin.settings.write",
     # Audit
-    "audit.read",
+    "admin.audit.read",
 }
 
 ROLE_DEFINITIONS = {
@@ -58,22 +58,22 @@ ROLE_DEFINITIONS = {
     "admin_ops": {
         "description": "Operate admin functions (no deletes, limited risk)",
         "scopes": sorted([
-            "users.read", "users.write",
-            "scans.read",
-            "tools.read", "tools.write",
-            "audit.read",
-            "settings.read",
+            "admin.users.read", "admin.users.write",
+            "admin.scans.read",
+            "admin.tools.read", "admin.tools.write",
+            "admin.audit.read",
+            "admin.settings.read",
         ]),
     },
 
     "admin_ops_delete": {
         "description": "Operational admin with delete powers",
         "scopes": sorted([
-            "users.read", "users.write", "users.delete",
-            "scans.read", "scans.delete",
-            "tools.read", "tools.write", "tools.delete",
-            "settings.read",
-            "audit.read",
+            "admin.users.read", "admin.users.write", "admin.users.delete",
+            "admin.scans.read", "admin.scans.delete",
+            "admin.tools.read", "admin.tools.write", "admin.tools.delete",
+            "admin.settings.read",
+            "admin.audit.read",
         ]),
     },
 
@@ -81,11 +81,11 @@ ROLE_DEFINITIONS = {
     "admin_support": {
         "description": "Read-only admin visibility",
         "scopes": sorted([
-            "users.read",
-            "scans.read",
-            "tools.read",
-            "audit.read",
-            "settings.read",
+            "admin.users.read",
+            "admin.scans.read",
+            "admin.tools.read",
+            "admin.audit.read",
+            "admin.settings.read",
         ]),
     },
 
