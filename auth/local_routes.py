@@ -1,9 +1,9 @@
-from io import BytesIO
 from flask import (
-    render_template, redirect, send_file,
-    url_for, request, jsonify, current_app, flash, session
+    render_template, redirect,
+    url_for, request, jsonify, current_app, flash
 )
-
+from flask_limiter.util import get_remote_address
+from extensions import limiter
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies
 from . import auth_bp
 from .models import (
@@ -18,7 +18,8 @@ from .utils import (
     
     validate_and_set_password,
     login_local as util_login_local,
-    get_current_user
+    get_current_user,
+    verify_turnstile
 )
 from flask_jwt_extended import (
     create_access_token, jwt_required, get_jwt_identity
@@ -28,6 +29,10 @@ from flask_jwt_extended import (
 def signup():
 
     data = request.get_json() or {}
+    turnstile_token = data.get('turnstile_token')
+    ok, err = verify_turnstile(turnstile_token, request.remote_addr)
+    if not ok:
+        return jsonify(message=f"Captcha failed: {err or 'try again'}"), 400
     username = data.get('username', '').strip()
     name     = data.get('name', '').strip()
     email    = data.get('email', '').strip().lower()
@@ -109,11 +114,7 @@ def confirm_email(token):
 
 
 @auth_bp.route('/signin',  methods=['POST'])
-# @limiter.limit(
-#     "3 per 15 minutes",
-#     key_func=lambda: request.form.get('email', get_remote_address()),
-#     error_message="Too many login attempts; try again later."
-# )
+# @limiter.limit("5 per 15 minutes", key_func=lambda: (request.json or {}).get('email') or get_remote_address())
 def local_login():
     data = request.get_json() or {}
     email    = data.get('email', '').strip().lower()
@@ -131,43 +132,54 @@ def local_login():
 
     return resp, 200
 
-
-# @auth_bp.route('/refresh', methods=['POST'])
-# @jwt_required(refresh=True)
-# def refresh():
-#     identity     = get_jwt_identity()
-#     access_token = create_access_token(identity=identity)
-#     return jsonify(access_token=access_token), 200
-
-@auth_bp.route('/refresh-token', methods=['POST'])
+@auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
+@limiter.limit("20 per hour", key_func=get_remote_address)
 def refresh():
     new_at = create_access_token(identity=get_jwt_identity())
     resp = jsonify({"msg":"Token refreshed"})
     set_access_cookies(resp, new_at)
     return resp, 200
 
+# @auth_bp.route('/forgot-password', methods=['GET','POST'])
+# def forgot_password():
+#     if request.method=='POST':
+#         email = request.form.get('email','').strip().lower()
+#         user  = User.query.filter_by(email=email).first()
+#         if user and user.local_auth:
+#             pr = PasswordReset(user_id=user.id)
+#             token = pr.generate_reset_token()
+#             reset_url = url_for('auth.reset_password', token=token, _external=True)
+#             html = render_template('auth/reset_password_email.html', reset_url=reset_url)
+#             send_email(user.email, 'Your Password Reset Link', html)
 
+#         # always show this to avoid user enumeration
+#         flash('If that email is registered, you’ll receive a reset link.', 'info')
+#         return redirect(url_for('auth.login_page'))
 
+#     return render_template('auth/forgot.html')
 
-@auth_bp.route('/forgot-password', methods=['GET','POST'])
+@auth_bp.route('/forgot-password', methods=['POST'])
+@limiter.limit("3 per hour", key_func=get_remote_address)
 def forgot_password():
-    if request.method=='POST':
-        email = request.form.get('email','').strip().lower()
-        user  = User.query.filter_by(email=email).first()
-        if user and user.local_auth:
-            pr = PasswordReset(user_id=user.id)
-            token = pr.generate_reset_token()
-            reset_url = url_for('auth.reset_password', token=token, _external=True)
-            html = render_template('auth/reset_password_email.html', reset_url=reset_url)
-            send_email(user.email, 'Your Password Reset Link', html)
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
 
-        # always show this to avoid user enumeration
-        flash('If that email is registered, you’ll receive a reset link.', 'info')
-        return redirect(url_for('auth.login_page'))
+    turnstile_token = data.get('turnstile_token')
+    ok, err = verify_turnstile(turnstile_token, request.remote_addr)
+    if not ok:
+        return jsonify(message=f"Captcha failed: {err or 'try again'}"), 400
 
-    return render_template('auth/forgot.html')
+    user = User.query.filter_by(email=email).first()
+    if user and user.local_auth:
+        pr = PasswordReset(user_id=user.id)
+        token = pr.generate_reset_token()
+        reset_url = url_for('auth.reset_password', token=token, _external=True)
+        html = render_template('auth/reset_password_email.html', reset_url=reset_url)
+        send_email(user.email, 'Your Password Reset Link', html)
 
+    # Always return generic message to avoid user enumeration
+    return jsonify(message="If that email is registered, you’ll receive a reset link."), 200
 
 @auth_bp.route('/reset-password/<token>', methods=['GET','POST'])
 def reset_password(token):

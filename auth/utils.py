@@ -12,6 +12,7 @@ from flask_jwt_extended import (
     create_access_token, create_refresh_token,
     jwt_required, get_jwt, get_jwt_identity, decode_token, verify_jwt_in_request
 )
+import requests
 from .models import LoginEvent, RefreshToken, db, User, LocalAuth, OAuthAccount
 from .passwords import COMMON_PASSWORDS
 
@@ -55,7 +56,7 @@ def login_required(func):
         except Exception:
             flash("Please log in first.", "warning")
             # preserve the URL they wanted
-            return redirect(url_for('auth.login_page', next=request.url))
+            return jsonify({"msg": "Please log in first"}), 401
         return func(*args, **kwargs)
     return wrapper
 
@@ -97,7 +98,11 @@ def jwt_login(user: User) -> Dict[str, str]:
     """
     Issue JWT access and refresh tokens, store refresh JTI in DB, and return both tokens.
     """
-    # reset failure counters if present
+    # 🔒 Block inactive accounts (works for local + OAuth + anything else)
+    if getattr(user, "is_blocked", False) or getattr(user, "is_deactivated", False):
+        # Raise (don’t return) so callers must handle it explicitly
+        raise PermissionError("Account is inactive")
+
     if user.local_auth:
         user.local_auth.failed_logins = 0
         user.local_auth.last_login_at = utcnow()
@@ -178,31 +183,35 @@ def login_local(email: str, password: str) -> tuple[dict, str]:
 
 def login_oauth(provider: str, provider_id: str, profile_info: dict) -> Dict[str, str]:
     """
-    Handle OAuth sign‑in/up. Finds or creates the OAuthAccount + User, then issues tokens.
-    profile_info should contain at least 'email' and optionally 'name'.
+    Handle OAuth sign-in/up. Finds or creates the OAuthAccount + User, then issues tokens.
+    profile_info must contain at least 'email'; may include 'name'.
     """
-    oauth = OAuthAccount.query.filter_by(
-        provider=provider, provider_id=provider_id
-    ).first()
-
+    # 1) If we've seen this exact account before → use that user
+    oauth = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
     if oauth:
         user = oauth.user
-    else:
-        # create new user
-        email = profile_info.get("email")
-        name = profile_info.get("name")
-        username = generate_username_from_email(email)
-        user = User(email=email, username=username, name=name)
-        db.session.add(user)
-        db.session.commit()
+        return jwt_login(user)
 
-        oauth = OAuthAccount(
-            user_id=user.id,
-            provider=provider,
-            provider_id=provider_id
-        )
-        db.session.add(oauth)
+    email = (profile_info.get("email") or "").strip().lower()
+    name  = profile_info.get("name")
+
+    # 2) If a user already exists with this email → link this provider to that user
+    user = User.query.filter_by(email=email).first()
+    if user:
+        oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
+        db.session.add(oa)
         db.session.commit()
+        return jwt_login(user)
+
+    # 3) Otherwise create a new user and link the provider
+    username = generate_username_from_email(email)
+    user = User(email=email, username=username, name=name)
+    db.session.add(user)
+    db.session.flush()  # get user.id
+
+    oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
+    db.session.add(oa)
+    db.session.commit()
 
     return jwt_login(user)
 
@@ -301,3 +310,29 @@ def generate_username_from_email(email: str) -> str:
         suffix = str(i)
         candidate = f"{base[:15 - len(suffix)]}{suffix}"
     return candidate
+
+def verify_turnstile(token: str, remote_ip: str | None = None) -> tuple[bool, str | None]:
+    """
+    Validate a Cloudflare Turnstile token. Returns (ok, error_message_or_None).
+    If no secret configured, treat as pass (useful for dev).
+    """
+    if not token:
+        return False, "Missing captcha token"
+
+    secret = current_app.config.get('TURNSTILE_SECRET_KEY')
+    if not secret:
+        # In dev, you might intentionally skip
+        return True, None
+
+    try:
+        r = requests.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={"secret": secret, "response": token, "remoteip": remote_ip or ""},
+            timeout=6,
+        )
+        data = r.json()
+        if data.get("success"):
+            return True, None
+        return False, ", ".join(data.get("error-codes", []) or [])
+    except Exception as e:
+        return False, f"captcha-verify-failed: {e}"

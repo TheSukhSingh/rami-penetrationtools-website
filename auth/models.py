@@ -5,6 +5,8 @@ from hashlib import sha256
 from sqlalchemy import Table, Column, Integer, ForeignKey, String, UniqueConstraint, CheckConstraint, Boolean, DateTime, Index
 from sqlalchemy.orm import relationship
 from extensions import db, bcrypt
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy import exists, select, and_, or_, not_
 
 utcnow = lambda: datetime.now(timezone.utc)
 
@@ -55,7 +57,9 @@ class Role(db.Model, TimestampMixin):
 
     def __repr__(self):
         return f"<Role {self.name}>"
-
+    
+ADMIN_PREFIX = "admin_"
+MASTER_ROLE_NAMES = ("admin_owner",)  
 class User(TimestampMixin, db.Model):
     __tablename__ = 'users'
     __table_args__ = (
@@ -81,9 +85,12 @@ class User(TimestampMixin, db.Model):
     reset_tokens    = relationship('PasswordReset',   back_populates='user',                  cascade='all, delete-orphan')
     login_events    = relationship('LoginEvent',      back_populates='user',                  cascade='all, delete-orphan')
     refresh_tokens  = relationship('RefreshToken',    back_populates='user',                  cascade='all, delete-orphan')
-    roles           = relationship('Role',            back_populates='user', secondary=user_roles,  cascade='all')
+    roles           = relationship('Role',            back_populates='users', secondary=user_roles)
     scan_history    = relationship('ToolScanHistory', back_populates='user', lazy="dynamic")
     ip_logs = relationship('UserIPLog',back_populates='user',cascade='all, delete-orphan')
+    grants = relationship("UserScopeGrant", back_populates="user", cascade="all, delete-orphan", lazy="select")
+    denies = relationship("UserScopeDeny",  back_populates="user", cascade="all, delete-orphan", lazy="select")
+    role_audits = relationship("UserRoleAudit", back_populates="user", cascade="all, delete-orphan", lazy="select")
 
     @staticmethod
     def _validate_username(u: str):
@@ -112,6 +119,84 @@ class User(TimestampMixin, db.Model):
     @property
     def is_oauth(self) -> bool:
         return bool(self.oauth_accounts)
+    
+    @hybrid_property
+    def is_master_user(self) -> bool:
+        return self.is_protected or any(r.name in MASTER_ROLE_NAMES for r in self.roles)
+
+
+    @hybrid_property
+    def is_admin_user(self) -> bool:
+        # any admin_* role, but NOT a master
+        return any((r.name or "").startswith(ADMIN_PREFIX) for r in self.roles) and not self.is_master_user
+
+    @is_master_user.expression
+    def is_master_user(cls):
+        r = Role.__table__.alias("r_master")
+        return or_(
+            cls.is_protected,
+            exists(
+                select(1).where(
+                    and_(
+                        user_roles.c.user_id == cls.id,
+                        user_roles.c.role_id == r.c.id,
+                        r.c.name.in_(MASTER_ROLE_NAMES),
+                    )
+                )
+            ),
+        )
+
+    @is_admin_user.expression
+    def is_admin_user(cls):
+        r = Role.__table__.alias("r_admin")
+        return and_(
+            exists(
+                select(1).where(
+                    and_(
+                        user_roles.c.user_id == cls.id,
+                        user_roles.c.role_id == r.c.id,
+                        # see note #2:
+                        r.c.name.like("admin\\_%", escape="\\"),
+                    )
+                )
+            ),
+            not_(cls.is_master_user),
+        )
+    
+    def role_scopes(self) -> set[str]:
+        s = set()
+        for r in self.roles:
+            if r.scopes:
+                s.update(r.scopes)   # Role.scopes is a JSON/ARRAY column
+        return s
+
+    def extra_granted_scopes(self) -> set[str]:
+        return {g.scope for g in self.grants}
+
+    def extra_revoked_scopes(self) -> set[str]:
+        return {d.scope for d in self.denies}
+
+    def effective_scopes(self) -> set[str]:
+        return self.role_scopes().union(self.extra_granted_scopes()) - self.extra_revoked_scopes()
+
+    def has_scope(self, scope: str) -> bool:
+        return scope in self.effective_scopes()
+    
+class UserRoleAudit(db.Model, TimestampMixin):
+    __tablename__ = "user_role_audits"
+    __table_args__ = (Index('ix_user_role_audit_user', 'user_id', 'created_at'),)
+    id        = db.Column(db.Integer, primary_key=True)
+    user_id   = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    role_id   = db.Column(db.Integer, db.ForeignKey('roles.id', ondelete='CASCADE'), nullable=False)
+    action    = db.Column(db.Enum('assign', 'remove', name='role_action_enum'), nullable=False)
+    acted_by  = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    note      = db.Column(db.String(255))
+
+    user      = relationship('User', foreign_keys=[user_id], back_populates='role_audits')
+    role      = relationship('Role')
+    actor     = relationship('User', foreign_keys=[acted_by])
+
+    def __repr__(self): return f"<RoleAudit user={self.user_id} role={self.role_id} {self.action}>"
 
 # --- User activity/IP history -------------------------------------------------
 
@@ -139,6 +224,42 @@ class UserIPLog(db.Model):
 
     def __repr__(self):
         return f"<UserIPLog user={self.user_id} ip={self.ip} at={self.created_at:%Y-%m-%d %H:%M:%S}>"
+
+class UserScopeGrant(db.Model, TimestampMixin):
+    __tablename__ = "user_scope_grants"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'scope', name='uq_user_scope_grant'),
+        Index('ix_user_scope_grant_user', 'user_id'),
+        Index('ix_user_scope_grant_scope', 'scope'),
+    )
+    id       = db.Column(db.Integer, primary_key=True)
+    user_id  = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    scope    = db.Column(db.String(100), nullable=False)
+    acted_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    note     = db.Column(db.String(255))
+
+    user         = relationship('User', foreign_keys=[user_id], back_populates='grants')
+    acted_by_user= relationship('User', foreign_keys=[acted_by])
+    def __repr__(self): return f"<Grant user={self.user_id} {self.scope}>"
+
+class UserScopeDeny(db.Model, TimestampMixin):
+    __tablename__ = "user_scope_denies"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'scope', name='uq_user_scope_deny'),
+        Index('ix_user_scope_deny_user', 'user_id'),
+        Index('ix_user_scope_deny_scope', 'scope'),
+    )
+    id       = db.Column(db.Integer, primary_key=True)
+    user_id  = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    scope    = db.Column(db.String(100), nullable=False)
+    acted_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    note     = db.Column(db.String(255))
+
+    user         = relationship('User', foreign_keys=[user_id], back_populates='denies')
+    acted_by_user= relationship('User', foreign_keys=[acted_by])
+    def __repr__(self): return f"<Deny user={self.user_id} {self.scope}>"
+
+
 
 class LocalAuth(db.Model):
     __tablename__ = 'local_auth'
@@ -189,6 +310,9 @@ class LocalAuth(db.Model):
 
 class OAuthAccount(db.Model):
     __tablename__ = 'oauth_accounts'
+    __table_args__ = (
+        UniqueConstraint('provider', 'provider_id', name='uq_oauth_provider_id'),
+    )
     id            = db.Column(db.Integer, primary_key=True)
     user_id       = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     provider      = db.Column(db.Enum('google','github', name='provider_enum'), nullable=False)

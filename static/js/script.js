@@ -252,3 +252,4 @@ function handleScroll() {
     navbar.classList.remove("scrolled");
   }
 }
+

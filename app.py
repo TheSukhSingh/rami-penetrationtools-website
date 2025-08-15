@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from dotenv import load_dotenv
 from datetime import timedelta
 from flask_jwt_extended import JWTManager
@@ -9,8 +9,8 @@ from auth import auth_bp
 from tools import tools_bp
 from admin import admin_bp
 from admin.api import admin_api_bp
-
-from extensions import db, bcrypt, migrate
+import secrets
+from extensions import db, bcrypt, migrate, limiter
 
 from auth.utils import login_required, init_mail, init_jwt_manager
 
@@ -39,8 +39,13 @@ def create_app():
         MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
         MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
         MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
-        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=1440),
+        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=5),
         JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7),
+
+        TURNSTILE_SITE_KEY=os.getenv('TURNSTILE_SITE_KEY', ''),    
+        TURNSTILE_SECRET_KEY=os.getenv('TURNSTILE_SECRET_KEY', ''),
+
+        RATELIMIT_HEADERS_ENABLED=True,
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
@@ -63,7 +68,7 @@ def create_app():
     csrf.exempt(auth_bp)
     csrf.exempt(tools_bp)
 
-
+    limiter.init_app(app)
     os.makedirs(app.instance_path, exist_ok=True)
     jwt = JWTManager(app)
     
@@ -81,7 +86,33 @@ def create_app():
 
     init_jwt_manager(app, jwt)
 
+    # ── Security headers ─────────────────────────────────────────
+    @app.after_request
+    def set_security_headers(resp):
+        # Clickjacking & MIME sniffing
+        resp.headers['X-Frame-Options'] = 'DENY'
+        resp.headers['X-Content-Type-Options'] = 'nosniff'
+        resp.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        resp.headers['Permissions-Policy'] = "camera=(), microphone=(), geolocation=()"
 
+        # HSTS only when HTTPS (or if you set FORCE_HTTPS=True in config)
+        if request.is_secure or app.config.get('FORCE_HTTPS'):
+            resp.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
+
+        # CSP (safe defaults for current setup)
+        # Note: allows inline handlers for now ('unsafe-inline'); tighten later.
+        resp.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://accounts.google.com https://challenges.cloudflare.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "img-src 'self' data:; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "frame-src https://accounts.google.com https://challenges.cloudflare.com;"
+        )
+        return resp
+    
     @app.route('/')
     def index():
         return render_template('landing_page.html')

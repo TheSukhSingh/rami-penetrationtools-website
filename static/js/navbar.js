@@ -33,12 +33,39 @@ function scrollToSection(sectionId) {
   const el = document.getElementById(sectionId);
   if (el) el.scrollIntoView({ behavior: "smooth" });
 }
+let turnstileWidgetId = null;
+
+function getTurnstileSiteKey() {
+  const meta = document.querySelector('meta[name="turnstile-site-key"]');
+  return meta ? meta.content : "";
+}
+
+function ensureCaptchaRendered() {
+  const container = document.getElementById("captchaContainer");
+  if (!container) return;
+  container.innerHTML = ""; // re-render cleanly when mode changes
+
+  // Only show for signup/forgot
+  if (currentAuthMode === "signup" || currentAuthMode === "forgot") {
+    const sitekey = getTurnstileSiteKey();
+    if (!sitekey || !window.turnstile) return;
+    turnstileWidgetId = turnstile.render("#captchaContainer", {
+      sitekey,
+      theme: "auto",            // or "light"/"dark"
+      action: currentAuthMode,  // useful for server analytics
+      appearance: "always"
+    });
+  } else {
+    turnstileWidgetId = null;
+  }
+}
 
 // Auth functions
 function showAuth(mode) {
   currentAuthMode = mode;
   updateAuthModal();
   document.getElementById("authModal").classList.add("active");
+  initOAuth(); 
 }
 
 function closeAuth() {
@@ -168,6 +195,7 @@ function updateAuthModal() {
             </div>
         `;
   }
+  ensureCaptchaRendered();
 }
 
 function updateAuthMode(mode) {
@@ -175,94 +203,423 @@ function updateAuthMode(mode) {
   updateAuthModal();
 }
 
+// async function handleAuthSubmit(event) {
+//   event.preventDefault();
+
+//   const submitButton = document.getElementById("authSubmit");
+//   const buttonText = document.getElementById("authButtonText");
+//   const buttonIcon = document.getElementById("authButtonIcon");
+//   const spinner = document.getElementById("authSpinner");
+
+//   buttonText.style.display = "none";
+//   buttonIcon.style.display = "none";
+//   spinner.style.display = "block";
+//   submitButton.disabled = true;
+
+//   const urlMap = {
+//     login: "/auth/signin",
+//     signup: "/auth/signup",
+//     forgot: "/auth/forgot-password",
+//   };
+//   const url = urlMap[currentAuthMode];
+
+//   const form = document.getElementById("authForm");
+//   const formData = new FormData(form);
+//   const payload = {};
+//   formData.forEach((v, k) => {
+//     payload[k] = v;
+//   });
+
+//   if (currentAuthMode === "signup" || currentAuthMode === "forgot") {
+//     const token = turnstileWidgetId ? turnstile.getResponse(turnstileWidgetId) : null;
+//     payload.turnstile_token = token;
+//   }
+
+//   try {
+//     const res = await fetch(url, {
+//       method: currentAuthMode === "login" ? "POST" : "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify(payload),
+//       // body: formData
+//     });
+//     const data = await res.json();
+//     if (!res.ok) throw new Error(data.msg || data.message);
+
+//     if (currentAuthMode === "login") {
+//       // localStorage.setItem('access_token', data.access_token);
+//       // localStorage.setItem('refresh_token', data.refresh_token);
+//       // // fetch user profile
+//       // const meRes = await fetch('/auth/me', {
+//       //   headers: { 'Authorization': `Bearer ${data.access_token}` }
+//       // });
+//       // const me = await meRes.json();
+//       // localStorage.setItem('user', JSON.stringify(me));
+//       // showUser(me);
+
+//       // the cookies are now set by the server,
+//       // so just hit /auth/me with credentials to get the user profile:
+//       const meRes = await fetch("/auth/me", {
+//         method: "GET",
+//         credentials: "include",
+//         headers: { "X-CSRF-TOKEN": getCookie("csrf_access_token") },
+//       });
+//       if (!meRes.ok) throw new Error("Failed to load user");
+//       const me = await meRes.json();
+//       showUser(me);
+//     }
+
+//     closeAuth();
+//     // alert(currentAuthMode === 'signup'
+//     //   ? 'Account created! Check your email to confirm.'
+//     //   : 'Success!'
+//     // );
+//   } catch (err) {
+//     alert(err.message);
+//   }
+
+//   // Simulate API call
+//   setTimeout(() => {
+//     // Reset button state
+//     buttonText.style.display = "inline";
+//     buttonIcon.style.display = "inline";
+//     spinner.style.display = "none";
+//     submitButton.disabled = false;
+
+//     // Close modal
+//     closeAuth();
+//   }, 2000);
+// }
+
+// --- Simple inline error helpers ---
+
+function setFieldError(inputId, message) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  let err = input.closest(".form-group").querySelector(".field-error");
+  if (!err) {
+    err = document.createElement("div");
+    err.className = "field-error";
+    err.style.color = "#ff6b6b";
+    err.style.fontSize = "12px";
+    err.style.marginTop = "6px";
+    input.closest(".form-group").appendChild(err);
+  }
+  err.textContent = message || "";
+}
+
+function clearFieldError(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const err = input.closest(".form-group").querySelector(".field-error");
+  if (err) err.textContent = "";
+}
+
+function isEmail(str) {
+  // light but solid email check
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str || "");
+}
+
+const RESERVED_USERNAMES = new Set([
+  "admin","administrator","root","system","support",
+  "null","none","user","username","test","info","sys"
+]);
+
+function validateUsername(u) {
+  const v = (u || "").trim();
+  if (v.length < 4 || v.length > 15) return "Username must be 4–15 characters.";
+  if (!/^[A-Za-z0-9_]+$/.test(v)) return "Only letters, digits, and underscore.";
+  if (RESERVED_USERNAMES.has(v.toLowerCase())) return "This username is reserved.";
+  return null;
+}
+
+function validatePassword(pw, { name, username, email }) {
+  const p = (pw || "");
+  if (p.length < 8) return "Password must be at least 8 characters.";
+  if (!/[A-Z]/.test(p)) return "Include at least one uppercase letter.";
+  if (!/\d/.test(p)) return "Include at least one digit.";
+  if (!/[^A-Za-z0-9]/.test(p)) return "Include at least one special character.";
+  if (/(.)\1\1/.test(p)) return "No character may repeat three times in a row.";
+
+  const lower = p.toLowerCase();
+  const checks = [
+    (name || "").toLowerCase(),
+    (username || "").toLowerCase(),
+    ((email || "").split("@")[0] || "").toLowerCase(),
+  ].filter(s => s && s.length >= 3);
+  if (checks.some(s => lower.includes(s))) {
+    return "Password must not contain your name/username/email.";
+  }
+
+  // tiny client-side blacklist (server still enforces the full COMMON_PASSWORDS)
+  const weak = ["password","qwerty","letmein","welcome","12345678","hunter2"];
+  if (weak.includes(lower)) return "Choose a stronger password.";
+
+  return null;
+}
+
+// Validate current modal mode; returns {ok, payloadErrors}
+function validateAuthForm(mode) {
+  let ok = true;
+
+  // clear previous
+  ["email","username","password","confirmPassword","name"].forEach(clearFieldError);
+
+  const email = (document.getElementById("email")?.value || "").trim();
+  const password = (document.getElementById("password")?.value || "");
+  const confirmPassword = (document.getElementById("confirmPassword")?.value || "");
+  const username = (document.getElementById("username")?.value || "").trim();
+  const name = (document.getElementById("name")?.value || "").trim();
+
+  if (mode === "login") {
+    if (!isEmail(email)) { setFieldError("email","Enter a valid email."); ok = false; }
+    if (!password)      { setFieldError("password","Password is required."); ok = false; }
+  }
+
+  if (mode === "forgot") {
+    if (!isEmail(email)) { setFieldError("email","Enter a valid email."); ok = false; }
+  }
+
+  if (mode === "signup") {
+    if (!isEmail(email)) { setFieldError("email","Enter a valid email."); ok = false; }
+    const uErr = validateUsername(username);
+    if (uErr) { setFieldError("username", uErr); ok = false; }
+
+    const pErr = validatePassword(password, { name, username, email });
+    if (pErr) { setFieldError("password", pErr); ok = false; }
+
+    if (!confirmPassword) {
+      setFieldError("confirmPassword", "Confirm your password.");
+      ok = false;
+    } else if (password !== confirmPassword) {
+      setFieldError("confirmPassword", "Passwords do not match.");
+      ok = false;
+    }
+  }
+
+  return { ok };
+}
+
+function csrfFetch(url, options = {}) {
+  const opts = { credentials: "include", ...options };
+  const method = (opts.method || "GET").toUpperCase();
+
+  const headers = new Headers(opts.headers || {});
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    const csrf = getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
+    if (csrf) headers.set("X-CSRF-TOKEN", csrf);
+  }
+  opts.headers = headers;
+  return fetch(url, opts);
+}
+
 async function handleAuthSubmit(event) {
   event.preventDefault();
-
   const submitButton = document.getElementById("authSubmit");
-  const buttonText = document.getElementById("authButtonText");
-  const buttonIcon = document.getElementById("authButtonIcon");
-  const spinner = document.getElementById("authSpinner");
-
+  const buttonText   = document.getElementById("authButtonText");
+  const buttonIcon   = document.getElementById("authButtonIcon");
+  const spinner      = document.getElementById("authSpinner");
+  
+  const { ok } = validateAuthForm(currentAuthMode);
+  if (!ok) {
+    // restore button state and stop; user will see inline messages
+    buttonText.style.display = "inline";
+    buttonIcon.style.display = "inline";
+    spinner.style.display = "none";
+    submitButton.disabled = false;
+    return;
+  }
+  // UI: loading state
   buttonText.style.display = "none";
   buttonIcon.style.display = "none";
   spinner.style.display = "block";
   submitButton.disabled = true;
 
   const urlMap = {
-    login: "/auth/signin",
+    login:  "/auth/signin",
     signup: "/auth/signup",
     forgot: "/auth/forgot-password",
   };
   const url = urlMap[currentAuthMode];
-  const form = document.getElementById("authForm");
+
+  const form     = document.getElementById("authForm");
   const formData = new FormData(form);
-  const payload = {};
-  formData.forEach((v, k) => {
-    payload[k] = v;
-  });
+  const payload  = {};
+  formData.forEach((v, k) => { payload[k] = v; });
+
+  // Attach Turnstile token for signup/forgot
+  if (currentAuthMode === "signup" || currentAuthMode === "forgot") {
+    const token = (typeof turnstile !== "undefined" && turnstileWidgetId)
+      ? turnstile.getResponse(turnstileWidgetId)
+      : null;
+
+    if (!token) {
+      alert("Please complete the captcha.");
+      // restore UI now and bail
+      buttonText.style.display = "inline";
+      buttonIcon.style.display = "inline";
+      spinner.style.display = "none";
+      submitButton.disabled = false;
+      return;
+    }
+    payload.turnstile_token = token;
+  }
 
   try {
     const res = await fetch(url, {
-      method: currentAuthMode === "login" ? "POST" : "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",                    // <-- important for cookies
       body: JSON.stringify(payload),
-      // body: formData
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.msg || data.message);
+
+    // Try to parse JSON even on non-2xx
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.msg || data.message || "Request failed");
+    }
 
     if (currentAuthMode === "login") {
-      // localStorage.setItem('access_token', data.access_token);
-      // localStorage.setItem('refresh_token', data.refresh_token);
-      // // fetch user profile
-      // const meRes = await fetch('/auth/me', {
-      //   headers: { 'Authorization': `Bearer ${data.access_token}` }
-      // });
-      // const me = await meRes.json();
-      // localStorage.setItem('user', JSON.stringify(me));
-      // showUser(me);
-
-      // the cookies are now set by the server,
-      // so just hit /auth/me with credentials to get the user profile:
+      // cookies set by server; just load the user
       const meRes = await fetch("/auth/me", {
         method: "GET",
         credentials: "include",
-        headers: { "X-CSRF-TOKEN": getCookie("csrf_access_token") },
+        // CSRF not required for GET, but harmless if present:
+        headers: { "X-CSRF-TOKEN": getCookie("csrf_access_token") || "" },
       });
       if (!meRes.ok) throw new Error("Failed to load user");
       const me = await meRes.json();
       showUser(me);
+      closeAuth();
+    } else if (currentAuthMode === "signup") {
+      // If your /auth/signup also logs in (sets cookies), do the same as login:
+      const meRes = await fetch("/auth/me", {
+        method: "GET",
+        credentials: "include",
+        headers: { "X-CSRF-TOKEN": getCookie("csrf_access_token") || "" },
+      });
+      if (meRes.ok) {
+        const me = await meRes.json();
+        showUser(me);
+        closeAuth();
+      } else {
+        // Otherwise, keep modal or show success message:
+        alert("Account created! Check your email to confirm.");
+        closeAuth();
+      }
+    } else if (currentAuthMode === "forgot") {
+      // Generic response to avoid user enumeration — show friendly toast
+      alert(data.message || "If that email is registered, you'll receive a reset link.");
+      closeAuth();
     }
 
-    closeAuth();
-    // alert(currentAuthMode === 'signup'
-    //   ? 'Account created! Check your email to confirm.'
-    //   : 'Success!'
-    // );
   } catch (err) {
-    alert(err.message);
-  }
-
-  // Simulate API call
-  setTimeout(() => {
-    // Reset button state
+    alert(err.message || "Something went wrong");
+  } finally {
+    // UI: restore button state
     buttonText.style.display = "inline";
     buttonIcon.style.display = "inline";
     spinner.style.display = "none";
     submitButton.disabled = false;
 
-    // Close modal
-    closeAuth();
-  }, 2000);
+    // Reset captcha token (one-time use)
+    if (typeof turnstile !== "undefined" && turnstileWidgetId) {
+      try { turnstile.reset(turnstileWidgetId); } catch (_) {}
+    }
+  }
 }
-// auth
-// function initAuth() {
-//   const token = localStorage.getItem("access_token");
-//   const user = localStorage.getItem("user");
-//   if (token && user) {
-//     showUser(JSON.parse(user));
-//   }
-// }
+
+async function initOAuth() {
+  try {
+    // Ask backend for provider start URLs (+ client id), include ?next= so we return here post-login
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    const res = await fetch(`/auth/providers?next=${next}`, { method: 'GET', credentials: 'include' });
+    const providers = await res.json();
+
+    renderOAuthButtons(providers);
+    initGoogleOneTap(providers.google_client_id);   // safe to call if GIS hasn’t loaded yet; we’ll guard below
+  } catch (e) {
+    console.error('OAuth init failed', e);
+  }
+}
+
+function renderOAuthButtons(providers) {
+  const box = document.getElementById('oauthButtons');
+  if (!box) return;
+
+  box.innerHTML = `
+    <button id="googleOAuthBtn" class="glass-button full-width" style="margin-bottom: 8px">
+      <span>Continue with Google</span>
+    </button>
+    <button id="githubOAuthBtn" class="glass-button full-width">
+      <span>Continue with GitHub</span>
+    </button>
+  `;
+
+  document.getElementById('googleOAuthBtn').onclick = () => {
+    // full-page redirect to begin Google OAuth code flow
+    window.location.href = providers.google;
+  };
+  document.getElementById('githubOAuthBtn').onclick = () => {
+    // full-page redirect to begin GitHub OAuth code flow
+    window.location.href = providers.github;
+  };
+}
+
+// --- GOOGLE ONE TAP ---
+
+function initGoogleOneTap(clientId) {
+  // only when not already logged in (we’ll rely on your initAuth to set UI if logged in)
+  if (!clientId) return;
+  if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+    // GIS script might not be loaded yet; retry shortly
+    setTimeout(() => initGoogleOneTap(clientId), 300);
+    return;
+  }
+
+  // Initialize One Tap
+  window.google.accounts.id.initialize({
+    client_id: clientId,
+    callback: handleOneTapCredential,
+    auto_select: false,       // show chooser if multiple accounts
+    context: "signin",
+    ux_mode: "popup",         // stays on page; you can try "redirect" too
+    itp_support: true
+  });
+
+  // Show the One Tap prompt (non-blocking)
+  window.google.accounts.id.prompt();
+}
+
+async function handleOneTapCredential(response) {
+  try {
+    // response.credential is the Google ID token
+    const r = await fetch('/auth/token-signin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',                     // not required to set cookie, but fine
+      body: JSON.stringify({ credential: response.credential })
+    });
+
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.msg || 'Google sign-in failed');
+    }
+
+    // Your server just set the cookies; load the user and update UI
+    const meRes = await fetch('/auth/me', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': getCookie('csrf_access_token') }
+    });
+    if (meRes.ok) {
+      const me = await meRes.json();
+      showUser(me);
+      closeAuth();
+    }
+  } catch (err) {
+    console.warn('One Tap login error:', err.message);
+  }
+}
 
 async function initAuth() {
   try {
@@ -281,7 +638,11 @@ async function initAuth() {
 
 document.addEventListener("DOMContentLoaded", () => {
   initAuth();
+  initOAuth();
   document
     .getElementById("authForm")
     .addEventListener("submit", handleAuthSubmit);
 });
+
+
+

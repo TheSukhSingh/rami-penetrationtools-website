@@ -2,14 +2,7 @@
   <div class="nav-container">
     <a href="{{ url_for('index') }}" class="nav-brand">
       <div class="nav-logo glass glow-cyan">
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="4,17 10,11 4,5"></polyline>
           <line x1="12" y1="19" x2="20" y2="19"></line>
         </svg>
@@ -19,31 +12,15 @@
 
     <div class="nav-menu" id="navMenu">
       <a href="{{ url_for('tools.tools_index') }}" class="nav-link">
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polygon points="13,2 3,14 12,14 11,22 21,10 12,10 13,2"></polygon>
         </svg>
         <span>Tools</span>
       </a>
       <a href="#" onclick="showPage('blog')" class="nav-link">
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-          <path
-            d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
-          ></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
         </svg>
         <span>Blog</span>
       </a>
@@ -74,14 +51,7 @@
   <div class="auth-panel glass card-hover">
     <div class="auth-header">
       <div class="auth-icon glass glow-cyan">
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="4,17 10,11 4,5"></polyline>
           <line x1="12" y1="19" x2="20" y2="19"></line>
         </svg>
@@ -93,75 +63,36 @@
     <form id="authForm" class="auth-form">
       <div id="nameField" class="form-group" style="display: none">
         <label>Hunter Name</label>
-        <input
-          type="text"
-          id="name" name="name"
-          placeholder="Enter your hunter name"
-          class="form-input glass"
-        />
+        <input type="text" id="name" name="name" placeholder="Enter your hunter name" class="form-input glass" />
       </div>
 
       <div id="usernameField" class="form-group" style="display: none">
         <label>Hunter Handle</label>
-        <input
-          type="text"
-          id="username" name="username"
-          placeholder="Enter your username"
-          class="form-input glass"
-        />
+        <input type="text" id="username" name="username" placeholder="Enter your username" class="form-input glass" />
       </div>
 
       <div class="form-group">
         <label>Email Address</label>
-        <input
-          type="email"
-          id="email" name="email"
-          placeholder="hunter@terminal.com"
-          class="form-input glass"
-          required
-        />
+        <input type="email" id="email" name="email" placeholder="hunter@terminal.com" class="form-input glass"
+          required />
       </div>
 
       <div id="passwordField" class="form-group">
         <label>Password</label>
         <div class="password-input">
-          <input
-            type="password"
-            id="password" name="password"
-            placeholder="Enter your password"
-            class="form-input glass"
-            required
-          />
-          <button
-            type="button"
-            class="password-toggle"
-            onclick="togglePassword('password')"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              class="eye-open"
-            >
+          <input type="password" id="password" name="password" placeholder="Enter your password"
+            class="form-input glass" required />
+          <button type="button" class="password-toggle" onclick="togglePassword('password')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              class="eye-open">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
               <circle cx="12" cy="12" r="3"></circle>
             </svg>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              class="eye-closed"
-              style="display: none"
-            >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              class="eye-closed" style="display: none">
               <path
-                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
-              ></path>
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24">
+              </path>
               <line x1="1" y1="1" x2="23" y2="23"></line>
             </svg>
           </button>
@@ -171,42 +102,19 @@
       <div id="confirmPasswordField" class="form-group" style="display: none">
         <label>Confirm Password</label>
         <div class="password-input">
-          <input
-            type="password"
-            id="confirmPassword" name="confirm_password"
-            placeholder="Confirm your password"
-            class="form-input glass"
-          />
-          <button
-            type="button"
-            class="password-toggle"
-            onclick="togglePassword('confirmPassword')"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              class="eye-open"
-            >
+          <input type="password" id="confirmPassword" name="confirm_password" placeholder="Confirm your password"
+            class="form-input glass" />
+          <button type="button" class="password-toggle" onclick="togglePassword('confirmPassword')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              class="eye-open">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
               <circle cx="12" cy="12" r="3"></circle>
             </svg>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              class="eye-closed"
-              style="display: none"
-            >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              class="eye-closed" style="display: none">
               <path
-                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
-              ></path>
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24">
+              </path>
               <line x1="1" y1="1" x2="23" y2="23"></line>
             </svg>
           </button>
@@ -215,29 +123,21 @@
 
       <button type="submit" class="cyber-button full-width" id="authSubmit">
         <span id="authButtonText">Access Terminal</span>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          id="authButtonIcon"
-        >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          id="authButtonIcon">
           <polyline points="9,18 15,12 9,6"></polyline>
         </svg>
-        <div
-          class="loading-spinner"
-          id="authSpinner"
-          style="display: none"
-        ></div>
+        <div class="loading-spinner" id="authSpinner" style="display: none"></div>
       </button>
+      <div id="captchaContainer" style="margin-top:12px;"></div>
     </form>
     <div class="auth-footer">
-  <div id="authLinks">
-    <!-- Auth links will be populated by JavaScript -->
-  </div>
-  <!-- <div class="security-notice">
+      <div id="oauthButtons" class="oauth-buttons"></div>
+
+      <div id="authLinks">
+        <!-- Auth links will be populated by JavaScript -->
+      </div>
+      <!-- <div class="security-notice">
         <svg
           width="16"
           height="16"
@@ -253,7 +153,7 @@
         </svg>
         <span>256-bit encrypted connection</span>
       </div> -->
-</div>
+    </div>
 
 
   </div>
