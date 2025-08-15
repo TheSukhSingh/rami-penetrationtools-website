@@ -1,11 +1,4 @@
-
 - Fix confirm mail design (Mail received looks bad)
-
-
-
-
-
-
 
 TOOLS
 - FE Loading something when tool is run and until we receive the output
@@ -14,6 +7,7 @@ TOOLS
 - Launch button pressed multiple times without changing parameters is throwing errors
 - backend commands are being fixed rn, update frontend command with backend commands
 - use celery to run the processes in backend
+- Files are being saved in app.py's folder on server
 
 AUTH
 - user deactivated logic to be written in local_routes
@@ -25,12 +19,63 @@ AUTH
 NAVBAR
 - Dropdown from User needs design update (Also Dashboard option required)
 
-
 LANDING PAGE
 - hero section touching navbar in laptop screen
 
 
 
+
+
+
+Targets:
+
+15 Aug: (Authentication)
+    - Login with oauth wiring and fixing models and routes to save oauth details properly
+    - User Deactivation logic to be written in local_routes too
+    - MFA setup
+    - Frontend validations for credentials both on signup and register
+    - Refresh Token - auth/refresh-token and auth/refresh both endpoints are different, gotta fix this
+    - FE - Auth form design completion (pw label is half the width and stuff, fix that)
+    - Add csrf
+    - login.html posts to auth.login_page instead of auth/signin (check what's wrong here, not sure)
+    - oauth uses json tokens, local uses cookies, fix those (jwt cookies better for csrf protection)
+    - Add security headers (HSTS, CSP with nonces, X-Frame-Options, X-Content-Type-Options, Referrer-Policy). You can do this via a tiny middleware.
+    - Rate Limiting
+    - Add progressive backoff / temporary lock after N failed logins (and reset counters on success—you already reset in jwt_login).
+    - captcha for signup and forgot password
+    - HIBP k-ananymity check
+    - reset token revoke for admin panel
+    - access token - only 5 minutes
+    - is_blocked and is_deactivated check before logging in user
+    - model update for master user, whom no one can touch
+    - "If that email exists, we will send a link"
+
+16-17 Aug: (Admin Section)
+    - Auth Login page
+
+18 Aug: (User dashboard section)
+    - 
+
+19-22 Aug: (Stripe Integration)
+
+
+23-25 Aug: (Tools fix + Additional Tools + Other mini fixes)
+
+
+26-30 Aug: (Blog Section)
+
+
+31 Aug: ()
+
+
+
+
+
+
+
+
+16 Aug: ()
+    1. 
 
 
 
