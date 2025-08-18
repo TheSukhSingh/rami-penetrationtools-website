@@ -385,9 +385,9 @@ HIBP k-anonymity check on signup/reset. (No code yet.)
 Admin ability to revoke password-reset tokens on demand (beyond single-use/expiry).
 
 ## EXECUTION ORDER
-Enforce CSRF on auth routes (remove exemptions; wire header check in FE already present). 
+-D Enforce CSRF on auth routes (remove exemptions; wire header check in FE already present). 
 Re-enable and tune per-IP + per-user rate limits on /auth/signin//auth/signup//auth/forgot-password. 
-Refresh rotation + reuse detection: rotate refresh on /auth/refresh, store new JTI, revoke old; on reuse → revoke session. 
+-D Refresh rotation + reuse detection: rotate refresh on /auth/refresh, store new JTI, revoke old; on reuse → revoke session. 
 MFA (TOTP first), plus “remember device” + recovery codes, gate signin accordingly. 
 HIBP k-anonymity check on signup/reset (warn/block per policy).
 Admin UI/endpoint to list & revoke active password-reset tokens. 

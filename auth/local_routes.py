@@ -7,10 +7,10 @@ from extensions import limiter
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies
 from . import auth_bp
 from .models import (
-    db, User, Role,
+    RefreshToken, User, Role,
     PasswordReset,
 )
-
+from extensions import db
 from .utils import (
     generate_confirmation_token,
     confirm_token,
@@ -22,9 +22,11 @@ from .utils import (
     verify_turnstile
 )
 from flask_jwt_extended import (
-    create_access_token, jwt_required, get_jwt_identity
+    create_access_token, jwt_required, get_jwt_identity,
+    create_refresh_token, get_jwt, decode_token
 )
-
+from hashlib import sha256
+from datetime import datetime, timezone
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
 
@@ -134,12 +136,52 @@ def local_login():
 
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
-@limiter.limit("20 per hour", key_func=get_remote_address)
+# @limiter.limit("20 per hour", key_func=get_remote_address)
 def refresh():
-    new_at = create_access_token(identity=get_jwt_identity())
-    resp = jsonify({"msg":"Token refreshed"})
+    # new_at = create_access_token(identity=get_jwt_identity())
+    # resp = jsonify({"msg":"Token refreshed"})
+    # set_access_cookies(resp, new_at)
+    # return resp, 200
+    # 1) Identify current refresh token
+    jwt_data = get_jwt()
+    jti = jwt_data["jti"]
+    sub = jwt_data["sub"]  # the user id as string
+    hashed = sha256(jti.encode("utf-8")).hexdigest()
+
+    row = RefreshToken.query.filter_by(token_hash=hashed).first()
+
+    # 2) Reuse detection: if it's missing or already revoked → nuke all sessions
+    if not row or row.revoked:
+        try:
+            uid = int(sub)
+            RefreshToken.query.filter_by(user_id=uid, revoked=False).update({"revoked": True})
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return jsonify({"msg": "Token has been revoked"}), 401
+
+    # 3) Rotate: revoke old, mint new refresh + access, persist new refresh JTI
+    row.revoked = True
+
+    new_rt = create_refresh_token(identity=sub)
+    payload = decode_token(new_rt)  # to pull JTI and exp
+    new_hash = sha256(payload["jti"].encode("utf-8")).hexdigest()
+
+    db.session.add(RefreshToken(
+        user_id=int(sub),
+        token_hash=new_hash,
+        expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+    ))
+
+    new_at = create_access_token(identity=sub)
+    db.session.commit()
+
+    resp = jsonify({"msg": "Token refreshed"})
     set_access_cookies(resp, new_at)
+    set_refresh_cookies(resp, new_rt)
     return resp, 200
+
+
 
 # @auth_bp.route('/forgot-password', methods=['GET','POST'])
 # def forgot_password():

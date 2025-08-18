@@ -68,15 +68,25 @@ def init_jwt_manager(app, jwt):
     """
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
-        raw_jti  = jwt_payload.get("jti")
-        hashed_jti = sha256(raw_jti.encode('utf-8')).hexdigest()
-        token_type = jwt_payload.get("type")
-        # Only refresh tokens are stored/persisted
-        if token_type == "refresh":
-            token = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
-            return token is None or token.revoked
-        # Access tokens are stateless; treat as not revoked
+        raw_jti   = jwt_payload.get("jti")
+        token_type= jwt_payload.get("type")
+        if token_type != "refresh":
+            return False
+
+        hashed_jti = sha256(raw_jti.encode("utf-8")).hexdigest()
+        token = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
+
+        if token is None or token.revoked:
+            try:
+                uid = int(jwt_payload.get("sub"))
+                RefreshToken.query.filter_by(user_id=uid, revoked=False).update({"revoked": True})
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            return True
+
         return False
+
 
     @jwt.revoked_token_loader
     def revoked_token_callback(jwt_header, jwt_payload):
