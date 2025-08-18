@@ -65,7 +65,7 @@ function showAuth(mode) {
   currentAuthMode = mode;
   updateAuthModal();
   document.getElementById("authModal").classList.add("active");
-  initOAuth(); 
+  initOAuth();
 }
 
 function closeAuth() {
@@ -307,6 +307,10 @@ function setFieldError(inputId, message) {
   err.textContent = message || "";
 }
 
+function getMetaCSRF() {
+  return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+}
+
 function clearFieldError(inputId) {
   const input = document.getElementById(inputId);
   if (!input) return;
@@ -320,8 +324,8 @@ function isEmail(str) {
 }
 
 const RESERVED_USERNAMES = new Set([
-  "admin","administrator","root","system","support",
-  "null","none","user","username","test","info","sys"
+  "admin", "administrator", "root", "system", "support",
+  "null", "none", "user", "username", "test", "info", "sys"
 ]);
 
 function validateUsername(u) {
@@ -351,7 +355,7 @@ function validatePassword(pw, { name, username, email }) {
   }
 
   // tiny client-side blacklist (server still enforces the full COMMON_PASSWORDS)
-  const weak = ["password","qwerty","letmein","welcome","12345678","hunter2"];
+  const weak = ["password", "qwerty", "letmein", "welcome", "12345678", "hunter2"];
   if (weak.includes(lower)) return "Choose a stronger password.";
 
   return null;
@@ -362,7 +366,7 @@ function validateAuthForm(mode) {
   let ok = true;
 
   // clear previous
-  ["email","username","password","confirmPassword","name"].forEach(clearFieldError);
+  ["email", "username", "password", "confirmPassword", "name"].forEach(clearFieldError);
 
   const email = (document.getElementById("email")?.value || "").trim();
   const password = (document.getElementById("password")?.value || "");
@@ -371,16 +375,16 @@ function validateAuthForm(mode) {
   const name = (document.getElementById("name")?.value || "").trim();
 
   if (mode === "login") {
-    if (!isEmail(email)) { setFieldError("email","Enter a valid email."); ok = false; }
-    if (!password)      { setFieldError("password","Password is required."); ok = false; }
+    if (!isEmail(email)) { setFieldError("email", "Enter a valid email."); ok = false; }
+    if (!password) { setFieldError("password", "Password is required."); ok = false; }
   }
 
   if (mode === "forgot") {
-    if (!isEmail(email)) { setFieldError("email","Enter a valid email."); ok = false; }
+    if (!isEmail(email)) { setFieldError("email", "Enter a valid email."); ok = false; }
   }
 
   if (mode === "signup") {
-    if (!isEmail(email)) { setFieldError("email","Enter a valid email."); ok = false; }
+    if (!isEmail(email)) { setFieldError("email", "Enter a valid email."); ok = false; }
     const uErr = validateUsername(username);
     if (uErr) { setFieldError("username", uErr); ok = false; }
 
@@ -405,8 +409,16 @@ function csrfFetch(url, options = {}) {
 
   const headers = new Headers(opts.headers || {});
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-    const csrf = getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
-    if (csrf) headers.set("X-CSRF-TOKEN", csrf);
+    // const csrf = getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
+    // if (csrf) headers.set("X-CSRF-TOKEN", csrf);
+    const jwtCsrf = getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
+    const metaCsrf = getMetaCSRF();
+    // Flask-JWT-Extended expects X-CSRF-TOKEN, Flask-WTF accepts X-CSRFToken/X-CSRF-Token.
+    const token = jwtCsrf || metaCsrf;
+    if (token) {
+      headers.set("X-CSRF-TOKEN", token);   // for JWT double-submit
+      headers.set("X-CSRFToken", token);    // for Flask-WTF CSRFProtect
+    }
   }
   opts.headers = headers;
   return fetch(url, opts);
@@ -415,10 +427,10 @@ function csrfFetch(url, options = {}) {
 async function handleAuthSubmit(event) {
   event.preventDefault();
   const submitButton = document.getElementById("authSubmit");
-  const buttonText   = document.getElementById("authButtonText");
-  const buttonIcon   = document.getElementById("authButtonIcon");
-  const spinner      = document.getElementById("authSpinner");
-  
+  const buttonText = document.getElementById("authButtonText");
+  const buttonIcon = document.getElementById("authButtonIcon");
+  const spinner = document.getElementById("authSpinner");
+
   const { ok } = validateAuthForm(currentAuthMode);
   if (!ok) {
     // restore button state and stop; user will see inline messages
@@ -435,15 +447,15 @@ async function handleAuthSubmit(event) {
   submitButton.disabled = true;
 
   const urlMap = {
-    login:  "/auth/signin",
+    login: "/auth/signin",
     signup: "/auth/signup",
     forgot: "/auth/forgot-password",
   };
   const url = urlMap[currentAuthMode];
 
-  const form     = document.getElementById("authForm");
+  const form = document.getElementById("authForm");
   const formData = new FormData(form);
-  const payload  = {};
+  const payload = {};
   formData.forEach((v, k) => { payload[k] = v; });
 
   // Attach Turnstile token for signup/forgot
@@ -465,7 +477,7 @@ async function handleAuthSubmit(event) {
   }
 
   try {
-    const res = await fetch(url, {
+    const res = await csrfFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",                    // <-- important for cookies
@@ -523,7 +535,7 @@ async function handleAuthSubmit(event) {
 
     // Reset captcha token (one-time use)
     if (typeof turnstile !== "undefined" && turnstileWidgetId) {
-      try { turnstile.reset(turnstileWidgetId); } catch (_) {}
+      try { turnstile.reset(turnstileWidgetId); } catch (_) { }
     }
   }
 }
@@ -593,7 +605,7 @@ function initGoogleOneTap(clientId) {
 async function handleOneTapCredential(response) {
   try {
     // response.credential is the Google ID token
-    const r = await fetch('/auth/token-signin', {
+    const r = await csrfFetch('/auth/token-signin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',                     // not required to set cookie, but fine

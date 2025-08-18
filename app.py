@@ -55,6 +55,8 @@ def create_app():
         "JWT_COOKIE_CSRF_PROTECT": True,              # enable double-submit CSRF
         "JWT_ACCESS_COOKIE_PATH": "/",                # where access cookie is sent
         "JWT_REFRESH_COOKIE_PATH": "/auth/refresh",   # refresh endpoint path
+        "WTF_CSRF_TIME_LIMIT":3600,
+        "WTF_CSRF_METHODS":['POST','PUT','PATCH','DELETE'],
     })
     # app.config['UPLOAD_FOLDER'] = '/tmp/recon_uploads'
     app.config['UPLOAD_INPUT_FOLDER']  = '/tmp/recon_uploads/user_uploads'
@@ -65,7 +67,7 @@ def create_app():
 
 
     csrf = CSRFProtect(app)  
-    csrf.exempt(auth_bp)
+    # csrf.exempt(auth_bp)
     csrf.exempt(tools_bp)
 
     limiter.init_app(app)
