@@ -389,7 +389,7 @@ Admin ability to revoke password-reset tokens on demand (beyond single-use/expir
 Re-enable and tune per-IP + per-user rate limits on /auth/signin//auth/signup//auth/forgot-password. 
 -D Refresh rotation + reuse detection: rotate refresh on /auth/refresh, store new JTI, revoke old; on reuse → revoke session. 
 MFA (TOTP first), plus “remember device” + recovery codes, gate signin accordingly. 
-HIBP k-anonymity check on signup/reset (warn/block per policy).
+-D HIBP k-anonymity check on signup/reset (warn/block per policy).
 Admin UI/endpoint to list & revoke active password-reset tokens. 
 Finalize email templates (verify/reset): conditional blocks, plain-text parts, DNS (SPF/DKIM) checklist. 
 FE polish pass on auth modal (spacing/label widths, minor UX).

@@ -2,7 +2,8 @@ from functools import wraps
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Tuple
-from hashlib import sha256
+from hashlib import sha256, sha1
+import os, time
 
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from flask import current_app, flash, redirect, request, url_for, jsonify
@@ -285,6 +286,37 @@ def validate_and_set_password(user, password, confirm, commit=True):
     if lower_pw in COMMON_PASSWORDS:
         flash('That password is too common. Please choose a stronger one.', 'warning')
         return False
+    
+    # 7.1) HIBP (API-only): if API says it's breached (>0), block; if API fails, silently allow
+    cnt = hibp_count_for_password(password)
+    if cnt is not None and cnt > 0 and current_app.config.get("HIBP_BLOCK_ANY", True):
+        flash("This password has appeared in known data breaches. Please choose a different one.", "warning")
+        return False
+
+    # # 7.5) HIBP k-anonymity check (API-first, offline fallback)
+    # count = hibp_count_for_password(password)
+    # # Determine if the user is privileged (tighten policy)
+    # is_admin = False
+    # try:
+    #     # If roles relationship exists, treat any 'admin'/'superadmin' as privileged
+    #     is_admin = any(getattr(r, "name", "").lower() in {"admin", "superadmin"} for r in getattr(user, "roles", []))
+    # except Exception:
+    #     pass
+
+    # # Decide per policy
+    # admin_block_any   = bool(current_app.config.get("HIBP_ADMIN_BLOCK_ANY", True))
+    # block_threshold   = int(current_app.config.get("HIBP_BLOCK_COUNT", 100))
+
+    # if count is not None:
+    #     if (is_admin and admin_block_any and count >= 1) or (not is_admin and count >= block_threshold):
+    #         flash("This password has appeared in known data breaches. Please choose a different one.", "warning")
+    #         return False
+    #     # else: allow; optionally you could flash a soft warning if 1–99 for regular users
+    # else:
+    #     # Graceful degrade: API down & no offline mirror → proceed using local checks only
+    #     # (Optional) flash a low-priority note in debug environments
+    #     pass
+    
 
     # OK: hash & store it
     # try:
@@ -346,3 +378,122 @@ def verify_turnstile(token: str, remote_ip: str | None = None) -> tuple[bool, st
         return False, ", ".join(data.get("error-codes", []) or [])
     except Exception as e:
         return False, f"captcha-verify-failed: {e}"
+    
+    
+# ---------- HIBP k-anonymity helpers (API-first, offline fallback) ----------
+
+# In-memory prefix cache: { "ABCDE": (fetched_at_epoch, {"SUFFIX": count, ...}) }
+_HIBP_CACHE: dict[str, tuple[float, dict[str, int]]] = {}
+
+def _hibp_load_offline_prefix(prefix: str) -> dict[str, int] | None:
+    """Load suffixes for a prefix from a local per-prefix file 'PREFIX.txt'."""
+    base = current_app.config.get("HIBP_OFFLINE_PREFIX_DIR")
+    if not base:
+        return None
+    path = os.path.join(base, f"{prefix}.txt")
+    if not os.path.exists(path):
+        return None
+    result: dict[str, int] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or ":" not in line:
+                    continue
+                suf, cnt = line.split(":", 1)
+                if len(suf) == 35:
+                    try:
+                        result[suf.upper()] = int(cnt)
+                    except ValueError:
+                        pass
+        return result
+    except Exception:
+        return None
+
+def _hibp_fetch_prefix(prefix: str) -> dict[str, int] | None:
+    """Fetch suffix:count map for prefix from API or offline fallback."""
+    # 1) Cache hit?
+    ttl = int(current_app.config.get("HIBP_CACHE_TTL_SECONDS", 7*24*3600))
+    now = time.time()
+    cached = _HIBP_CACHE.get(prefix)
+    if cached and (now - cached[0]) < ttl:
+        return cached[1]
+
+    # 2) API call
+    ua = current_app.config.get("HIBP_USER_AGENT", "hibp-check/1.0")
+    try:
+        r = requests.get(
+            f"https://api.pwnedpasswords.com/range/{prefix}",
+            headers={"User-Agent": ua, "Add-Padding": "true"},
+            timeout=float(current_app.config.get("HIBP_API_TIMEOUT", 2.0)),
+        )
+        if r.status_code == 200:
+            mapping: dict[str, int] = {}
+            for line in r.text.splitlines():
+                if ":" not in line:
+                    continue
+                suf, cnt = line.split(":", 1)
+                if len(suf) == 35:
+                    try:
+                        mapping[suf.upper()] = int(cnt)
+                    except ValueError:
+                        pass
+            _HIBP_CACHE[prefix] = (now, mapping)
+            return mapping
+    except Exception:
+        pass  # fall through to offline
+
+    # 3) Offline fallback (optional)
+    offline = _hibp_load_offline_prefix(prefix)
+    if offline is not None:
+        _HIBP_CACHE[prefix] = (now, offline)
+        return offline
+
+    return None  # no data available
+
+# def hibp_count_for_password(password: str) -> int | None:
+#     """
+#     Returns breach count for the password, or 0 if not found.
+#     Returns None if the check could not be performed (API down, no offline).
+#     """
+#     if not current_app.config.get("HIBP_ENABLE", True):
+#         return 0
+#     # SHA-1 in uppercase hex
+#     h = sha1(password.encode("utf-8")).hexdigest().upper()
+#     prefix, suffix = h[:5], h[5:]
+#     mapping = _hibp_fetch_prefix(prefix)
+#     if mapping is None:
+#         return None
+#     return mapping.get(suffix, 0)
+
+def hibp_count_for_password(password: str) -> int | None:
+    """
+    API-only HIBP k-anonymity check.
+    Returns count (>=0) if the check worked; returns None if API failed.
+    """
+    if not current_app.config.get("HIBP_ENABLE", True):
+        return 0
+    try:
+        h = sha1(password.encode("utf-8")).hexdigest().upper()
+        prefix, suffix = h[:5], h[5:]
+        r = requests.get(
+            f"https://api.pwnedpasswords.com/range/{prefix}",
+            headers={"User-Agent": current_app.config.get("HIBP_USER_AGENT", "hibp-check/1.0"),
+                     "Add-Padding": "true"},
+            timeout=float(current_app.config.get("HIBP_API_TIMEOUT", 2.0)),
+        )
+        if r.status_code != 200:
+            return None
+        for line in r.text.splitlines():
+            if ":" not in line:
+                continue
+            suf, cnt = line.split(":", 1)
+            if suf.strip().upper() == suffix:
+                try:
+                    return int(cnt)
+                except ValueError:
+                    return None
+        return 0
+    except Exception:
+        return None
+
