@@ -585,7 +585,7 @@ async function handleAuthSubmit(event) {
     //   closeAuth();
     // }
 
-    const { ok, status, data } = await postJSON(url, payload);
+    const { ok, status, data } = await postJSON(url, payload, { refresh: false, silent: true });
     if (!ok) {
       throw new Error(data?.msg || data?.message || "Request failed");
     }
