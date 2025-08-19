@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from datetime import timedelta
 from flask_jwt_extended import JWTManager
 from flask_wtf import CSRFProtect
-
+from flask import current_app
 from auth import auth_bp
 from tools import tools_bp
 from admin import admin_bp
@@ -116,6 +116,13 @@ def create_app():
 
     init_jwt_manager(app, jwt)
 
+    @app.context_processor
+    def inject_turnstile():
+        # expose a plain variable TURNSTILE_SITE_KEY to all templates
+        return {
+            "TURNSTILE_SITE_KEY": current_app.config.get("TURNSTILE_SITE_KEY", "")
+        }
+    
     @app.before_request
     def _set_csp_nonce():
         # one fresh, unpredictable token per response
