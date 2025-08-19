@@ -1,5 +1,6 @@
 from io import BytesIO
-from sqlite3 import DataError, IntegrityError, OperationalError, ProgrammingError
+from sqlalchemy.exc import IntegrityError, DataError, OperationalError, ProgrammingError, SQLAlchemyError
+
 from flask import (
     render_template, redirect, send_file, session,
     url_for, request, jsonify, current_app, flash
@@ -75,15 +76,11 @@ def signup():
 
     print(7)
     # Create and persist new user
-    try:
-        user = User(username=username, email=email, name=name)
-    except:
-        print("bruhh")
 
-    try:
-        db.session.add(user)
-    except:
-        print("oh nooooooooooo")
+    user = User(username=username, email=email, name=name)
+
+    db.session.add(user)
+
     # db.session.flush()  
 
     try:
@@ -120,8 +117,11 @@ def signup():
         print(f"this is OperationalError -> {e}")
     except ProgrammingError as e:
         print(f"this is ProgrammingError -> {e}")
-    except:
-        print("error in flush")
+    except SQLAlchemyError as e:
+        print(f"this is sqlalchemy error -> {e}")
+
+    except Exception as e:
+        print(f"error in flush - {e}")
     print(8)
     return None
     role = Role.query.filter_by(name='user').first()
