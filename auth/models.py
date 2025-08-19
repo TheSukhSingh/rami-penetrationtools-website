@@ -89,9 +89,29 @@ class User(TimestampMixin, db.Model):
     roles           = relationship('Role',            back_populates='users', secondary=user_roles)
     scan_history    = relationship('ToolScanHistory', back_populates='user', lazy="dynamic")
     ip_logs = relationship('UserIPLog',back_populates='user',cascade='all, delete-orphan')
-    grants = relationship("UserScopeGrant", back_populates="user", cascade="all, delete-orphan", lazy="select")
-    denies = relationship("UserScopeDeny",  back_populates="user", cascade="all, delete-orphan", lazy="select")
-    role_audits = relationship("UserRoleAudit", back_populates="user", cascade="all, delete-orphan", lazy="select")
+    grants = relationship(
+        "UserScopeGrant",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="select",
+        foreign_keys="UserScopeGrant.user_id",
+    )
+
+    denies = relationship(
+        "UserScopeDeny",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="select",
+        foreign_keys="UserScopeDeny.user_id",
+    )
+
+    role_audits = relationship(
+        "UserRoleAudit",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="select",
+        foreign_keys="UserRoleAudit.user_id",
+    )
 
     @staticmethod
     def _validate_username(u: str):
