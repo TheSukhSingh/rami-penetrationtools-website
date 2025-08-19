@@ -316,7 +316,7 @@ def reset_password(token):
     db.session.commit()
     print(12)
     flash('Your password has been updated! Please log in.', 'success')
-    return redirect(url_for('auth.login_page'))
+    return redirect(url_for('index'))
 
 
 

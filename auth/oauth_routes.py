@@ -353,64 +353,64 @@ def logout():
 
 # @auth_bp.route('/github/callback')
 # def github_callback():
-    if request.args.get('state') != session.pop('oauth_state', None):
-        return "Invalid state", 400
+    # if request.args.get('state') != session.pop('oauth_state', None):
+    #     return "Invalid state", 400
 
-    code = request.args.get('code')
-    if not code:
-        return "Missing code", 400
+    # code = request.args.get('code')
+    # if not code:
+    #     return "Missing code", 400
 
-    token_resp = requests.post(
-        "https://github.com/login/oauth/access_token",
-        headers={"Accept": "application/json"},
-        data={
-            "client_id":     GITHUB_CLIENT_ID,
-            "client_secret": GITHUB_CLIENT_SECRET,
-            "code":          code,
-            "redirect_uri":  url_for('auth.github_callback', _external=True),
-        }
-    ).json()
+    # token_resp = requests.post(
+    #     "https://github.com/login/oauth/access_token",
+    #     headers={"Accept": "application/json"},
+    #     data={
+    #         "client_id":     GITHUB_CLIENT_ID,
+    #         "client_secret": GITHUB_CLIENT_SECRET,
+    #         "code":          code,
+    #         "redirect_uri":  url_for('auth.github_callback', _external=True),
+    #     }
+    # ).json()
 
-    access_token = token_resp.get("access_token")
-    if not access_token:
-        return jsonify(token_resp), 400
+    # access_token = token_resp.get("access_token")
+    # if not access_token:
+    #     return jsonify(token_resp), 400
 
-    headers = {
-      "Authorization": f"token {access_token}",
-      "Accept": "application/vnd.github.v3+json"
-    }
-    # 1) Get basic profile
-    user_resp = requests.get("https://api.github.com/user", headers=headers).json()
-    email = user_resp.get("email")
+    # headers = {
+    #   "Authorization": f"token {access_token}",
+    #   "Accept": "application/vnd.github.v3+json"
+    # }
+    # # 1) Get basic profile
+    # user_resp = requests.get("https://api.github.com/user", headers=headers).json()
+    # email = user_resp.get("email")
 
-    # 2) If no public email, fetch the list of emails
-    if not email:
-        emails = requests.get("https://api.github.com/user/emails", headers=headers)
-        if emails.ok:
-            for e in emails.json():
-                # pick the primary & verified one
-                if e.get("primary") and e.get("verified"):
-                    email = e["email"]
-                    break
-    if not email:
-        flash("Could not retrieve a verified email from GitHub.", "warning")
-        return redirect(url_for('auth.login_page'))
+    # # 2) If no public email, fetch the list of emails
+    # if not email:
+    #     emails = requests.get("https://api.github.com/user/emails", headers=headers)
+    #     if emails.ok:
+    #         for e in emails.json():
+    #             # pick the primary & verified one
+    #             if e.get("primary") and e.get("verified"):
+    #                 email = e["email"]
+    #                 break
+    # if not email:
+    #     flash("Could not retrieve a verified email from GitHub.", "warning")
+    #     return redirect(url_for('auth.login_page'))
 
-    existing = User.query.filter_by(email=email).first()
-    if existing and not any(o.provider=='github' for o in existing.oauth_accounts):
-        flash(
-            f"Already registered via {existing.oauth_accounts[0].provider.title()}.",
-            "warning"
-        )
-        return redirect(url_for('auth.login_page'))
+    # existing = User.query.filter_by(email=email).first()
+    # if existing and not any(o.provider=='github' for o in existing.oauth_accounts):
+    #     flash(
+    #         f"Already registered via {existing.oauth_accounts[0].provider.title()}.",
+    #         "warning"
+    #     )
+    #     return redirect(url_for('auth.login_page'))
 
-    tokens = login_oauth(
-        provider='github',
-        provider_id=user_resp["id"],
-        profile_info={
-            'email':         email,
-            'name':          user_resp.get("name") or user_resp.get("login"),
-        }
-    )
+    # tokens = login_oauth(
+    #     provider='github',
+    #     provider_id=user_resp["id"],
+    #     profile_info={
+    #         'email':         email,
+    #         'name':          user_resp.get("name") or user_resp.get("login"),
+    #     }
+    # )
 
-    return jsonify(tokens), 200
+    # return jsonify(tokens), 200
