@@ -75,8 +75,15 @@ def signup():
 
     print(7)
     # Create and persist new user
-    user = User(username=username, email=email, name=name)
-    db.session.add(user)
+    try:
+        user = User(username=username, email=email, name=name)
+    except:
+        print("bruhh")
+
+    try:
+        db.session.add(user)
+    except:
+        print("oh nooooooooooo")
     # db.session.flush()  
 
     try:
@@ -107,6 +114,8 @@ def signup():
         # fallback
         current_app.logger.exception("Signup failed on flush")
         return jsonify(message="Could not create user."), 400
+    except:
+        print("error in flush")
     print(8)
 
     role = Role.query.filter_by(name='user').first()
