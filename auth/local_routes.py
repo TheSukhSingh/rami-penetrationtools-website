@@ -34,17 +34,22 @@ from hashlib import sha256
 from datetime import datetime, timezone
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
-
+    print(1)
     data = request.get_json() or {}
+    print(2)
     turnstile_token = data.get('turnstile_token')
+    print(3)
     ok, err = verify_turnstile(turnstile_token, request.remote_addr)
+    print(4)
     if not ok:
         return jsonify(message=f"Captcha failed: {err or 'try again'}"), 400
+    print(5)
     username = data.get('username', '').strip()
     name     = data.get('name', '').strip()
     email    = data.get('email', '').strip().lower()
     password = data.get('password', '')
     confirm  = data.get('confirm_password', '')
+    print(6)
 
     # 1) Required fields
     if not all([username, name, email, password, confirm]):
@@ -67,10 +72,12 @@ def signup():
     if User.query.filter_by(username=username).first():
         return jsonify(message="Username already taken."), 400
 
+    print(7)
     # Create and persist new user
     user = User(username=username, email=email, name=name)
     db.session.add(user)
     db.session.flush()  
+    print(8)
 
     role = Role.query.filter_by(name='user').first()
     if not role:
@@ -79,19 +86,23 @@ def signup():
         db.session.flush()
     user.roles.append(role)
 
+    print(9)
     if not validate_and_set_password(user, password, confirm, commit=False):
         db.session.rollback()
         return jsonify(message="Password does not meet requirements."), 400
     
     db.session.add(user.local_auth)
     db.session.commit()
+    print(10)
 
     # Send email confirmation link
     token       = generate_confirmation_token(user.email)
     confirm_url = url_for('auth.confirm_email', token=token, _external=True)
     html        = render_template('auth/activate.html', confirm_url=confirm_url)
+    print(11)
     send_email(user.email, 'Please confirm your email', html)
 
+    print(12)
     return jsonify(message="Signup successful! Check your email to confirm your account."), 201
 
 
