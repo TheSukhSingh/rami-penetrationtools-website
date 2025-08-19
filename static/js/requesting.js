@@ -188,20 +188,16 @@
   }
 
   async function getJSON(url, options = {}) {
-    const res = await authFetch(url, { method: "GET", ...options });
-    return parseJSON(res);
+    return fetchJSON(url, { method: "GET", ...options });
   }
   async function postJSON(url, body, options = {}) {
-    const res = await authFetch(url, { method: "POST", body, ...options });
-    return parseJSON(res);
+    return fetchJSON(url, { method: "POST", body, ...options });
   }
   async function putJSON(url, body, options = {}) {
-    const res = await authFetch(url, { method: "PUT", body, ...options });
-    return parseJSON(res);
+    return fetchJSON(url, { method: "PUT", body, ...options });
   }
   async function delJSON(url, options = {}) {
-    const res = await authFetch(url, { method: "DELETE", ...options });
-    return parseJSON(res);
+    return fetchJSON(url, { method: "DELETE", ...options });
   }
 
   // Expose globals (non-module)
