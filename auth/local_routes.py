@@ -119,9 +119,14 @@ def confirm_email(token):
 
     return redirect(url_for('index'))
 
+def _signin_key():
+    data = (request.get_json(silent=True) or {})
+    email = (data.get('email') or "").strip().lower()
+    ip = get_remote_address()
+    return f"{ip}:{email}" if email else ip
 
 @auth_bp.route('/signin',  methods=['POST'])
-# @limiter.limit("5 per 15 minutes", key_func=lambda: (request.json or {}).get('email') or get_remote_address())
+@limiter.limit("5 per 15 minutes", key_func=_signin_key)
 def local_login():
     data = request.get_json() or {}
     email    = data.get('email', '').strip().lower()
@@ -148,7 +153,7 @@ def local_login():
 
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
-# @limiter.limit("20 per hour", key_func=get_remote_address)
+@limiter.limit("20 per hour", key_func=get_remote_address)
 def refresh():
     # new_at = create_access_token(identity=get_jwt_identity())
     # resp = jsonify({"msg":"Token refreshed"})

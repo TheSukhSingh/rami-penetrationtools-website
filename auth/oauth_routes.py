@@ -94,7 +94,12 @@ def google_callback():
         return redirect(f"{DEFAULT_AFTER_LOGIN}?auth_error=google_identity")
 
     try:
-        tokens = login_oauth("google", sub, {"email": email, "name": name})
+        user, tokens = login_oauth("google", sub, {"email": email, "name": name})
+        if tokens is None:
+            # Stage MFA like local flow
+            session['mfa_user'] = user.id
+            return redirect(url_for('auth.verify_mfa'))
+
     except PermissionError:
         return redirect(f"{_after_login_url()}?auth_error=inactive")
     # Mirror local login: set cookies → redirect back to app
@@ -114,7 +119,10 @@ def google_token_signin():
         name  = payload.get("name")
 
         try:
-            tokens = login_oauth("google", sub, {"email": email, "name": name})
+            user, tokens = login_oauth("google", sub, {"email": email, "name": name})
+            if tokens is None:
+                session['mfa_user'] = user.id
+                return jsonify({"mfa_required": True, "verify_url": url_for('auth.verify_mfa')}), 202
         except PermissionError:
             return jsonify({"msg": "Account is inactive"}), 403
         resp = jsonify({"msg": "Login successful"})
@@ -190,9 +198,11 @@ def github_callback():
     if not (u.get("id") and email):
         return redirect(f"{DEFAULT_AFTER_LOGIN}?auth_error=github_identity")
 
-    tokens = login_oauth("github", str(u["id"]), {"email": email, "name": u.get("name") or u.get("login")})
     try:
-        tokens = login_oauth("github", str(u["id"]), {"email": email, "name": u.get("name") or u.get("login")})
+        user, tokens = login_oauth("github", str(u["id"]), {"email": email, "name": u.get("name") or u.get("login")})
+        if tokens is None:
+            session['mfa_user'] = user.id
+            return redirect(url_for('auth.verify_mfa'))
     except PermissionError:
         return redirect(f"{_after_login_url()}?auth_error=inactive")
     resp = redirect(_after_login_url())

@@ -195,42 +195,86 @@ def login_local(email: str, password: str) -> tuple[dict, str]:
     tokens = jwt_login(user)
     return tokens, None
 
-def login_oauth(provider: str, provider_id: str, profile_info: dict) -> Dict[str, str]:
+# def login_oauth(provider: str, provider_id: str, profile_info: dict) -> Dict[str, str]:
+#     """
+#     Handle OAuth sign-in/up. Finds or creates the OAuthAccount + User, then issues tokens.
+#     profile_info must contain at least 'email'; may include 'name'.
+#     """
+#     # 1) If we've seen this exact account before → use that user
+#     oauth = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
+#     if oauth:
+#         user = oauth.user
+#         # return jwt_login(user)
+#         return (user, jwt_login(user)) 
+
+#     email = (profile_info.get("email") or "").strip().lower()
+#     name  = profile_info.get("name")
+
+#     # 2) If a user already exists with this email → link this provider to that user
+#     user = User.query.filter_by(email=email).first()
+#     if user:
+#         oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
+#         db.session.add(oa)
+#         db.session.commit()
+#         # return jwt_login(user)
+#         return (user, jwt_login(user)) 
+
+#     # 3) Otherwise create a new user and link the provider
+#     username = generate_username_from_email(email)
+#     user = User(email=email, username=username, name=name)
+#     db.session.add(user)
+#     db.session.flush()  # get user.id
+
+#     oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
+#     db.session.add(oa)
+#     db.session.commit()
+
+#     # return jwt_login(user)
+#     return (user, jwt_login(user)) 
+
+
+def login_oauth(provider: str, provider_id: str, profile_info: dict) -> tuple[User, dict | None]:
     """
-    Handle OAuth sign-in/up. Finds or creates the OAuthAccount + User, then issues tokens.
-    profile_info must contain at least 'email'; may include 'name'.
+    Handle OAuth sign-in/up. Returns (user, tokens_or_None).
+    If MFA is required and device not trusted -> returns (user, None) so the route can redirect to verify.
     """
-    # 1) If we've seen this exact account before → use that user
+    # 1) If exact OAuth account exists → use that user
     oauth = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
     if oauth:
         user = oauth.user
-        # return jwt_login(user)
-        return (user, jwt_login(user)) 
+    else:
+        email = (profile_info.get("email") or "").strip().lower()
+        name  = profile_info.get("name")
 
-    email = (profile_info.get("email") or "").strip().lower()
-    name  = profile_info.get("name")
+        # 2) If a user already exists with this email → link this provider
+        user = User.query.filter_by(email=email).first()
+        if user:
+            oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
+            db.session.add(oa)
+            db.session.commit()
+        else:
+            # 3) Otherwise create a new user and link the provider
+            username = generate_username_from_email(email)
+            user = User(email=email, username=username, name=name)
+            db.session.add(user)
+            db.session.flush()  # get user.id
 
-    # 2) If a user already exists with this email → link this provider to that user
-    user = User.query.filter_by(email=email).first()
-    if user:
-        oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
-        db.session.add(oa)
-        db.session.commit()
-        # return jwt_login(user)
-        return (user, jwt_login(user)) 
+            oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
+            db.session.add(oa)
+            db.session.commit()
 
-    # 3) Otherwise create a new user and link the provider
-    username = generate_username_from_email(email)
-    user = User(email=email, username=username, name=name)
-    db.session.add(user)
-    db.session.flush()  # get user.id
+    # ---- Common gate (same spirit as local login) ----
+    if getattr(user, "is_blocked", False) or getattr(user, "is_deactivated", False):
+        # mirror local: don't issue tokens for inactive accounts
+        raise PermissionError("Account is inactive")
 
-    oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
-    db.session.add(oa)
-    db.session.commit()
+    # If MFA is enabled and device isn't trusted → don't mint/set tokens yet
+    if user.mfa_setting and user.mfa_setting.enabled and not _is_trusted_device(user.id):
+        return user, None
 
-    # return jwt_login(user)
-    return (user, jwt_login(user)) 
+    # Otherwise issue tokens now (route will set cookies)
+    return user, jwt_login(user)
+
 
 def get_current_user() -> Optional[User]:
     """
