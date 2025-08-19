@@ -1,4 +1,5 @@
 from io import BytesIO
+from sqlite3 import IntegrityError
 from flask import (
     render_template, redirect, send_file, session,
     url_for, request, jsonify, current_app, flash
@@ -76,7 +77,22 @@ def signup():
     # Create and persist new user
     user = User(username=username, email=email, name=name)
     db.session.add(user)
-    db.session.flush()  
+    # db.session.flush()  
+
+    try:
+        db.session.flush()  # will assign user.id or throw if constraints fail
+    except IntegrityError as e:
+        db.session.rollback()
+        s = str(getattr(e, "orig", e)).lower()
+        if "username_min_len" in s or "username_max_len" in s or "username_no_spaces" in s:
+            return jsonify(message="Invalid username (4–15 chars, no spaces)."), 400
+        if "users.username" in s and "unique" in s:
+            return jsonify(message="Username already taken."), 400
+        if "users.email" in s and "unique" in s:
+            return jsonify(message="Email already registered."), 400
+        # fallback
+        current_app.logger.exception("Signup failed on flush")
+        return jsonify(message="Could not create user."), 400
     print(8)
 
     role = Role.query.filter_by(name='user').first()
