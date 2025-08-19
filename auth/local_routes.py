@@ -123,7 +123,6 @@ def signup():
     except Exception as e:
         print(f"error in flush - {e}")
     print(8)
-    return None
     role = Role.query.filter_by(name='user').first()
     if not role:
         role = Role(name='user', description='Default user role')
