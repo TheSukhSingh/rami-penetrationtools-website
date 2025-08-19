@@ -356,7 +356,7 @@ class PasswordReset(db.Model):
     user = db.relationship('User', back_populates='reset_tokens')
 
     def generate_reset_token(self, expires_in: int = 600) -> str:
-        PasswordReset.query.filter_by(user_id=self.user_id, used=False).update({'used': True})
+        PasswordReset.query.filter_by(user_id=self.user_id, used=False).update({'used': True}, synchronize_session=False)
         token = str(uuid.uuid4())
         self.token_hash = sha256(token.encode()).hexdigest()
         self.expires_at = utcnow() + timedelta(seconds=expires_in)
@@ -366,22 +366,19 @@ class PasswordReset(db.Model):
         return token
     
     @staticmethod
-    def verify_reset_token(token: str) -> 'User | None':
-        hashed = sha256(token.encode()).hexdigest()
-        # 1) Find an unused, unexpired reset record
-        pr = PasswordReset.query.filter(
-               PasswordReset.token_hash == hashed,
-               PasswordReset.used      == False,
-               PasswordReset.expires_at > utcnow()
-             ).first()
+    def get_valid_record(token: str):
+        """Return the PasswordReset row without consuming it."""
+        h = sha256(token.encode()).hexdigest()
+        return PasswordReset.query.filter(
+            PasswordReset.token_hash == h,
+            PasswordReset.used == False,
+            PasswordReset.expires_at > utcnow()
+        ).first()
 
-        if not pr:
-            return None
-        
-        pr.used = True
+    def consume(self):
+        """Mark this reset token as used (single-use)."""
+        self.used = True
         db.session.commit()
-
-        return pr.user
 
 class LoginEvent(db.Model):
     __tablename__ = 'login_events'

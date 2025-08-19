@@ -251,28 +251,57 @@ def forgot_password():
     # Always return generic message to avoid user enumeration
     return jsonify(message="If that email is registered, you’ll receive a reset link."), 200
 
-@auth_bp.route('/reset-password/<token>', methods=['GET','POST'])
+# @auth_bp.route('/reset-password/<token>', methods=['GET','POST'])
+# def reset_password(token):
+#     user = PasswordReset.verify_reset_token(token)
+#     if not user or not user.local_auth:
+#         flash('Invalid or expired reset link.', 'danger')
+#         return redirect(url_for('auth.forgot_password'))
+
+#     if request.method == 'POST':
+#         pwd     = request.form.get('password', '')
+#         confirm = request.form.get('confirm_password', '')
+
+#         # validate & set (but don’t commit yet)
+#         if not validate_and_set_password(user, pwd, confirm, commit=False):
+#             # flashes are handled in the helper
+#             return redirect(url_for('auth.reset_password', token=token))
+
+#         # everything’s valid: persist the new hash
+#         db.session.commit()
+#         flash('Your password has been updated! Please log in.', 'success')
+#         return redirect(url_for('auth.login_page'))
+
+#     return render_template('auth/reset_password.html', token=token, user=user)
+
+
+@auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
-    user = PasswordReset.verify_reset_token(token)
-    if not user or not user.local_auth:
+    if request.method == 'GET':
+        pr = PasswordReset.get_valid_record(token)
+        if not pr:
+            flash('Invalid or expired reset link.', 'danger')
+            return redirect(url_for('auth.forgot_password'))
+        # pass pr.user to template (or drop hidden fields)
+        return render_template('auth/reset_password.html', token=token, user=pr.user)
+
+    # POST
+    pr = PasswordReset.get_valid_record(token)
+    if not pr:
         flash('Invalid or expired reset link.', 'danger')
         return redirect(url_for('auth.forgot_password'))
 
-    if request.method == 'POST':
-        pwd     = request.form.get('password', '')
-        confirm = request.form.get('confirm_password', '')
+    pwd     = request.form.get('password', '')
+    confirm = request.form.get('confirm_password', '')
 
-        # validate & set (but don’t commit yet)
-        if not validate_and_set_password(user, pwd, confirm, commit=False):
-            # flashes are handled in the helper
-            return redirect(url_for('auth.reset_password', token=token))
+    if not validate_and_set_password(pr.user, pwd, confirm, commit=False):
+        return redirect(url_for('auth.reset_password', token=token))
 
-        # everything’s valid: persist the new hash
-        db.session.commit()
-        flash('Your password has been updated! Please log in.', 'success')
-        return redirect(url_for('auth.login_page'))
+    pr.consume()                # consume the token only on success
+    db.session.commit()
+    flash('Your password has been updated! Please log in.', 'success')
+    return redirect(url_for('auth.login_page'))
 
-    return render_template('auth/reset_password.html', token=token, user=user)
 
 
 @auth_bp.route('/me', methods=['GET'])
