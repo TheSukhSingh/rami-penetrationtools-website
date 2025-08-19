@@ -84,9 +84,10 @@
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
 
     opts.headers = headers;
+    let res;
     try {
       // First attempt
-      let res = await fetch(url, opts);
+      res = await fetch(url, opts);
     } catch (error) {
       console.log(`first fetch error - ${error}`)
     }
