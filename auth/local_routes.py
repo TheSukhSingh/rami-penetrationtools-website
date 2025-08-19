@@ -90,6 +90,20 @@ def signup():
             return jsonify(message="Username already taken."), 400
         if "users.email" in s and "unique" in s:
             return jsonify(message="Email already registered."), 400
+        
+
+        if "username_min_len" in s:
+            print("username min len")
+        if "username_max_len" in s:
+            print("username_max_len")
+        if "username_no_spaces" in s:
+            print("username_no_spaces")
+        if "users.username" in s and "unique" in s:
+            print("username already taken")
+
+        if "users.email" in s and "unique" in s:
+            print("email already taken")
+
         # fallback
         current_app.logger.exception("Signup failed on flush")
         return jsonify(message="Could not create user."), 400
