@@ -277,44 +277,32 @@ def forgot_password():
 
 @auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
-    print(1)
     if request.method == 'GET':
-        print(2)
         pr = PasswordReset.get_valid_record(token)
-        print(3)
         if not pr:
-            print(4)
             flash('Invalid or expired reset link.', 'danger')
             return redirect(url_for('index'))
-        print(5)
         # pass pr.user to template (or drop hidden fields)
         try:
             return render_template('auth/reset_password.html', token=token, user=pr.user)
         except Exception as e:
             print(f"error for something - {e}")
     
-    print(6)
 
     # POST
     pr = PasswordReset.get_valid_record(token)
-    print(7)
     if not pr:
-        print(8)
         flash('Invalid or expired reset link.', 'danger')
         return redirect(url_for('index'))
-    print(9)
 
     pwd     = request.form.get('password', '')
     confirm = request.form.get('confirm_password', '')
 
-    print(10)
     if not validate_and_set_password(pr.user, pwd, confirm, commit=False):
         return redirect(url_for('auth.reset_password', token=token))
-    print(11)
 
     pr.consume()                # consume the token only on success
     db.session.commit()
-    print(12)
     flash('Your password has been updated! Please log in.', 'success')
     return redirect(url_for('index'))
 
