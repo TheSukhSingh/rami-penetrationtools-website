@@ -229,25 +229,6 @@ def refresh():
     return resp, 200
 
 
-
-# @auth_bp.route('/forgot-password', methods=['GET','POST'])
-# def forgot_password():
-#     if request.method=='POST':
-#         email = request.form.get('email','').strip().lower()
-#         user  = User.query.filter_by(email=email).first()
-#         if user and user.local_auth:
-#             pr = PasswordReset(user_id=user.id)
-#             token = pr.generate_reset_token()
-#             reset_url = url_for('auth.reset_password', token=token, _external=True)
-#             html = render_template('auth/reset_password_email.html', reset_url=reset_url)
-#             send_email(user.email, 'Your Password Reset Link', html)
-
-#         # always show this to avoid user enumeration
-#         flash('If that email is registered, you’ll receive a reset link.', 'info')
-#         return redirect(url_for('auth.login_page'))
-
-#     return render_template('auth/forgot.html')
-
 @auth_bp.route('/forgot-password', methods=['POST'])
 @limiter.limit("3 per hour", key_func=get_remote_address)
 def forgot_password():
@@ -291,7 +272,7 @@ def reset_password(token):
         flash('Your password has been updated! Please log in.', 'success')
         return redirect(url_for('auth.login_page'))
 
-    return render_template('auth/reset_password.html', token=token)
+    return render_template('auth/reset_password.html', token=token, user=user)
 
 
 @auth_bp.route('/me', methods=['GET'])

@@ -131,6 +131,10 @@ def create_app():
     # ── Security headers ─────────────────────────────────────────
     @app.after_request
     def set_security_headers(resp):
+        nonce = getattr(g, "csp_nonce", None)
+        if not nonce:
+            # fall back so errors can still render
+            nonce = secrets.token_urlsafe(16)
         # Clickjacking & MIME sniffing
         resp.headers['X-Frame-Options'] = 'DENY'
         resp.headers['X-Content-Type-Options'] = 'nosniff'
@@ -145,7 +149,7 @@ def create_app():
         # Note: allows inline handlers for now ('unsafe-inline'); tighten later.
         resp.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{g.csp_nonce}' https://accounts.google.com https://challenges.cloudflare.com; "
+            f"script-src 'self' 'nonce-{nonce}' https://accounts.google.com https://challenges.cloudflare.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; "
             "img-src 'self' data: https://*.googleusercontent.com; "
             "font-src 'self' https://fonts.gstatic.com; "
