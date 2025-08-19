@@ -12,7 +12,7 @@ from admin.api import admin_api_bp
 import secrets
 from extensions import db, bcrypt, migrate, limiter
 
-from auth.utils import login_required, init_mail, init_jwt_manager
+from auth.utils import init_mail, init_jwt_manager
 
 load_dotenv()
 
@@ -161,7 +161,7 @@ def create_app():
     @app.route('/')
     def index():
         return render_template('landing_page.html')
-    
+
     return app
 
 

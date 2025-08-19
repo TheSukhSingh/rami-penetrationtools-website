@@ -105,12 +105,12 @@ function togglePassword(fieldId) {
   }
 }
 
-function getCookie(name) {
-  return document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(name + "="))
-    ?.split("=")[1];
-}
+// function getCookie(name) {
+//   return document.cookie
+//     .split("; ")
+//     .find((row) => row.startsWith(name + "="))
+//     ?.split("=")[1];
+// }
 
 function showUser(user) {
   document.getElementById("loginButton").style.display = "none";
@@ -130,11 +130,7 @@ function showUser(user) {
   navMenu.appendChild(userElem);
 
   document.getElementById("logoutBtn").onclick = async () => {
-    await fetch("/auth/logout", {
-      method: "POST",
-      credentials: "include",
-      headers: { "X-CSRF-TOKEN": getCookie("csrf_refresh_token") },
-    });
+    await postJSON("/auth/logout", null, { csrf: "refresh" });
     location.reload();
   };
 }
@@ -453,27 +449,27 @@ function validateAuthForm(mode) {
   return { ok };
 }
 
-function csrfFetch(url, options = {}) {
-  const opts = { credentials: "include", ...options };
-  const method = (opts.method || "GET").toUpperCase();
+// function csrfFetch(url, options = {}) {
+//   const opts = { credentials: "include", ...options };
+//   const method = (opts.method || "GET").toUpperCase();
 
-  const headers = new Headers(opts.headers || {});
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-    // const csrf = getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
-    // if (csrf) headers.set("X-CSRF-TOKEN", csrf);
-    const jwtCsrf =
-      getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
-    const metaCsrf = getMetaCSRF();
-    // Flask-JWT-Extended expects X-CSRF-TOKEN, Flask-WTF accepts X-CSRFToken/X-CSRF-Token.
-    const token = jwtCsrf || metaCsrf;
-    if (token) {
-      headers.set("X-CSRF-TOKEN", token); // for JWT double-submit
-      headers.set("X-CSRFToken", token); // for Flask-WTF CSRFProtect
-    }
-  }
-  opts.headers = headers;
-  return fetch(url, opts);
-}
+//   const headers = new Headers(opts.headers || {});
+//   if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+//     // const csrf = getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
+//     // if (csrf) headers.set("X-CSRF-TOKEN", csrf);
+//     const jwtCsrf =
+//       getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
+//     const metaCsrf = getMetaCSRF();
+//     // Flask-JWT-Extended expects X-CSRF-TOKEN, Flask-WTF accepts X-CSRFToken/X-CSRF-Token.
+//     const token = jwtCsrf || metaCsrf;
+//     if (token) {
+//       headers.set("X-CSRF-TOKEN", token); // for JWT double-submit
+//       headers.set("X-CSRFToken", token); // for Flask-WTF CSRFProtect
+//     }
+//   }
+//   opts.headers = headers;
+//   return fetch(url, opts);
+// }
 
 async function handleAuthSubmit(event) {
   event.preventDefault();
@@ -531,61 +527,96 @@ async function handleAuthSubmit(event) {
   }
 
   try {
-    const res = await csrfFetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include", // <-- important for cookies
-      body: JSON.stringify(payload),
-    });
+    // const res = await csrfFetch(url, {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application/json" },
+    //   credentials: "include", // <-- important for cookies
+    //   body: JSON.stringify(payload),
+    // });
 
-    // Try to parse JSON even on non-2xx
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.msg || data.message || "Request failed");
+    // // Try to parse JSON even on non-2xx
+    // const data = await res.json().catch(() => ({}));
+    // if (!res.ok) {
+    //   throw new Error(data.msg || data.message || "Request failed");
+    // }
+    // // --- MFA gate (server returns 202 when MFA is required) ---
+    // if (
+    //   res.status === 202 &&
+    //   (data.mfa_required || data.message === "MFA_REQUIRED")
+    // ) {
+    //   const verifyUrl = data.verify_url || "/auth/verify-mfa";
+    //   // 1) full page redirect is simplest and mirrors OAuth callback behavior
+    //   window.location.href = verifyUrl;
+    //   return;
+    // }
+
+    // if (currentAuthMode === "login") {
+    //   // cookies set by server; just load the user
+    //   const meRes = await fetch("/auth/me", {
+    //     method: "GET",
+    //     credentials: "include",
+    //   });
+    //   if (!meRes.ok) throw new Error("Failed to load user");
+    //   const me = await meRes.json();
+    //   showUser(me);
+    //   closeAuth();
+    // } else if (currentAuthMode === "signup") {
+    //   // If your /auth/signup also logs in (sets cookies), do the same as login:
+    //   const meRes = await fetch("/auth/me", {
+    //     method: "GET",
+    //     credentials: "include",
+    //   });
+    //   if (meRes.ok) {
+    //     const me = await meRes.json();
+    //     showUser(me);
+    //     closeAuth();
+    //   }
+    //   else {
+    //     // Otherwise, keep modal or show success message:
+    //     alert("Account created! Check your email to confirm.");
+    //     closeAuth();
+    //   }
+    // } else if (currentAuthMode === "forgot") {
+    //   // Generic response to avoid user enumeration — show friendly toast
+    //   alert(
+    //     data.message ||
+    //       "If that email is registered, you'll receive a reset link."
+    //   );
+    //   closeAuth();
+    // }
+
+    const { ok, status, data } = await postJSON(url, payload);
+    if (!ok) {
+      throw new Error(data?.msg || data?.message || "Request failed");
     }
+
     // --- MFA gate (server returns 202 when MFA is required) ---
     if (
-      res.status === 202 &&
-      (data.mfa_required || data.message === "MFA_REQUIRED")
+      status === 202 &&
+      (data?.mfa_required || data?.message === "MFA_REQUIRED")
     ) {
       const verifyUrl = data.verify_url || "/auth/verify-mfa";
-      // 1) full page redirect is simplest and mirrors OAuth callback behavior
       window.location.href = verifyUrl;
       return;
     }
 
     if (currentAuthMode === "login") {
-      // cookies set by server; just load the user
-      const meRes = await fetch("/auth/me", {
-        method: "GET",
-        credentials: "include",
-        // CSRF not required for GET, but harmless if present:
-        headers: { "X-CSRF-TOKEN": getCookie("csrf_access_token") || "" },
-      });
-      if (!meRes.ok) throw new Error("Failed to load user");
-      const me = await meRes.json();
+      const { ok: meOk, data: me } = await getJSON("/auth/me");
+      if (!meOk) throw new Error("Failed to load user");
       showUser(me);
       closeAuth();
     } else if (currentAuthMode === "signup") {
-      // If your /auth/signup also logs in (sets cookies), do the same as login:
-      const meRes = await fetch("/auth/me", {
-        method: "GET",
-        credentials: "include",
-        headers: { "X-CSRF-TOKEN": getCookie("csrf_access_token") || "" },
-      });
-      if (meRes.ok) {
-        const me = await meRes.json();
+      const { ok: meOk, data: me } = await getJSON("/auth/me");
+      if (meOk) {
         showUser(me);
         closeAuth();
       } else {
-        // Otherwise, keep modal or show success message:
         alert("Account created! Check your email to confirm.");
         closeAuth();
       }
     } else if (currentAuthMode === "forgot") {
-      // Generic response to avoid user enumeration — show friendly toast
       alert(
-        data.message ||
+        data?.message ||
           "If that email is registered, you'll receive a reset link."
       );
       closeAuth();
@@ -614,11 +645,11 @@ async function initOAuth() {
     const next = encodeURIComponent(
       window.location.pathname + window.location.search
     );
-    const res = await fetch(`/auth/providers?next=${next}`, {
-      method: "GET",
-      credentials: "include",
-    });
-    const providers = await res.json();
+
+    const { ok, data: providers } = await getJSON(
+      `/auth/providers?next=${next}`
+    );
+    if (!ok) throw new Error("Failed to load OAuth providers");
 
     renderOAuthButtons(providers);
     initGoogleOneTap(providers.google_client_id); // safe to call if GIS hasn’t loaded yet; we’ll guard below
@@ -638,7 +669,7 @@ function renderOAuthButtons(providers) {
                         <span>or continue with</span>
                     </div>
                     <div class="social-buttons">
-                        <button type="button" id="googleOAuthBtn" class="social-btn google-btn" onclick="handleSocialLogin('google')">
+                        <button type="button" id="googleOAuthBtn" class="social-btn google-btn">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -647,7 +678,7 @@ function renderOAuthButtons(providers) {
                             </svg>
                             <span>Google</span>
                         </button>
-                        <button type="button" id="githubOAuthBtn" class="social-btn github-btn" onclick="handleSocialLogin('github')">
+                        <button type="button" id="githubOAuthBtn" class="social-btn github-btn">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                             </svg>
@@ -706,36 +737,25 @@ function initGoogleOneTap(clientId) {
     client_id: clientId,
     callback: async (response) => {
       try {
-        // Send credential to backend verifier
-        const res = await csrfFetch("/auth/google/token-signin", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credential: response.credential }),
+        const { ok, status, data } = await postJSON("/auth/token-signin", {
+          credential: response.credential,
         });
 
-        const data = await res.json().catch(() => ({}));
-
-        // MFA required → backend returns 202 with verify_url
         if (
-          res.status === 202 &&
-          (data.mfa_required || data.message === "MFA_REQUIRED")
+          status === 202 &&
+          (data?.mfa_required || data?.message === "MFA_REQUIRED")
         ) {
           const verifyUrl = data.verify_url || "/auth/verify-mfa";
           window.location.href = verifyUrl;
           return;
         }
+        if (!ok)
+          throw new Error(
+            data?.msg || data?.message || "Google sign-in failed"
+          );
 
-        if (!res.ok)
-          throw new Error(data.msg || data.message || "Google sign-in failed");
-
-        // Success: cookies set server-side; fetch profile and update UI
-        const meRes = await fetch("/auth/me", {
-          method: "GET",
-          credentials: "include",
-        });
-        if (!meRes.ok) throw new Error("Failed to load user");
-        const me = await meRes.json();
+        const { ok: meOk, data: me } = await getJSON("/auth/me");
+        if (!meOk) throw new Error("Failed to load user");
         showUser(me);
         closeAuth();
       } catch (err) {
@@ -756,13 +776,8 @@ function initGoogleOneTap(clientId) {
 
 async function initAuth() {
   try {
-    const res = await fetch("/auth/me", {
-      method: "GET",
-      credentials: "include", // send HTTP-only cookies
-      headers: { "X-CSRF-TOKEN": getCookie("csrf_access_token") },
-    });
-    if (!res.ok) return; // not logged in → bail
-    const user = await res.json();
+    const { ok, data: user } = await getJSON("/auth/me");
+    if (!ok) return;
     showUser(user);
   } catch (err) {
     console.error("Auth check failed", err);
@@ -771,7 +786,7 @@ async function initAuth() {
 
 document.addEventListener("DOMContentLoaded", () => {
   initAuth();
-  // initOAuth();
+  initOAuth();
   document
     .getElementById("authForm")
     .addEventListener("submit", handleAuthSubmit);

@@ -1,8 +1,21 @@
 (function (global) {
   // --- Utils ----------------------------------------------------
+  // function getCookie(name) {
+  //   // use existing global getCookie if you already defined one elsewhere
+  //   if (typeof global.getCookie === "function") return global.getCookie(name);
+  //   const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
+  //   return m ? decodeURIComponent(m[2]) : null;
+  // }
+
   function getCookie(name) {
-    // use existing global getCookie if you already defined one elsewhere
-    if (typeof global.getCookie === "function") return global.getCookie(name);
+    // Prefer the shared helper from requesting.js (decodes values)
+    if (
+      window &&
+      typeof window.getCookie === "function" &&
+      window.getCookie !== getCookie
+    ) {
+      return window.getCookie(name);
+    }
     const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
     return m ? decodeURIComponent(m[2]) : null;
   }
@@ -44,7 +57,11 @@
 
     // Attach CSRF only for mutating requests
     if (needCsrf(method)) {
-      const csrf = getCookie("csrf_access_token");
+      const which =
+        options?.csrf === "refresh"
+          ? "csrf_refresh_token"
+          : "csrf_access_token";
+      const csrf = getCookie(which);
       if (csrf) headers.set("X-CSRF-TOKEN", csrf);
     }
 
@@ -68,9 +85,14 @@
         await refreshTokens();
         // rotate CSRF for retry
         if (needCsrf(method)) {
-          const csrf = getCookie("csrf_access_token");
+          const which =
+            options?.csrf === "refresh"
+              ? "csrf_refresh_token"
+              : "csrf_access_token";
+          const csrf = getCookie(which);
           if (csrf) headers.set("X-CSRF-TOKEN", csrf);
         }
+
         res = await fetch(url, opts);
       } catch {
         // refresh failed → surface 401, notify listeners
