@@ -84,9 +84,12 @@
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
 
     opts.headers = headers;
-
-    // First attempt
-    let res = await fetch(url, opts);
+    try {
+      // First attempt
+      let res = await fetch(url, opts);
+    } catch (error) {
+      console.log(`first fetch error - ${error}`)
+    }
 
     // If unauthorized, try a single refresh then retry
     // if (res.status === 401) {
