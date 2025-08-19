@@ -232,33 +232,22 @@ def refresh():
 @auth_bp.route('/forgot-password', methods=['POST'])
 @limiter.limit("3 per hour", key_func=get_remote_address)
 def forgot_password():
-    print(1)
     data = request.get_json() or {}
-    print(2)
     email = (data.get('email') or '').strip().lower()
-    print(3)
 
     turnstile_token = data.get('turnstile_token')
-    print(4)
     ok, err = verify_turnstile(turnstile_token, request.remote_addr)
-    print(5)
     if not ok:
         return jsonify(message=f"Captcha failed: {err or 'try again'}"), 400
-    print(6)
 
     user = User.query.filter_by(email=email).first()
-    print(7)
     if user and user.local_auth:
-        print(8)
         pr = PasswordReset(user_id=user.id)
         token = pr.generate_reset_token()
         reset_url = url_for('auth.reset_password', token=token, _external=True)
         html = render_template('emails/reset_password_email.html', reset_url=reset_url)
-        print(9)
         send_email(user.email, 'Your Password Reset Link', html)
-        print(10)
 
-    print(11)
     # Always return generic message to avoid user enumeration
     return jsonify(message="If that email is registered, you’ll receive a reset link."), 200
 
@@ -292,7 +281,7 @@ def reset_password(token):
         pr = PasswordReset.get_valid_record(token)
         if not pr:
             flash('Invalid or expired reset link.', 'danger')
-            return redirect(url_for('auth.forgot_password'))
+            return redirect(url_for('index'))
         # pass pr.user to template (or drop hidden fields)
         return render_template('auth/reset_password.html', token=token, user=pr.user)
 
@@ -300,7 +289,7 @@ def reset_password(token):
     pr = PasswordReset.get_valid_record(token)
     if not pr:
         flash('Invalid or expired reset link.', 'danger')
-        return redirect(url_for('auth.forgot_password'))
+        return redirect(url_for('index'))
 
     pwd     = request.form.get('password', '')
     confirm = request.form.get('confirm_password', '')
