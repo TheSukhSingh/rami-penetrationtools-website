@@ -1,19 +1,24 @@
+from io import BytesIO
 from flask import (
-    render_template, redirect,
+    render_template, redirect, send_file, session,
     url_for, request, jsonify, current_app, flash
 )
 from flask_limiter.util import get_remote_address
+import pyotp
+import qrcode
 from extensions import limiter
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies
 from . import auth_bp
 from .models import (
-    RefreshToken, User, Role,
+    MFASetting, RecoveryCode, RefreshToken, User, Role,
     PasswordReset,
 )
 from extensions import db
 from .utils import (
+    _remember_device,
     generate_confirmation_token,
     confirm_token,
+    generate_recovery_codes,
     send_email,
     
     validate_and_set_password,
@@ -123,6 +128,13 @@ def local_login():
     password = data.get('password', '')
 
     tokens, err = util_login_local(email, password)
+    
+    # ⬇️ If MFA is required, park user id in session and tell FE where to go
+    if err == "MFA_REQUIRED":
+        user = User.query.filter_by(email=email).first()
+        session['mfa_user'] = user.id
+        return jsonify({"mfa_required": True, "verify_url": url_for('auth.verify_mfa')}), 202
+    
     if err:
         # all errors come back as err string; adjust status if you want 403 for locked/blocked, etc.
         return jsonify({"msg": err}), 401
@@ -258,8 +270,107 @@ def get_me():
         'name': user.name
     }), 200
 
+@auth_bp.route('/mfa/setup', methods=['GET'])
+@jwt_required()  # require a logged-in session to set up MFA
+def mfa_setup():
+    user = get_current_user()
+    if not user:
+        return jsonify({"msg": "Unauthorized"}), 401
 
+    # Ensure a secret exists (do not enable yet)
+    m = user.mfa_setting or MFASetting(user_id=user.id, secret=pyotp.random_base32(), enabled=False)
+    if not user.mfa_setting:
+        db.session.add(m); db.session.commit()
 
+    # Build otpauth URI and render QR as PNG
+    uri = pyotp.TOTP(m.secret).provisioning_uri(name=user.email, issuer_name=current_app.name)
+    img = qrcode.make(uri)
+    buf = BytesIO(); img.save(buf, format="PNG"); buf.seek(0)
+    return send_file(buf, mimetype="image/png")
+
+@auth_bp.route('/mfa/enable', methods=['POST'])
+@jwt_required()
+def mfa_enable():
+    user = get_current_user()
+    if not user:
+        return jsonify({"msg": "Unauthorized"}), 401
+
+    code = (request.json or {}).get("code", "").strip()
+    m = user.mfa_setting
+    if not m or not m.secret:
+        return jsonify({"msg": "No MFA secret to verify"}), 400
+
+    ok = pyotp.TOTP(m.secret).verify(code, valid_window=1)
+    if not ok:
+        return jsonify({"msg": "Invalid code"}), 400
+
+    m.enabled = True
+    db.session.commit()
+
+    # Generate recovery codes once and return (plaintext) to the user to store
+    codes = generate_recovery_codes(user.id, count=10)
+    return jsonify({"msg": "MFA enabled", "recovery_codes": codes}), 200
+
+@auth_bp.route('/verify-mfa', methods=['GET','POST'])
+def verify_mfa():
+    # UI for entering code is already in templates/auth/verify_mfa.html (has remember checkbox) :contentReference[oaicite:10]{index=10}
+    if request.method == 'GET':
+        if not session.get('mfa_user'):
+            # If someone hits this directly, show the form but it won’t succeed
+            return render_template('auth/verify_mfa.html')
+        return render_template('auth/verify_mfa.html')
+
+    # POST
+    uid = session.get('mfa_user')
+    if not uid:
+        flash('Session expired. Please sign in again.', 'warning')
+        return redirect(url_for('index'))
+
+    user = User.query.get(uid)
+    m = user.mfa_setting
+    token = (request.form.get('token') or '').strip()
+    remember = bool(request.form.get('remember'))
+
+    ok = False
+    # 1) Try TOTP (6-digit)
+    if m and m.secret and token.isdigit() and len(token) in (6, 8):
+        ok = pyotp.TOTP(m.secret).verify(token, valid_window=1)
+
+    # 2) Fallback: recovery code (any length). We store only hashes.
+    if not ok and token:
+        h = sha256(token.encode()).hexdigest()
+        rc = RecoveryCode.query.filter_by(user_id=user.id, code_hash=h, used=False).first()
+        if rc:
+            rc.used = True
+            db.session.commit()
+            ok = True
+
+    if not ok:
+        flash('Invalid authentication code.', 'danger')
+        return render_template('auth/verify_mfa.html')
+
+    # Success → issue JWTs same as a normal login
+    from .utils import jwt_login  # local import to avoid cycles
+    tokens = jwt_login(user)
+
+    resp = redirect(url_for('index'))
+    set_access_cookies(resp, tokens["access_token"])
+    set_refresh_cookies(resp, tokens["refresh_token"])
+
+    # Optionally mark this device as trusted for N days
+    if remember:
+        raw, exp = _remember_device(user.id, request.headers.get('User-Agent', ''))
+        resp.set_cookie(
+            current_app.config.get("TRUSTED_DEVICE_COOKIE_NAME", "tdid"),
+            raw,
+            secure=True, httponly=True, samesite="Lax",
+            expires=exp  # set server-side expiry to match DB
+        )
+
+    # Clean up the staged MFA session
+    session.pop('mfa_user', None)
+    flash('MFA verified — signed in!', 'success')
+    return resp
 
 # @auth_bp.route('/mfa-setup')
 # @login_required

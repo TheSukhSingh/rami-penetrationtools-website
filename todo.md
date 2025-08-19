@@ -386,10 +386,10 @@ Admin ability to revoke password-reset tokens on demand (beyond single-use/expir
 
 ## EXECUTION ORDER
 -D Enforce CSRF on auth routes (remove exemptions; wire header check in FE already present). 
-Re-enable and tune per-IP + per-user rate limits on /auth/signin//auth/signup//auth/forgot-password. 
 -D Refresh rotation + reuse detection: rotate refresh on /auth/refresh, store new JTI, revoke old; on reuse → revoke session. 
-MFA (TOTP first), plus “remember device” + recovery codes, gate signin accordingly. 
+-D MFA (TOTP first), plus “remember device” + recovery codes, gate signin accordingly. 
 -D HIBP k-anonymity check on signup/reset (warn/block per policy).
+Re-enable and tune per-IP + per-user rate limits on /auth/signin//auth/signup//auth/forgot-password. 
 Admin UI/endpoint to list & revoke active password-reset tokens. 
 Finalize email templates (verify/reset): conditional blocks, plain-text parts, DNS (SPF/DKIM) checklist. 
 FE polish pass on auth modal (spacing/label widths, minor UX).

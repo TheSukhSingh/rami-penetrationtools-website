@@ -60,6 +60,7 @@ class Role(db.Model, TimestampMixin):
     
 ADMIN_PREFIX = "admin_"
 MASTER_ROLE_NAMES = ("admin_owner",)  
+
 class User(TimestampMixin, db.Model):
     __tablename__ = 'users'
     __table_args__ = (
@@ -259,8 +260,6 @@ class UserScopeDeny(db.Model, TimestampMixin):
     acted_by_user= relationship('User', foreign_keys=[acted_by])
     def __repr__(self): return f"<Deny user={self.user_id} {self.scope}>"
 
-
-
 class LocalAuth(db.Model):
     __tablename__ = 'local_auth'
     user_id       = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
@@ -306,8 +305,6 @@ class LocalAuth(db.Model):
             return False
         return bcrypt.check_password_hash(self.password_hash, password)
 
-
-
 class OAuthAccount(db.Model):
     __tablename__ = 'oauth_accounts'
     __table_args__ = (
@@ -320,7 +317,6 @@ class OAuthAccount(db.Model):
 
     user = db.relationship('User', back_populates='oauth_accounts')
 
-
 class MFASetting(db.Model):
     __tablename__ = 'mfa_settings'
     user_id    = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
@@ -328,7 +324,6 @@ class MFASetting(db.Model):
     enabled    = db.Column(db.Boolean, default=False, nullable=False)
 
     user = db.relationship('User', back_populates='mfa_setting')
-
 
 class PasswordReset(db.Model):
     __tablename__ = 'password_resets'
@@ -398,3 +393,23 @@ class RefreshToken(db.Model):
     def revoke(self):
         self.revoked = True
         db.session.commit()
+
+class RecoveryCode(db.Model):
+    __tablename__ = 'recovery_codes'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), index=True, nullable=False)
+    code_hash  = db.Column(db.String(64), unique=True, nullable=False) 
+    used       = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+class TrustedDevice(db.Model):
+    __tablename__ = 'trusted_devices'
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), index=True, nullable=False)
+    token_hash   = db.Column(db.String(64), unique=True, nullable=False)  
+    user_agent   = db.Column(db.String(255))
+    created_at   = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    last_used_at = db.Column(db.DateTime(timezone=True))
+    expires_at   = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    user         = db.relationship('User')

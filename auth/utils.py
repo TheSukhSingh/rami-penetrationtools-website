@@ -1,10 +1,11 @@
 from functools import wraps
 import re
 from datetime import datetime, timedelta, timezone
+import secrets
 from typing import Optional, Dict, Tuple
 from hashlib import sha256, sha1
 import os, time
-
+from extensions import db
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from flask import current_app, flash, redirect, request, url_for, jsonify
 
@@ -14,7 +15,7 @@ from flask_jwt_extended import (
     jwt_required, get_jwt, get_jwt_identity, decode_token, verify_jwt_in_request
 )
 import requests
-from .models import LoginEvent, RefreshToken, db, User, LocalAuth, OAuthAccount
+from .models import LoginEvent, RefreshToken, User, LocalAuth, OAuthAccount, RecoveryCode, TrustedDevice
 from .passwords import COMMON_PASSWORDS
 
 mail = Mail()
@@ -186,9 +187,11 @@ def login_local(email: str, password: str) -> tuple[dict, str]:
         successful = True
     ))
 
-
     db.session.commit()
 
+    if user.mfa_setting and user.mfa_setting.enabled and not _is_trusted_device(user.id):
+        return None, "MFA_REQUIRED"
+    
     tokens = jwt_login(user)
     return tokens, None
 
@@ -201,7 +204,8 @@ def login_oauth(provider: str, provider_id: str, profile_info: dict) -> Dict[str
     oauth = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
     if oauth:
         user = oauth.user
-        return jwt_login(user)
+        # return jwt_login(user)
+        return (user, jwt_login(user)) 
 
     email = (profile_info.get("email") or "").strip().lower()
     name  = profile_info.get("name")
@@ -212,7 +216,8 @@ def login_oauth(provider: str, provider_id: str, profile_info: dict) -> Dict[str
         oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
         db.session.add(oa)
         db.session.commit()
-        return jwt_login(user)
+        # return jwt_login(user)
+        return (user, jwt_login(user)) 
 
     # 3) Otherwise create a new user and link the provider
     username = generate_username_from_email(email)
@@ -224,7 +229,8 @@ def login_oauth(provider: str, provider_id: str, profile_info: dict) -> Dict[str
     db.session.add(oa)
     db.session.commit()
 
-    return jwt_login(user)
+    # return jwt_login(user)
+    return (user, jwt_login(user)) 
 
 def get_current_user() -> Optional[User]:
     """
@@ -451,21 +457,6 @@ def _hibp_fetch_prefix(prefix: str) -> dict[str, int] | None:
 
     return None  # no data available
 
-# def hibp_count_for_password(password: str) -> int | None:
-#     """
-#     Returns breach count for the password, or 0 if not found.
-#     Returns None if the check could not be performed (API down, no offline).
-#     """
-#     if not current_app.config.get("HIBP_ENABLE", True):
-#         return 0
-#     # SHA-1 in uppercase hex
-#     h = sha1(password.encode("utf-8")).hexdigest().upper()
-#     prefix, suffix = h[:5], h[5:]
-#     mapping = _hibp_fetch_prefix(prefix)
-#     if mapping is None:
-#         return None
-#     return mapping.get(suffix, 0)
-
 def hibp_count_for_password(password: str) -> int | None:
     """
     API-only HIBP k-anonymity check.
@@ -497,3 +488,52 @@ def hibp_count_for_password(password: str) -> int | None:
     except Exception:
         return None
 
+# --------- MFA
+
+def _sha(s: str) -> str:
+    return sha256(s.encode('utf-8')).hexdigest()
+
+def _is_trusted_device(user_id: int) -> bool:
+    """Return True if a non-expired trusted-device cookie maps to this user."""
+    td_cookie = request.cookies.get(current_app.config.get("TRUSTED_DEVICE_COOKIE_NAME", "tdid"))
+    if not td_cookie:
+        return False
+    row = TrustedDevice.query.filter_by(token_hash=_sha(td_cookie), user_id=user_id).first()
+    if not row or row.expires_at <= utcnow():
+        return False
+    row.last_used_at = utcnow()
+    db.session.commit()
+    return True
+
+def _remember_device(user_id: int, user_agent: str) -> tuple[str, datetime]:
+    """Create a trusted device row and return (raw_cookie_token, expires_at)."""
+    raw = secrets.token_urlsafe(48)
+    expires = utcnow() + timedelta(days=int(current_app.config.get("TRUSTED_DEVICE_DAYS", 30)))
+    db.session.add(TrustedDevice(
+        user_id=user_id,
+        token_hash=_sha(raw),
+        user_agent=(user_agent or "")[:255],
+        created_at=utcnow(),
+        expires_at=expires,
+    ))
+    db.session.commit()
+    return raw, expires
+
+def generate_recovery_codes(user_id: int, count: int = 10) -> list[str]:
+    """
+    Create one-time recovery codes and return the **plaintext** list for display once.
+    We store only hashes. Existing unused codes are kept; call a cleanup if you prefer.
+    """
+    out = []
+    for _ in range(count):
+        # 10 chars grouped (e.g., XXXXXX-XXXX); adjust length/format as you like
+        code = secrets.token_hex(5).upper()
+        out.append(code)
+        db.session.add(RecoveryCode(
+            user_id=user_id,
+            code_hash=_sha(code),
+            used=False,
+            created_at=utcnow(),
+        ))
+    db.session.commit()
+    return out

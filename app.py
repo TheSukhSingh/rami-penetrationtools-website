@@ -83,6 +83,12 @@ def create_app():
         "HIBP_USER_AGENT": "hibp-check/1.0 (you@example.com)",
     })
 
+    app.config.update({
+        "TRUSTED_DEVICE_COOKIE_NAME": "tdid",
+        "TRUSTED_DEVICE_DAYS": 30,
+    })
+
+
 
     os.makedirs(app.config['UPLOAD_INPUT_FOLDER'],  exist_ok=True)
     os.makedirs(app.config['UPLOAD_OUTPUT_FOLDER'], exist_ok=True)
