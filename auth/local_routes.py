@@ -1,5 +1,5 @@
 from io import BytesIO
-from sqlite3 import IntegrityError
+from sqlite3 import DataError, IntegrityError, OperationalError, ProgrammingError
 from flask import (
     render_template, redirect, send_file, session,
     url_for, request, jsonify, current_app, flash
@@ -114,10 +114,16 @@ def signup():
         # fallback
         current_app.logger.exception("Signup failed on flush")
         return jsonify(message="Could not create user."), 400
+    except DataError as e:
+        print(f"this is dataerror -> {e}")
+    except OperationalError as e:
+        print(f"this is OperationalError -> {e}")
+    except ProgrammingError as e:
+        print(f"this is ProgrammingError -> {e}")
     except:
         print("error in flush")
     print(8)
-
+    return None
     role = Role.query.filter_by(name='user').first()
     if not role:
         role = Role(name='user', description='Default user role')
