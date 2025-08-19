@@ -336,7 +336,7 @@
 }
 
 .card-hover:hover {
-    transform: translateY(-8px) scale(1.02);
+    /* transform: translateY(-8px) scale(1.02); */
     box-shadow: 0 20px 40px rgba(0, 255, 224, 0.2);
 }
 .auth-header {
