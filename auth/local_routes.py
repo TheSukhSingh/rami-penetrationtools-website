@@ -36,22 +36,16 @@ from hashlib import sha256
 from datetime import datetime, timezone
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
-    print(1)
     data = request.get_json() or {}
-    print(2)
     turnstile_token = data.get('turnstile_token')
-    print(3)
     ok, err = verify_turnstile(turnstile_token, request.remote_addr)
-    print(4)
     if not ok:
         return jsonify(message=f"Captcha failed: {err or 'try again'}"), 400
-    print(5)
     username = data.get('username', '').strip()
     name     = data.get('name', '').strip()
     email    = data.get('email', '').strip().lower()
     password = data.get('password', '')
     confirm  = data.get('confirm_password', '')
-    print(6)
 
     # 1) Required fields
     if not all([username, name, email, password, confirm]):
@@ -74,7 +68,6 @@ def signup():
     if User.query.filter_by(username=username).first():
         return jsonify(message="Username already taken."), 400
 
-    print(7)
     # Create and persist new user
 
     user = User(username=username, email=email, name=name)
@@ -95,19 +88,6 @@ def signup():
         if "users.email" in s and "unique" in s:
             return jsonify(message="Email already registered."), 400
         
-
-        if "username_min_len" in s:
-            print("username min len")
-        if "username_max_len" in s:
-            print("username_max_len")
-        if "username_no_spaces" in s:
-            print("username_no_spaces")
-        if "users.username" in s and "unique" in s:
-            print("username already taken")
-
-        if "users.email" in s and "unique" in s:
-            print("email already taken")
-
         # fallback
         current_app.logger.exception("Signup failed on flush")
         return jsonify(message="Could not create user."), 400
@@ -122,7 +102,6 @@ def signup():
 
     except Exception as e:
         print(f"error in flush - {e}")
-    print(8)
     role = Role.query.filter_by(name='user').first()
     if not role:
         role = Role(name='user', description='Default user role')
@@ -130,23 +109,19 @@ def signup():
         db.session.flush()
     user.roles.append(role)
 
-    print(9)
     if not validate_and_set_password(user, password, confirm, commit=False):
         db.session.rollback()
         return jsonify(message="Password does not meet requirements."), 400
     
     db.session.add(user.local_auth)
     db.session.commit()
-    print(10)
 
     # Send email confirmation link
     token       = generate_confirmation_token(user.email)
     confirm_url = url_for('auth.confirm_email', token=token, _external=True)
     html        = render_template('auth/activate.html', confirm_url=confirm_url)
-    print(11)
     send_email(user.email, 'Please confirm your email', html)
 
-    print(12)
     return jsonify(message="Signup successful! Check your email to confirm your account."), 201
 
 
@@ -289,7 +264,7 @@ def forgot_password():
         pr = PasswordReset(user_id=user.id)
         token = pr.generate_reset_token()
         reset_url = url_for('auth.reset_password', token=token, _external=True)
-        html = render_template('auth/reset_password_email.html', reset_url=reset_url)
+        html = render_template('emails/reset_password_email.html', reset_url=reset_url)
         send_email(user.email, 'Your Password Reset Link', html)
 
     # Always return generic message to avoid user enumeration
