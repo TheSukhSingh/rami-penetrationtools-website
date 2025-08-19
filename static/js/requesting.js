@@ -1,4 +1,3 @@
-
 (function (global) {
   // --- Utils ----------------------------------------------------
   function getCookie(name) {
@@ -32,7 +31,7 @@
         })
         .finally(() => {
           refreshPromise = null;
-      });
+        });
     }
     return refreshPromise;
   }
@@ -82,7 +81,11 @@
 
     // 403/422 could indicate CSRF mismatch—optional hook
     if (res.status === 403 || res.status === 422) {
-      window.dispatchEvent(new CustomEvent("auth:csrf_error", { detail: { url, status: res.status } }));
+      window.dispatchEvent(
+        new CustomEvent("auth:csrf_error", {
+          detail: { url, status: res.status },
+        })
+      );
     }
 
     return res;
@@ -95,7 +98,11 @@
     let data = null;
 
     if (contentType.includes("application/json")) {
-      try { data = await res.json(); } catch (_) { data = null; }
+      try {
+        data = await res.json();
+      } catch (_) {
+        data = null;
+      }
     } else if (contentType.startsWith("text/")) {
       data = await res.text();
     } // (leave blobs/streams to callers)
@@ -109,18 +116,28 @@
     };
   }
 
-  const getJSON  = (url, opts)            => fetchJSON(url, { method: "GET",  ...opts });
-  const postJSON = (url, body, opts = {}) => fetchJSON(url, { method: "POST", body, ...opts });
-  const putJSON  = (url, body, opts = {}) => fetchJSON(url, { method: "PUT",  body, ...opts });
-  const delJSON  = (url, body, opts = {}) => fetchJSON(url, { method: "DELETE", body, ...opts });
+  const getJSON = (url, opts) => fetchJSON(url, { method: "GET", ...opts });
+  const postJSON = (url, body, opts = {}) =>
+    fetchJSON(url, { method: "POST", body, ...opts });
+  const putJSON = (url, body, opts = {}) =>
+    fetchJSON(url, { method: "PUT", body, ...opts });
+  const delJSON = (url, body, opts = {}) =>
+    fetchJSON(url, { method: "DELETE", body, ...opts });
 
   // Expose globals (non-module)
-  global.authFetch   = authFetch;
-  global.fetchJSON   = fetchJSON;
-  global.getJSON     = getJSON;
-  global.postJSON    = postJSON;
-  global.putJSON     = putJSON;
-  global.delJSON     = delJSON;
+  global.authFetch = authFetch;
+  global.fetchJSON = fetchJSON;
+  global.getJSON = getJSON;
+  global.postJSON = postJSON;
+  global.putJSON = putJSON;
+  global.delJSON = delJSON;
   global.refreshTokens = refreshTokens;
 
+  // When a request needs re-auth (refresh failed), open login modal
+  window.addEventListener("auth:required", () => showAuth("login"));
+
+  // Optional: surface CSRF errors
+  window.addEventListener("auth:csrf_error", (e) => {
+    console.warn("CSRF error on", e.detail?.url, "status:", e.detail?.status);
+  });
 })(window);

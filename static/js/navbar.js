@@ -14,6 +14,7 @@
 //   // Scroll to top
 //   window.scrollTo(0, 0);
 // }
+let currentAuthMode = "login";
 
 function scrollToSection(sectionId) {
   // if (currentPage !== "home") {
@@ -51,9 +52,9 @@ function ensureCaptchaRendered() {
     if (!sitekey || !window.turnstile) return;
     turnstileWidgetId = turnstile.render("#captchaContainer", {
       sitekey,
-      theme: "auto",            // or "light"/"dark"
-      action: currentAuthMode,  // useful for server analytics
-      appearance: "always"
+      theme: "auto", // or "light"/"dark"
+      action: currentAuthMode, // useful for server analytics
+      appearance: "always",
     });
   } else {
     turnstileWidgetId = null;
@@ -64,7 +65,14 @@ function ensureCaptchaRendered() {
 function showAuth(mode) {
   currentAuthMode = mode;
   updateAuthModal();
-  document.getElementById("authModal").classList.add("active");
+  const modal = document.getElementById("authModal");
+  modal.classList.add("active");
+
+  // bind submit every time modal opens (avoid duplicate listeners)
+  const form = document.getElementById("authForm");
+  form.removeEventListener("submit", handleAuthSubmit);
+  form.addEventListener("submit", handleAuthSubmit);
+
   initOAuth();
 }
 
@@ -308,7 +316,9 @@ function setFieldError(inputId, message) {
 }
 
 function getMetaCSRF() {
-  return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  return document
+    .querySelector('meta[name="csrf-token"]')
+    ?.getAttribute("content");
 }
 
 function clearFieldError(inputId) {
@@ -324,20 +334,32 @@ function isEmail(str) {
 }
 
 const RESERVED_USERNAMES = new Set([
-  "admin", "administrator", "root", "system", "support",
-  "null", "none", "user", "username", "test", "info", "sys"
+  "admin",
+  "administrator",
+  "root",
+  "system",
+  "support",
+  "null",
+  "none",
+  "user",
+  "username",
+  "test",
+  "info",
+  "sys",
 ]);
 
 function validateUsername(u) {
   const v = (u || "").trim();
   if (v.length < 4 || v.length > 15) return "Username must be 4–15 characters.";
-  if (!/^[A-Za-z0-9_]+$/.test(v)) return "Only letters, digits, and underscore.";
-  if (RESERVED_USERNAMES.has(v.toLowerCase())) return "This username is reserved.";
+  if (!/^[A-Za-z0-9_]+$/.test(v))
+    return "Only letters, digits, and underscore.";
+  if (RESERVED_USERNAMES.has(v.toLowerCase()))
+    return "This username is reserved.";
   return null;
 }
 
 function validatePassword(pw, { name, username, email }) {
-  const p = (pw || "");
+  const p = pw || "";
   if (p.length < 8) return "Password must be at least 8 characters.";
   if (!/[A-Z]/.test(p)) return "Include at least one uppercase letter.";
   if (!/\d/.test(p)) return "Include at least one digit.";
@@ -349,13 +371,20 @@ function validatePassword(pw, { name, username, email }) {
     (name || "").toLowerCase(),
     (username || "").toLowerCase(),
     ((email || "").split("@")[0] || "").toLowerCase(),
-  ].filter(s => s && s.length >= 3);
-  if (checks.some(s => lower.includes(s))) {
+  ].filter((s) => s && s.length >= 3);
+  if (checks.some((s) => lower.includes(s))) {
     return "Password must not contain your name/username/email.";
   }
 
   // tiny client-side blacklist (server still enforces the full COMMON_PASSWORDS)
-  const weak = ["password", "qwerty", "letmein", "welcome", "12345678", "hunter2"];
+  const weak = [
+    "password",
+    "qwerty",
+    "letmein",
+    "welcome",
+    "12345678",
+    "hunter2",
+  ];
   if (weak.includes(lower)) return "Choose a stronger password.";
 
   return null;
@@ -366,30 +395,51 @@ function validateAuthForm(mode) {
   let ok = true;
 
   // clear previous
-  ["email", "username", "password", "confirmPassword", "name"].forEach(clearFieldError);
+  ["email", "username", "password", "confirmPassword", "name"].forEach(
+    clearFieldError
+  );
 
   const email = (document.getElementById("email")?.value || "").trim();
-  const password = (document.getElementById("password")?.value || "");
-  const confirmPassword = (document.getElementById("confirmPassword")?.value || "");
+  const password = document.getElementById("password")?.value || "";
+  const confirmPassword =
+    document.getElementById("confirmPassword")?.value || "";
   const username = (document.getElementById("username")?.value || "").trim();
   const name = (document.getElementById("name")?.value || "").trim();
 
   if (mode === "login") {
-    if (!isEmail(email)) { setFieldError("email", "Enter a valid email."); ok = false; }
-    if (!password) { setFieldError("password", "Password is required."); ok = false; }
+    if (!isEmail(email)) {
+      setFieldError("email", "Enter a valid email.");
+      ok = false;
+    }
+    if (!password) {
+      setFieldError("password", "Password is required.");
+      ok = false;
+    }
   }
 
   if (mode === "forgot") {
-    if (!isEmail(email)) { setFieldError("email", "Enter a valid email."); ok = false; }
+    if (!isEmail(email)) {
+      setFieldError("email", "Enter a valid email.");
+      ok = false;
+    }
   }
 
   if (mode === "signup") {
-    if (!isEmail(email)) { setFieldError("email", "Enter a valid email."); ok = false; }
+    if (!isEmail(email)) {
+      setFieldError("email", "Enter a valid email.");
+      ok = false;
+    }
     const uErr = validateUsername(username);
-    if (uErr) { setFieldError("username", uErr); ok = false; }
+    if (uErr) {
+      setFieldError("username", uErr);
+      ok = false;
+    }
 
     const pErr = validatePassword(password, { name, username, email });
-    if (pErr) { setFieldError("password", pErr); ok = false; }
+    if (pErr) {
+      setFieldError("password", pErr);
+      ok = false;
+    }
 
     if (!confirmPassword) {
       setFieldError("confirmPassword", "Confirm your password.");
@@ -411,13 +461,14 @@ function csrfFetch(url, options = {}) {
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
     // const csrf = getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
     // if (csrf) headers.set("X-CSRF-TOKEN", csrf);
-    const jwtCsrf = getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
+    const jwtCsrf =
+      getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
     const metaCsrf = getMetaCSRF();
     // Flask-JWT-Extended expects X-CSRF-TOKEN, Flask-WTF accepts X-CSRFToken/X-CSRF-Token.
     const token = jwtCsrf || metaCsrf;
     if (token) {
-      headers.set("X-CSRF-TOKEN", token);   // for JWT double-submit
-      headers.set("X-CSRFToken", token);    // for Flask-WTF CSRFProtect
+      headers.set("X-CSRF-TOKEN", token); // for JWT double-submit
+      headers.set("X-CSRFToken", token); // for Flask-WTF CSRFProtect
     }
   }
   opts.headers = headers;
@@ -456,13 +507,16 @@ async function handleAuthSubmit(event) {
   const form = document.getElementById("authForm");
   const formData = new FormData(form);
   const payload = {};
-  formData.forEach((v, k) => { payload[k] = v; });
+  formData.forEach((v, k) => {
+    payload[k] = v;
+  });
 
   // Attach Turnstile token for signup/forgot
   if (currentAuthMode === "signup" || currentAuthMode === "forgot") {
-    const token = (typeof turnstile !== "undefined" && turnstileWidgetId)
-      ? turnstile.getResponse(turnstileWidgetId)
-      : null;
+    const token =
+      typeof turnstile !== "undefined" && turnstileWidgetId
+        ? turnstile.getResponse(turnstileWidgetId)
+        : null;
 
     if (!token) {
       alert("Please complete the captcha.");
@@ -480,7 +534,7 @@ async function handleAuthSubmit(event) {
     const res = await csrfFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",                    // <-- important for cookies
+      credentials: "include", // <-- important for cookies
       body: JSON.stringify(payload),
     });
 
@@ -488,6 +542,16 @@ async function handleAuthSubmit(event) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.msg || data.message || "Request failed");
+    }
+    // --- MFA gate (server returns 202 when MFA is required) ---
+    if (
+      res.status === 202 &&
+      (data.mfa_required || data.message === "MFA_REQUIRED")
+    ) {
+      const verifyUrl = data.verify_url || "/auth/verify-mfa";
+      // 1) full page redirect is simplest and mirrors OAuth callback behavior
+      window.location.href = verifyUrl;
+      return;
     }
 
     if (currentAuthMode === "login") {
@@ -520,10 +584,12 @@ async function handleAuthSubmit(event) {
       }
     } else if (currentAuthMode === "forgot") {
       // Generic response to avoid user enumeration — show friendly toast
-      alert(data.message || "If that email is registered, you'll receive a reset link.");
+      alert(
+        data.message ||
+          "If that email is registered, you'll receive a reset link."
+      );
       closeAuth();
     }
-
   } catch (err) {
     alert(err.message || "Something went wrong");
   } finally {
@@ -535,7 +601,9 @@ async function handleAuthSubmit(event) {
 
     // Reset captcha token (one-time use)
     if (typeof turnstile !== "undefined" && turnstileWidgetId) {
-      try { turnstile.reset(turnstileWidgetId); } catch (_) { }
+      try {
+        turnstile.reset(turnstileWidgetId);
+      } catch (_) {}
     }
   }
 }
@@ -543,19 +611,24 @@ async function handleAuthSubmit(event) {
 async function initOAuth() {
   try {
     // Ask backend for provider start URLs (+ client id), include ?next= so we return here post-login
-    const next = encodeURIComponent(window.location.pathname + window.location.search);
-    const res = await fetch(`/auth/providers?next=${next}`, { method: 'GET', credentials: 'include' });
+    const next = encodeURIComponent(
+      window.location.pathname + window.location.search
+    );
+    const res = await fetch(`/auth/providers?next=${next}`, {
+      method: "GET",
+      credentials: "include",
+    });
     const providers = await res.json();
 
     renderOAuthButtons(providers);
-    initGoogleOneTap(providers.google_client_id);   // safe to call if GIS hasn’t loaded yet; we’ll guard below
+    initGoogleOneTap(providers.google_client_id); // safe to call if GIS hasn’t loaded yet; we’ll guard below
   } catch (e) {
-    console.error('OAuth init failed', e);
+    console.error("OAuth init failed", e);
   }
 }
 
 function renderOAuthButtons(providers) {
-  const box = document.getElementById('oauthButtons');
+  const box = document.getElementById("oauthButtons");
   if (!box) return;
 
   box.innerHTML = `
@@ -567,11 +640,11 @@ function renderOAuthButtons(providers) {
     </button>
   `;
 
-  document.getElementById('googleOAuthBtn').onclick = () => {
+  document.getElementById("googleOAuthBtn").onclick = () => {
     // full-page redirect to begin Google OAuth code flow
     window.location.href = providers.google;
   };
-  document.getElementById('githubOAuthBtn').onclick = () => {
+  document.getElementById("githubOAuthBtn").onclick = () => {
     // full-page redirect to begin GitHub OAuth code flow
     window.location.href = providers.github;
   };
@@ -579,82 +652,102 @@ function renderOAuthButtons(providers) {
 
 // --- GOOGLE ONE TAP ---
 
+// function initGoogleOneTap(clientId) {
+//   // only when not already logged in (we’ll rely on your initAuth to set UI if logged in)
+//   if (!clientId) return;
+//   if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+//     // GIS script might not be loaded yet; retry shortly
+//     setTimeout(() => initGoogleOneTap(clientId), 300);
+//     return;
+//   }
+
+//   // Initialize One Tap
+//   window.google.accounts.id.initialize({
+//     client_id: clientId,
+//     callback: handleOneTapCredential,
+//     auto_select: false, // show chooser if multiple accounts
+//     context: "signin",
+//     ux_mode: "popup", // stays on page; you can try "redirect" too
+//     itp_support: true,
+//   });
+
+//   // Show the One Tap prompt (non-blocking)
+//   window.google.accounts.id.prompt();
+// }
+
 function initGoogleOneTap(clientId) {
-  // only when not already logged in (we’ll rely on your initAuth to set UI if logged in)
   if (!clientId) return;
+
+  // Wait for Google script if not yet loaded
   if (!window.google || !window.google.accounts || !window.google.accounts.id) {
-    // GIS script might not be loaded yet; retry shortly
     setTimeout(() => initGoogleOneTap(clientId), 300);
     return;
   }
 
-  // Initialize One Tap
-  window.google.accounts.id.initialize({
+  google.accounts.id.initialize({
     client_id: clientId,
-    callback: handleOneTapCredential,
-    auto_select: false,       // show chooser if multiple accounts
-    context: "signin",
-    ux_mode: "popup",         // stays on page; you can try "redirect" too
-    itp_support: true
+    callback: async (response) => {
+      try {
+        // Send credential to backend verifier
+        const res = await csrfFetch("/auth/google/token-signin", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: response.credential })
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        // MFA required → backend returns 202 with verify_url
+        if (res.status === 202 && (data.mfa_required || data.message === "MFA_REQUIRED")) {
+          const verifyUrl = data.verify_url || "/auth/verify-mfa";
+          window.location.href = verifyUrl;
+          return;
+        }
+
+        if (!res.ok) throw new Error(data.msg || data.message || "Google sign-in failed");
+
+        // Success: cookies set server-side; fetch profile and update UI
+        const meRes = await fetch("/auth/me", { method: "GET", credentials: "include" });
+        if (!meRes.ok) throw new Error("Failed to load user");
+        const me = await meRes.json();
+        showUser(me);
+        closeAuth();
+      } catch (err) {
+        console.error("One-Tap login failed:", err);
+      }
+    },
+    // UX tuning
+    auto_select: false,
+    cancel_on_tap_outside: true,
+    itp_support: true,
   });
 
-  // Show the One Tap prompt (non-blocking)
-  window.google.accounts.id.prompt();
+  // Render a prompt in the modal only (avoid surprising users on landing)
+  google.accounts.id.prompt((notification) => {
+    // optionally inspect notification.getMomentType()
+  });
 }
 
-async function handleOneTapCredential(response) {
-  try {
-    // response.credential is the Google ID token
-    const r = await csrfFetch('/auth/token-signin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',                     // not required to set cookie, but fine
-      body: JSON.stringify({ credential: response.credential })
-    });
-
-    if (!r.ok) {
-      const data = await r.json().catch(() => ({}));
-      throw new Error(data.msg || 'Google sign-in failed');
-    }
-
-    // Your server just set the cookies; load the user and update UI
-    const meRes = await fetch('/auth/me', {
-      method: 'GET',
-      credentials: 'include',
-      headers: { 'X-CSRF-TOKEN': getCookie('csrf_access_token') }
-    });
-    if (meRes.ok) {
-      const me = await meRes.json();
-      showUser(me);
-      closeAuth();
-    }
-  } catch (err) {
-    console.warn('One Tap login error:', err.message);
-  }
-}
 
 async function initAuth() {
   try {
-    const res = await fetch('/auth/me', {
-      method: 'GET',
-      credentials: 'include',                          // send HTTP-only cookies
-      headers: { 'X-CSRF-TOKEN': getCookie('csrf_access_token') }
+    const res = await fetch("/auth/me", {
+      method: "GET",
+      credentials: "include", // send HTTP-only cookies
+      headers: { "X-CSRF-TOKEN": getCookie("csrf_access_token") },
     });
-    if (!res.ok) return;                              // not logged in → bail
+    if (!res.ok) return; // not logged in → bail
     const user = await res.json();
     showUser(user);
   } catch (err) {
-    console.error('Auth check failed', err);
+    console.error("Auth check failed", err);
   }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   initAuth();
-  initOAuth();
   document
     .getElementById("authForm")
     .addEventListener("submit", handleAuthSubmit);
 });
-
-
-
