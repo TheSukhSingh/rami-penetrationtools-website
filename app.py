@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request
+from flask import Flask, g, render_template, request
 from dotenv import load_dotenv
 from datetime import timedelta
 from flask_jwt_extended import JWTManager
@@ -116,6 +116,11 @@ def create_app():
 
     init_jwt_manager(app, jwt)
 
+    @app.before_request
+    def _set_csp_nonce():
+        # one fresh, unpredictable token per response
+        g.csp_nonce = secrets.token_urlsafe(16)
+
     # ── Security headers ─────────────────────────────────────────
     @app.after_request
     def set_security_headers(resp):
@@ -133,11 +138,11 @@ def create_app():
         # Note: allows inline handlers for now ('unsafe-inline'); tighten later.
         resp.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://accounts.google.com https://challenges.cloudflare.com; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "img-src 'self' data:; "
+            f"script-src 'self' 'nonce-{g.csp_nonce}' https://accounts.google.com https://challenges.cloudflare.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; "
+            "img-src 'self' data: https://*.googleusercontent.com; "
             "font-src 'self' https://fonts.gstatic.com; "
-            "connect-src 'self'; "
+            "connect-src 'self' https://accounts.google.com; "
             "frame-ancestors 'none'; "
             "frame-src https://accounts.google.com https://challenges.cloudflare.com;"
         )

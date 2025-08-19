@@ -59,7 +59,7 @@ Hunter's Terminal - Advanced Reconnaissance Platform
         </p>
 
         <div class="hero-buttons">
-          <button class="cyber-button" onclick="scrollToSection('tools')">
+          <button class="cyber-button" id="ctaTools">
             <svg
               width="20"
               height="20"
@@ -495,98 +495,16 @@ Hunter's Terminal - Advanced Reconnaissance Platform
         </div>
 
         <div class="testimonial-dots" id="testimonialDots">
-          <button class="dot active" onclick="setTestimonial(0)"></button>
-          <button class="dot" onclick="setTestimonial(1)"></button>
-          <button class="dot" onclick="setTestimonial(2)"></button>
-          <button class="dot" onclick="setTestimonial(3)"></button>
+         <button class="dot active" data-index="0"></button>
+          <button class="dot" data-index="1"></button>
+          <button class="dot" data-index="2"></button>
+          <button class="dot" data-index="3"></button>
         </div>
       </div>
     </section>
 
 
   </div>
-
-  <!-- Blog Page -->
-  <div id="blogPage" class="page">
-    <div class="blog-header">
-      <div class="grid-bg"></div>
-      <div class="scan-lines"></div>
-      <div class="container">
-        <button
-          class="back-button glass hover-glow-cyan"
-          onclick="showPage('home')"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <polyline points="15,18 9,12 15,6"></polyline>
-          </svg>
-          <span>Back to Home</span>
-        </button>
-
-        <h1 class="page-title">
-          Hunter's <span class="text-cyan">Intel</span>
-        </h1>
-        <p class="page-description">
-          Latest techniques, tools, and insights from the cybersecurity
-          frontlines. Stay ahead of the curve with expert analysis and
-          real-world case studies.
-        </p>
-      </div>
-    </div>
-
-    <div class="blog-content">
-      <div class="container">
-        <div class="blog-grid" id="blogGrid">
-          <!-- Blog posts will be populated by JavaScript -->
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Blog Post Detail Page -->
-  <div id="blogPostPage" class="page">
-    <div class="blog-post-content">
-      <div class="grid-bg"></div>
-      <div class="scan-lines"></div>
-      <div class="container">
-        <button
-          class="back-button glass hover-glow-cyan"
-          onclick="showPage('blog')"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <polyline points="15,18 9,12 15,6"></polyline>
-          </svg>
-          <span>Back to Blog</span>
-        </button>
-
-        <article class="blog-post glass" id="blogPostContent">
-          <!-- Blog post content will be populated by JavaScript -->
-        </article>
-
-        <div class="blog-interactions glass" id="blogInteractions">
-          <!-- Interaction buttons will be populated by JavaScript -->
-        </div>
-
-        <div class="blog-comments glass" id="blogComments">
-          <!-- Comments section will be populated by JavaScript -->
-        </div>
-      </div>
-    </div>
-  </div>
-</main>
 
 {% endblock %} 
 

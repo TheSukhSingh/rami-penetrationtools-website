@@ -723,3 +723,80 @@ a:active {
     color: var(--cyber-cyan);
     font-family: 'Courier New', monospace;
 }
+/* .social-login {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(0, 255, 224, 0.2);
+} */
+
+.social-divider {
+    text-align: center;
+    margin-bottom: 16px;
+    position: relative;
+}
+
+.social-divider span {
+    background: var(--bg-primary);
+    padding: 0 16px;
+    color: var(--text-mute);
+    font-size: 14px;
+}
+
+.social-divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(0, 255, 224, 0.2);
+    z-index: -1;
+}
+
+.social-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.social-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border: 1px solid rgba(0, 255, 224, 0.3);
+    border-radius: 8px;
+    background: rgba(11, 11, 16, 0.3);
+    backdrop-filter: blur(12px);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.social-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 12px rgba(0, 255, 224, 0.35);
+    border-color: var(--cyber-cyan);
+}
+
+.google-btn:hover {
+    box-shadow: 0 0 12px rgba(0, 255, 224, 0.35);
+    border-color: var(--cyber-cyan);
+}
+
+.github-btn:hover {
+    box-shadow: 0 0 12px rgba(0, 255, 224, 0.35);
+    border-color: var(--cyber-cyan);
+}
+
+.security-notice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-mute);
+}

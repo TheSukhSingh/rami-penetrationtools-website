@@ -1,7 +1,6 @@
 // Global state
 let currentPage = "home";
 let currentTestimonial = 0;
-let currentAuthMode = "login";
 let likedPosts = new Set();
 
 // Sample data
@@ -65,6 +64,27 @@ function setupEventListeners() {
   document
     .getElementById("nextTestimonial")
     .addEventListener("click", nextTestimonial);
+  // CTA button -> scroll to tools
+  const cta = document.getElementById("ctaTools");
+  if (cta) cta.addEventListener("click", () => scrollToSection("tools"));
+
+  // Testimonial dots (no inline onclick)
+  const dots = document.getElementById("testimonialDots");
+  if (dots) {
+    dots.addEventListener("click", (e) => {
+      const btn = e.target.closest("button.dot");
+      if (!btn) return;
+      const i = parseInt(btn.dataset.index, 10);
+      if (!Number.isNaN(i)) setTestimonial(i);
+    });
+  }
+
+  // “Back to Home” button (no inline onclick)
+  const backHome = document.getElementById("backHome");
+  if (backHome)
+    backHome.addEventListener("click", () => {
+      window.location.href = "/";
+    });
 
   // Auto-advance testimonials
   setInterval(nextTestimonial, 5000);
@@ -252,4 +272,3 @@ function handleScroll() {
     navbar.classList.remove("scrolled");
   }
 }
-
