@@ -154,7 +154,10 @@ def create_app():
             "frame-src https://accounts.google.com https://challenges.cloudflare.com;"
         )
         return resp
-    
+    @app.context_processor
+    def inject_config():
+        return {"config": current_app.config}
+
     @app.route('/')
     def index():
         return render_template('landing_page.html')
