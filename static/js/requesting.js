@@ -6,6 +6,13 @@
   //   const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
   //   return m ? decodeURIComponent(m[2]) : null;
   // }
+  function getMetaCSRF() {
+    const t = document.querySelector('meta[name="csrf-token"]');
+    return t ? t.getAttribute("content") : "";
+  }
+  function haveRefreshCSRF() {
+    return !!getCookie("csrf_refresh_token");
+  }
 
   function getCookie(name) {
     // Prefer the shared helper from requesting.js (decodes values)
@@ -31,22 +38,24 @@
 
   // --- Refresh queue (single-flight) ----------------------------
   let refreshPromise = null;
-  async function refreshTokens() {
-    if (!refreshPromise) {
-      refreshPromise = fetch("/auth/refresh", {
+  async function refreshTokens({ silent = true } = {}) {
+    const csrf = getCookie("csrf_refresh_token");
+    if (!csrf) {
+      return { ok: false, status: 0 };
+    }
+    try {
+      const res = await fetch("/auth/refresh", {
         method: "POST",
         credentials: "include",
-        headers: { "X-CSRF-TOKEN": getCookie("csrf_refresh_token") || "" },
-      })
-        .then((r) => {
-          if (!r.ok) throw new Error("refresh_failed");
-          // cookies rotated server-side; nothing to return
-        })
-        .finally(() => {
-          refreshPromise = null;
-        });
+        headers: {
+          Accept: "application/json",
+          "X-CSRF-TOKEN": csrf,
+        },
+      });
+      return { ok: res.ok, status: res.status };
+    } catch {
+      return { ok: false, status: 0 };
     }
-    return refreshPromise;
   }
 
   // --- Core fetch with CSRF + refresh retry ---------------------
@@ -61,7 +70,7 @@
         options?.csrf === "refresh"
           ? "csrf_refresh_token"
           : "csrf_access_token";
-      const csrf = getCookie(which);
+      const csrf = getCookie(which) || getMetaCSRF();
       if (csrf) headers.set("X-CSRF-TOKEN", csrf);
     }
 
@@ -80,25 +89,65 @@
     let res = await fetch(url, opts);
 
     // If unauthorized, try a single refresh then retry
-    if (res.status === 401) {
-      try {
-        await refreshTokens();
-        // rotate CSRF for retry
-        if (needCsrf(method)) {
-          const which =
-            options?.csrf === "refresh"
-              ? "csrf_refresh_token"
-              : "csrf_access_token";
-          const csrf = getCookie(which);
-          if (csrf) headers.set("X-CSRF-TOKEN", csrf);
-        }
+    // if (res.status === 401) {
+    //   try {
+    //     await refreshTokens();
+    //     if (needCsrf(method)) {
+    //       const which =
+    //         options?.csrf === "refresh"
+    //           ? "csrf_refresh_token"
+    //           : "csrf_access_token";
+    //       const csrf = getCookie(which) || getMetaCSRF();
+    //       if (csrf) headers.set("X-CSRF-TOKEN", csrf);
+    //     }
 
-        res = await fetch(url, opts);
-      } catch {
-        // refresh failed → surface 401, notify listeners
-        window.dispatchEvent(new CustomEvent("auth:required"));
+    //     res = await fetch(url, opts);
+    //   } catch {
+    //     // refresh failed → surface 401, notify listeners
+    //     window.dispatchEvent(new CustomEvent("auth:required"));
+    //     return res;
+    //   }
+    // }
+
+    // If unauthorized, optionally try a single refresh then retry
+    if (res.status === 401) {
+      // Caller can opt-out of refresh for this request
+      if (options?.refresh === false) {
         return res;
       }
+
+      // If we clearly don't have a refresh CSRF cookie, don't even try
+      if (!haveRefreshCSRF()) {
+        if (!options?.silent) {
+          window.dispatchEvent(
+            new CustomEvent("auth:required", { detail: { url } })
+          );
+        }
+        return res; // keep original 401
+      }
+
+      // Try one refresh (uses refresh CSRF header internally)
+      const refreshed = await refreshTokens({ silent: true });
+      if (!refreshed.ok) {
+        if (!options?.silent) {
+          window.dispatchEvent(
+            new CustomEvent("auth:required", { detail: { url } })
+          );
+        }
+        return res; // keep original 401
+      }
+
+      // Re-attach CSRF and retry original request once
+      if (needCsrf(method)) {
+        const which =
+          options?.csrf === "refresh"
+            ? "csrf_refresh_token"
+            : "csrf_access_token";
+        const csrf = getCookie(which) || getMetaCSRF();
+        if (csrf) headers.set("X-CSRF-TOKEN", csrf);
+        opts.headers = headers;
+      }
+      res = await fetch(url, opts);
     }
 
     // 403/422 could indicate CSRF mismatch—optional hook
@@ -138,13 +187,22 @@
     };
   }
 
-  const getJSON = (url, opts) => fetchJSON(url, { method: "GET", ...opts });
-  const postJSON = (url, body, opts = {}) =>
-    fetchJSON(url, { method: "POST", body, ...opts });
-  const putJSON = (url, body, opts = {}) =>
-    fetchJSON(url, { method: "PUT", body, ...opts });
-  const delJSON = (url, body, opts = {}) =>
-    fetchJSON(url, { method: "DELETE", body, ...opts });
+  async function getJSON(url, options = {}) {
+    const res = await authFetch(url, { method: "GET", ...options });
+    return parseJSON(res);
+  }
+  async function postJSON(url, body, options = {}) {
+    const res = await authFetch(url, { method: "POST", body, ...options });
+    return parseJSON(res);
+  }
+  async function putJSON(url, body, options = {}) {
+    const res = await authFetch(url, { method: "PUT", body, ...options });
+    return parseJSON(res);
+  }
+  async function delJSON(url, options = {}) {
+    const res = await authFetch(url, { method: "DELETE", ...options });
+    return parseJSON(res);
+  }
 
   // Expose globals (non-module)
   global.authFetch = authFetch;

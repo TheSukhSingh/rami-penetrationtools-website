@@ -641,6 +641,8 @@ async function handleAuthSubmit(event) {
 
 async function initOAuth() {
   try {
+    const sess = await getJSON("/auth/me", { refresh: false, silent: true });
+    if (sess.ok) return;
     // Ask backend for provider start URLs (+ client id), include ?next= so we return here post-login
     const next = encodeURIComponent(
       window.location.pathname + window.location.search
@@ -776,9 +778,11 @@ function initGoogleOneTap(clientId) {
 
 async function initAuth() {
   try {
-    const { ok, data: user } = await getJSON("/auth/me");
-    if (!ok) return;
-    showUser(user);
+    const { ok, data: user } = await getJSON("/auth/me", {
+      refresh: false,
+      silent: true,
+    });
+    if (ok) showUser(user);
   } catch (err) {
     console.error("Auth check failed", err);
   }
