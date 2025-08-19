@@ -288,7 +288,11 @@ def reset_password(token):
             return redirect(url_for('index'))
         print(5)
         # pass pr.user to template (or drop hidden fields)
-        return render_template('auth/reset_password.html', token=token, user=pr.user)
+        try:
+            return render_template('auth/reset_password.html', token=token, user=pr.user)
+        except Exception as e:
+            print(f"error for something - {e}")
+    
     print(6)
 
     # POST
