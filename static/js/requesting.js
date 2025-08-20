@@ -39,26 +39,30 @@
   // --- Refresh queue (single-flight) ----------------------------
   let refreshPromise = null;
   async function refreshTokens({ silent = true } = {}) {
+    if (refreshPromise) return refreshPromise;
     const csrf = getCookie("csrf_refresh_token");
     if (!csrf) {
       return { ok: false, status: 0 };
     }
-    try {
-      const res = await fetch("/auth/refresh", {
-        method: "POST",
-        credentials: "include",
-        csrf: "refresh",
-        refresh: false,
-        silent, 
-        headers: {
-          Accept: "application/json",
-          "X-CSRF-TOKEN": csrf,
-        },
-      });
-      return { ok: res.ok, status: res.status };
-    } catch {
-      return { ok: false, status: 0 };
-    }
+
+    refreshPromise = await fetch("/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      // csrf: "refresh",
+      // refresh: false,
+      // silent,
+      headers: {
+        Accept: "application/json",
+        "X-CSRF-TOKEN": csrf,
+      },
+    })
+      .then((res) => ({ ok: res.ok, status: res.status }))
+      .catch(() => ({ ok: false, status: 0 }))
+      .finally(() => {
+        refreshPromise = null;
+      }); // <-- clear
+
+    return refreshPromise;
   }
 
   // --- Core fetch with CSRF + refresh retry ---------------------
@@ -92,7 +96,7 @@
       // First attempt
       res = await fetch(url, opts);
     } catch (error) {
-      console.log(`first fetch error - ${error}`)
+      console.log(`first fetch error - ${error}`);
     }
 
     // If unauthorized, try a single refresh then retry

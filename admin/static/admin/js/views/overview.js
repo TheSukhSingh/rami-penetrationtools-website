@@ -146,15 +146,28 @@ function buildSkeleton(root) {
   cardsRow.append(cardTotal.el, cardRate.el, cardNew.el, cardScans.el);
 
   // charts row
-  const chartsRow = el("div", {
-    class: "charts-row",
-    style:
-      "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;",
-  });
-  const dailyBox = el("div", { class: "panel" }, el("h3", {}, "Daily Scans"));
-  const toolsBox = el("div", { class: "panel" }, el("h3", {}, "Tools Usage"));
-  const lineCanvas = el("canvas", { width: 900, height: 320, id: "ov-daily" });
-  const barCanvas = el("canvas", { width: 900, height: 320, id: "ov-tools" });
+  // const chartsRow = el("div", {
+  //   class: "charts-row",
+  //   style:
+  //     "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;",
+  // });
+  // const dailyBox = el("div", { class: "panel" }, el("h3", {}, "Daily Scans"));
+  // const toolsBox = el("div", { class: "panel" }, el("h3", {}, "Tools Usage"));
+  // const lineCanvas = el("canvas", { width: 900, height: 320, id: "ov-daily" });
+  // const barCanvas = el("canvas", { width: 900, height: 320, id: "ov-tools" });
+  const chartsRow = el("div", { class: "charts-row" });
+  const dailyBox = el(
+    "div",
+    { class: "chart-card" },
+    el("h3", {}, "Daily Scans")
+  );
+  const toolsBox = el(
+    "div",
+    { class: "chart-card" },
+    el("h3", {}, "Tools Usage")
+  );
+  const lineCanvas = el("canvas", { class: "chart-canvas", id: "ov-daily" });
+  const barCanvas = el("canvas", { class: "chart-canvas", id: "ov-tools" });
   dailyBox.append(lineCanvas);
   toolsBox.append(barCanvas);
   chartsRow.append(dailyBox, toolsBox);
@@ -227,6 +240,12 @@ export async function mount(root, { signal }) {
   const onTick = () => refresh({ signal });
   window.addEventListener("admin:refresh", onTick);
   onCleanup(() => window.removeEventListener("admin:refresh", onTick));
+  const onResize = () => {
+    // just re-run refresh – prepCanvas will fit to new width
+    refresh({ signal });
+  };
+  window.addEventListener("resize", onResize);
+  onCleanup(() => window.removeEventListener("resize", onResize));
 }
 
 export function unmount() {

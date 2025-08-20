@@ -182,8 +182,8 @@ def local_login():
     return resp, 200
 
 @auth_bp.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True)
 @csrf.exempt   
+@jwt_required(refresh=True)
 @limiter.limit("20 per hour", key_func=get_remote_address)
 def refresh():
     # new_at = create_access_token(identity=get_jwt_identity())
@@ -303,6 +303,8 @@ def reset_password(token):
         return redirect(url_for('auth.reset_password', token=token))
 
     pr.consume()                # consume the token only on success
+    RefreshToken.query.filter_by(user_id=pr.user.user_id, revoked=False)\
+                     .update({"revoked": True})
     db.session.commit()
     flash('Your password has been updated! Please log in.', 'success')
     return redirect(url_for('index'))
