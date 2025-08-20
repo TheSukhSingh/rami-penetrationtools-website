@@ -11,8 +11,8 @@ function clearCleanup() { cleanupFns.forEach(fn => { try { fn(); } catch {} }); 
 
 async function renderOnce(root, { signal }) {
   const { period } = getState();
-  const data = await getOverview(period, { signal });
-
+  const payload = await getOverview(period, { signal });
+  const data = payload?.data ?? payload;
   // --- header text (optional; you already show page title) ---
   setHeader({
     title: 'Dashboard Overview',

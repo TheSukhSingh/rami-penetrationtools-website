@@ -6,26 +6,17 @@ from auth.models import User
 from . import admin_bp
 
 def _guard_or_redirect():
-    print(2)
     uid = get_jwt_identity()
-    print(3)
     if not uid:
         return False
-    print(4)
     user = db.session.get(User, int(uid))
-    print(5)
-    # use your hybrid props from the auth model
     if not user or not (user.is_admin_user or user.is_master_user):
-        print(5.5)
         return False
-        # abort(403)
-    print(6)
     return True
 
 @admin_bp.route("/", methods=["GET"])
 @jwt_required()
 def admin_index():
-    print(1)
     if _guard_or_redirect():
         return render_template("admin/admin.html")
 
