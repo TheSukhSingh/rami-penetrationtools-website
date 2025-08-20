@@ -284,10 +284,8 @@ def reset_password(token):
             flash('Invalid or expired reset link.', 'danger')
             return redirect(url_for('index'))
         # pass pr.user to template (or drop hidden fields)
-        try:
-            return render_template('auth/reset_password.html', token=token, user=pr.user)
-        except Exception as e:
-            print(f"error for something - {e}")
+        return render_template('auth/reset_password.html', token=token, user=pr.user)
+
     
 
     # POST

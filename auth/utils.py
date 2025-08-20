@@ -78,7 +78,7 @@ def init_jwt_manager(app, jwt):
         hashed_jti = sha256(raw_jti.encode("utf-8")).hexdigest()
         token = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
 
-        if token is None or token.revoked:
+        if token is None or token.revoked or (token.expires_at and token.expires_at <= utcnow()):
             try:
                 uid = int(jwt_payload.get("sub"))
                 RefreshToken.query.filter_by(user_id=uid, revoked=False).update({"revoked": True})

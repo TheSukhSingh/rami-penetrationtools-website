@@ -45,7 +45,7 @@
       return { ok: false, status: 0 };
     }
 
-    refreshPromise = await fetch("/auth/refresh", {
+    refreshPromise = fetch("/auth/refresh", {
       method: "POST",
       credentials: "include",
       // csrf: "refresh",
