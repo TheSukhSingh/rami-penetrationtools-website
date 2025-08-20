@@ -54,7 +54,9 @@ def create_app():
         "JWT_COOKIE_SAMESITE": "Lax",                 # CSRF protection level
         "JWT_COOKIE_CSRF_PROTECT": True,              # enable double-submit CSRF
         "JWT_ACCESS_COOKIE_PATH": "/",                # where access cookie is sent
-        "JWT_REFRESH_COOKIE_PATH": "/auth",   
+        "JWT_REFRESH_COOKIE_PATH": "/auth",
+        "JWT_ACCESS_CSRF_COOKIE_PATH": "/",
+        "JWT_REFRESH_CSRF_COOKIE_PATH": "/",      
         "WTF_CSRF_TIME_LIMIT":3600,
         "WTF_CSRF_METHODS":['POST','PUT','PATCH','DELETE'],
     })
