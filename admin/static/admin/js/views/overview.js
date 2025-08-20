@@ -419,42 +419,91 @@ function buildSeries(raw, period) {
   return { series, bucket };
 }
 
+// function updateUI(data){
+//   setHeader({ subtitle: `Last updated ${new Date(data.computed_at).toLocaleString()}` });
+
+//   const c = data.cards || {};
+//   ui.cards.total.update({
+//     value: num(c.total_users?.value ?? 0),
+//     changeText: pct(c.total_users?.delta_vs_prev ?? 0),
+//     positive: (c.total_users?.delta_vs_prev ?? 0) >= 0,
+//   });
+//   ui.cards.rate.update({
+//     value: pct((c.success_rate?.value ?? 0) * 100),
+//     changeText: pct(c.success_rate?.delta_vs_prev ?? 0),
+//     positive: (c.success_rate?.delta_vs_prev ?? 0) >= 0,
+//   });
+//   ui.cards.newRegs.update({
+//     value: num(c.new_registrations?.value ?? 0),
+//     changeText: pct(c.new_registrations?.delta_vs_prev ?? 0),
+//     positive: (c.new_registrations?.delta_vs_prev ?? 0) >= 0,
+//   });
+//   ui.cards.scans.update({
+//     value: num(c.scan_count?.value ?? 0),
+//     changeText: pct(c.scan_count?.delta_vs_prev ?? 0),
+//     positive: (c.scan_count?.delta_vs_prev ?? 0) >= 0,
+//   });
+
+//   // charts
+//   const period = getState().period;
+//   const { series, bucket } =
+//     buildSeries(data.charts?.daily_scans || [], period);
+//   drawTimeSeriesChart(ui.lineCanvas, series, { bucket });
+
+//   const tu = (data.charts?.tools_usage || []);
+//   const labels = tu.map(t => t.tool || t.name || 'Tool');
+//   const values = tu.map(t => Number(t.count || 0));
+//   drawBarChartLabeled(ui.barCanvas, labels, values);
+// }
+function baselineLabel(period) {
+  switch (period) {
+    case '1d':  return 'from yesterday';
+    case '7d':  return 'from previous week';
+    case '30d': return 'from previous month';
+    case '90d': return 'from previous quarter';
+    default:    return 'vs previous period';
+  }
+}
+
 function updateUI(data){
   setHeader({ subtitle: `Last updated ${new Date(data.computed_at).toLocaleString()}` });
 
+  const period = getState().period;
+  const suffix = ` ${baselineLabel(period)}`;
   const c = data.cards || {};
+
   ui.cards.total.update({
     value: num(c.total_users?.value ?? 0),
-    changeText: pct(c.total_users?.delta_vs_prev ?? 0),
+    changeText: (pct(c.total_users?.delta_vs_prev ?? 0) + suffix),
     positive: (c.total_users?.delta_vs_prev ?? 0) >= 0,
   });
   ui.cards.rate.update({
     value: pct((c.success_rate?.value ?? 0) * 100),
-    changeText: pct(c.success_rate?.delta_vs_prev ?? 0),
+    changeText: (pct(c.success_rate?.delta_vs_prev ?? 0) + suffix),
     positive: (c.success_rate?.delta_vs_prev ?? 0) >= 0,
   });
   ui.cards.newRegs.update({
     value: num(c.new_registrations?.value ?? 0),
-    changeText: pct(c.new_registrations?.delta_vs_prev ?? 0),
+    changeText: (pct(c.new_registrations?.delta_vs_prev ?? 0) + suffix),
     positive: (c.new_registrations?.delta_vs_prev ?? 0) >= 0,
   });
   ui.cards.scans.update({
     value: num(c.scan_count?.value ?? 0),
-    changeText: pct(c.scan_count?.delta_vs_prev ?? 0),
+    changeText: (pct(c.scan_count?.delta_vs_prev ?? 0) + suffix),
     positive: (c.scan_count?.delta_vs_prev ?? 0) >= 0,
   });
 
   // charts
-  const period = getState().period;
   const { series, bucket } =
     buildSeries(data.charts?.daily_scans || [], period);
-  drawTimeSeriesChart(ui.lineCanvas, series, { bucket });
+  drawTimeSeriesChart(ui.lineCanvas, series, { bucket, integer: true });
 
   const tu = (data.charts?.tools_usage || []);
   const labels = tu.map(t => t.tool || t.name || 'Tool');
   const values = tu.map(t => Number(t.count || 0));
-  drawBarChartLabeled(ui.barCanvas, labels, values);
+  drawBarChartLabeled(ui.barCanvas, labels, values, { integer: true });
 }
+
 
 async function refresh({ signal, silent=false }){
   const { period } = getState();
