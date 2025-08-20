@@ -162,16 +162,13 @@ def run_scan(data):
         file_size_b  = None
         for d in valid:
             command.append(d)
-
-
-
+            
     threads     = data.get("gau-threads", "").strip()  or "50"  
     timeout = data.get("gau-timeout", "").strip() or "30"       
     subdomains = data.get("gau-subs", "").strip().lower() == "yes"
     providers = data.get("gau-providers",   "").strip().lower() or ""
     retries = data.get("gau-retries", "").strip() or "2"       
     blacklist = data.get("gau-blacklist", "").strip() or ""
-
 
     try:
         t = int(threads)

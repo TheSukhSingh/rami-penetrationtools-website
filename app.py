@@ -10,7 +10,7 @@ from tools import tools_bp
 from admin import admin_bp
 from admin.api import admin_api_bp
 import secrets
-from extensions import db, bcrypt, migrate, limiter
+from extensions import db, bcrypt, migrate, limiter, csrf
 
 from auth.utils import init_mail, init_jwt_manager
 
@@ -95,8 +95,8 @@ def create_app():
     os.makedirs(app.config['UPLOAD_INPUT_FOLDER'],  exist_ok=True)
     os.makedirs(app.config['UPLOAD_OUTPUT_FOLDER'], exist_ok=True)
 
-
-    csrf = CSRFProtect(app)  
+    # csrf = CSRFProtect(app)  
+    csrf.init_app(app)  
     # csrf.exempt(auth_bp)
     csrf.exempt(tools_bp)
 

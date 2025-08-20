@@ -257,3 +257,71 @@ export function unmount(){
   // keep `cache` so coming back is instant
   ui = null;
 }
+
+
+import { getState } from '../lib/state.js';
+
+// build an array of { x: Date, y: number } with missing buckets filled
+function buildSeries(raw, period) {
+  // raw items may be {date|day|ts, total}
+  const getDate = (r) => new Date(r.date || r.day || r.ts || r.d || r.x);
+  const pts = (raw || []).map(r => ({ x: getDate(r), y: Number(r.total || r.y || 0) }))
+                          .sort((a,b) => +a.x - +b.x);
+
+  // choose bucket
+  const bucket = (period === '90d') ? 'week'
+               : (period === 'all') ? 'month'
+               : 'day';
+
+  // helper to floor date to bucket
+  const floor = (d) => {
+    d = new Date(d); d.setHours(0,0,0,0);
+    if (bucket === 'week') {
+      const day = d.getDay(); // 0=Sun
+      d.setDate(d.getDate() - day); // start of week (Sun)
+    }
+    if (bucket === 'month') d.setDate(1);
+    return d;
+  };
+
+  // figure start/end from current period
+  const end = new Date(); end.setHours(0,0,0,0);
+  const start = new Date(end);
+  if (period === '1d') start.setDate(end.getDate() - 0);
+  else if (period === '7d') start.setDate(end.getDate() - 6);
+  else if (period === '30d') start.setDate(end.getDate() - 29);
+  else if (period === '90d') start.setDate(end.getDate() - 89);
+  else { start.setMonth(end.getMonth() - 11); start.setDate(1); } // 'all' → last 12 months as an example
+
+  // index incoming by bucket
+  const map = new Map();
+  pts.forEach(p => {
+    const k = +floor(p.x);
+    map.set(k, (map.get(k) || 0) + p.y);
+  });
+
+  // walk all buckets between start..end and fill zeros
+  const step = (d) => {
+    if (bucket === 'day')  d.setDate(d.getDate() + 1);
+    if (bucket === 'week') d.setDate(d.getDate() + 7);
+    if (bucket === 'month'){ d.setMonth(d.getMonth() + 1); d.setDate(1); }
+  };
+  const series = [];
+  for (let d = floor(start); +d <= +floor(end); step(d)){
+    const k = +d;
+    series.push({ x: new Date(k), y: map.get(k) || 0 });
+  }
+  return { series, bucket };
+}
+
+
+// DAILY SCANS (time series)
+const { series, bucket } = buildSeries(data.charts?.daily_scans || [], getState().period);
+drawTimeSeriesChart(ui.lineCanvas, series, { bucket });
+
+// TOOLS USAGE (bars with labels + hover)
+const tu = (data.charts?.tools_usage || []);
+const labels = tu.map(t => t.tool || t.name || 'Tool');
+const values = tu.map(t => Number(t.count || 0));
+drawBarChartLabeled(ui.barCanvas, labels, values);
+ 
