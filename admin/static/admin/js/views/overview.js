@@ -107,7 +107,7 @@
 //   clearCleanup();
 // }
 
-import { el, qs } from "../lib/dom.js";
+import { el } from "../lib/dom.js";
 import { getState, setHeader, subscribe } from "../lib/state.js";
 import { num, pct } from "../lib/format.js";
 import { getOverview } from "../api/metrics.js";
@@ -116,6 +116,7 @@ import { drawLineChart, drawBarChart } from "../components/charts.js";
 
 let cleanup = [];
 let ui = null; // hold DOM refs so we can update instead of re-creating
+let cache = null; 
 
 function onCleanup(fn) {
   cleanup.push(fn);
@@ -133,12 +134,7 @@ function buildSkeleton(root) {
   root.innerHTML = ""; // <-- ensure we never append twice
   const wrap = el("div", { class: "overview-wrap" });
 
-  // cards row
-  const cardsRow = el("div", {
-    class: "cards-row",
-    style:
-      "display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;",
-  });
+  const cardsRow = el('div', { class: 'cards-row' });
   const cardTotal = createStatCard({ title: "Total Users" });
   const cardRate = createStatCard({ title: "Scan Success Rate" });
   const cardNew = createStatCard({ title: "New Registrations" });
@@ -186,17 +182,9 @@ function buildSkeleton(root) {
     barCanvas,
   };
 }
+function updateUI(data){
+  setHeader({ subtitle: `Last updated ${new Date(data.computed_at).toLocaleString()}` });
 
-async function refresh({ signal }) {
-  const { period } = getState();
-  const data = await getOverview(period, { signal }); // returns inner {computed_at, cards, charts}
-
-  // header subtitle
-  setHeader({
-    subtitle: `Last updated ${new Date(data.computed_at).toLocaleString()}`,
-  });
-
-  // cards
   const c = data.cards || {};
   ui.cards.total.update({
     value: num(c.total_users?.value ?? 0),
@@ -219,36 +207,53 @@ async function refresh({ signal }) {
     positive: (c.scan_count?.delta_vs_prev ?? 0) >= 0,
   });
 
-  // charts
-  const dailyTotals = (data.charts?.daily_scans ?? []).map((d) => d.total ?? 0);
+  const dailyTotals = (data.charts?.daily_scans ?? []).map(d => d.total ?? 0);
   drawLineChart(ui.lineCanvas, dailyTotals.length ? dailyTotals : [0]);
 
-  const toolCounts = (data.charts?.tools_usage ?? []).map((t) => t.count ?? 0);
+  const toolCounts = (data.charts?.tools_usage ?? []).map(t => t.count ?? 0);
   drawBarChart(ui.barCanvas, toolCounts.length ? toolCounts : [0]);
 }
 
-export async function mount(root, { signal }) {
-  // build once
-  buildSkeleton(root);
-  await refresh({ signal });
+async function refresh({ signal, silent=false }){
+  const { period } = getState();
 
-  // re-fetch when period changes (don’t rebuild DOM)
-  const unsub = subscribe(["period"], () => refresh({ signal }));
-  onCleanup(unsub);
+  // paint last known data immediately (no flicker)
+  if (cache && !silent) updateUI(cache);
 
-  // re-fetch on the global 60s tick
-  const onTick = () => refresh({ signal });
-  window.addEventListener("admin:refresh", onTick);
-  onCleanup(() => window.removeEventListener("admin:refresh", onTick));
-  const onResize = () => {
-    // just re-run refresh – prepCanvas will fit to new width
-    refresh({ signal });
-  };
-  window.addEventListener("resize", onResize);
-  onCleanup(() => window.removeEventListener("resize", onResize));
+  try {
+    const fresh = await getOverview(period, { signal }); // returns inner data
+    cache = fresh;               // keep it
+    updateUI(fresh);
+  } catch (err) {
+    const msg = String(err?.message || '').toLowerCase();
+    const name = String(err?.name || '').toLowerCase();
+    if (name === 'aborterror' || msg.includes('abort')) return; // ignore route change
+    // optionally toast real errors here
+  }
 }
 
-export function unmount() {
+export async function mount(root, { signal }){
+  buildSkeleton(root);
+  if (cache) updateUI(cache);            // instant paint from cache
+  await refresh({ signal, silent: !!cache });
+
+  // period change → fresh fetch
+  const unsub = subscribe(['period'], () => refresh({ signal, silent:false }));
+  onCleanup(unsub);
+
+  // global 60s tick → silent refresh
+  const onTick = () => refresh({ signal, silent:true });
+  window.addEventListener('admin:refresh', onTick);
+  onCleanup(() => window.removeEventListener('admin:refresh', onTick));
+
+  // resize → redraw from cache to fit new width
+  const onResize = () => { if (cache) updateUI(cache); };
+  window.addEventListener('resize', onResize);
+  onCleanup(() => window.removeEventListener('resize', onResize));
+}
+
+export function unmount(){
   clearCleanup();
+  // keep `cache` so coming back is instant
   ui = null;
 }
