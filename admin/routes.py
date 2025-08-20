@@ -16,6 +16,7 @@ def _guard_or_redirect():
     print(5)
     # use your hybrid props from the auth model
     if not user or not (user.is_admin_user or user.is_master_user):
+        print(5.5)
         abort(403)
     print(6)
     return user
