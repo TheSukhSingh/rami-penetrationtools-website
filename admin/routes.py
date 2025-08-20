@@ -28,9 +28,8 @@ def admin_index():
     print(1)
     if _guard_or_redirect():
         return render_template("admin/admin.html")
-    else:
-        return redirect(url_for('index'))
-    print(7)
+
+    return redirect(url_for('index'))
 
 @admin_bp.route("/<path:subpath>", methods=["GET"])
 @jwt_required()
