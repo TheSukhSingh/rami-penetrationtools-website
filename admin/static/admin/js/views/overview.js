@@ -107,40 +107,54 @@
 //   clearCleanup();
 // }
 
-
-
-
-import { el, qs } from '../lib/dom.js';
-import { getState, setHeader, subscribe } from '../lib/state.js';
-import { num, pct } from '../lib/format.js';
-import { getOverview } from '../api/metrics.js';
-import { createStatCard } from '../components/cards.js';
-import { drawLineChart, drawBarChart } from '../components/charts.js';
+import { el, qs } from "../lib/dom.js";
+import { getState, setHeader, subscribe } from "../lib/state.js";
+import { num, pct } from "../lib/format.js";
+import { getOverview } from "../api/metrics.js";
+import { createStatCard } from "../components/cards.js";
+import { drawLineChart, drawBarChart } from "../components/charts.js";
 
 let cleanup = [];
 let ui = null; // hold DOM refs so we can update instead of re-creating
 
-function onCleanup(fn){ cleanup.push(fn); }
-function clearCleanup(){ cleanup.forEach(fn => { try{fn()}catch{} }); cleanup = []; }
+function onCleanup(fn) {
+  cleanup.push(fn);
+}
+function clearCleanup() {
+  cleanup.forEach((fn) => {
+    try {
+      fn();
+    } catch {}
+  });
+  cleanup = [];
+}
 
 function buildSkeleton(root) {
-  root.innerHTML = '';               // <-- ensure we never append twice
-  const wrap = el('div', { class: 'overview-wrap' });
+  root.innerHTML = ""; // <-- ensure we never append twice
+  const wrap = el("div", { class: "overview-wrap" });
 
   // cards row
-  const cardsRow = el('div', { class: 'cards-row grid grid-cols-4 gap-4' });
-  const cardTotal   = createStatCard({ title: 'Total Users' });
-  const cardRate    = createStatCard({ title: 'Scan Success Rate' });
-  const cardNew     = createStatCard({ title: 'New Registrations' });
-  const cardScans   = createStatCard({ title: 'Scan Count' });
+  const cardsRow = el("div", {
+    class: "cards-row",
+    style:
+      "display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;",
+  });
+  const cardTotal = createStatCard({ title: "Total Users" });
+  const cardRate = createStatCard({ title: "Scan Success Rate" });
+  const cardNew = createStatCard({ title: "New Registrations" });
+  const cardScans = createStatCard({ title: "Scan Count" });
   cardsRow.append(cardTotal.el, cardRate.el, cardNew.el, cardScans.el);
 
   // charts row
-  const chartsRow = el('div', { class: 'charts-row grid grid-cols-2 gap-4' });
-  const dailyBox  = el('div', { class: 'panel' }, el('h3', {}, 'Daily Scans'));
-  const toolsBox  = el('div', { class: 'panel' }, el('h3', {}, 'Tools Usage'));
-  const lineCanvas = el('canvas', { width: 900, height: 320, id: 'ov-daily' });
-  const barCanvas  = el('canvas', { width: 900, height: 320, id: 'ov-tools' });
+  const chartsRow = el("div", {
+    class: "charts-row",
+    style:
+      "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;",
+  });
+  const dailyBox = el("div", { class: "panel" }, el("h3", {}, "Daily Scans"));
+  const toolsBox = el("div", { class: "panel" }, el("h3", {}, "Tools Usage"));
+  const lineCanvas = el("canvas", { width: 900, height: 320, id: "ov-daily" });
+  const barCanvas = el("canvas", { width: 900, height: 320, id: "ov-tools" });
   dailyBox.append(lineCanvas);
   toolsBox.append(barCanvas);
   chartsRow.append(dailyBox, toolsBox);
@@ -149,46 +163,54 @@ function buildSkeleton(root) {
   root.append(wrap);
 
   ui = {
-    cards: { total: cardTotal, rate: cardRate, newRegs: cardNew, scans: cardScans },
-    lineCanvas, barCanvas,
+    cards: {
+      total: cardTotal,
+      rate: cardRate,
+      newRegs: cardNew,
+      scans: cardScans,
+    },
+    lineCanvas,
+    barCanvas,
   };
 }
 
 async function refresh({ signal }) {
   const { period } = getState();
-  const data = await getOverview(period, { signal });     // returns inner {computed_at, cards, charts}
+  const data = await getOverview(period, { signal }); // returns inner {computed_at, cards, charts}
 
   // header subtitle
-  setHeader({ subtitle: `Last updated ${new Date(data.computed_at).toLocaleString()}` });
+  setHeader({
+    subtitle: `Last updated ${new Date(data.computed_at).toLocaleString()}`,
+  });
 
   // cards
   const c = data.cards || {};
   ui.cards.total.update({
     value: num(c.total_users?.value ?? 0),
     changeText: pct(c.total_users?.delta_vs_prev ?? 0),
-    positive: (c.total_users?.delta_vs_prev ?? 0) >= 0
+    positive: (c.total_users?.delta_vs_prev ?? 0) >= 0,
   });
   ui.cards.rate.update({
     value: pct((c.success_rate?.value ?? 0) * 100),
     changeText: pct(c.success_rate?.delta_vs_prev ?? 0),
-    positive: (c.success_rate?.delta_vs_prev ?? 0) >= 0
+    positive: (c.success_rate?.delta_vs_prev ?? 0) >= 0,
   });
   ui.cards.newRegs.update({
     value: num(c.new_registrations?.value ?? 0),
     changeText: pct(c.new_registrations?.delta_vs_prev ?? 0),
-    positive: (c.new_registrations?.delta_vs_prev ?? 0) >= 0
+    positive: (c.new_registrations?.delta_vs_prev ?? 0) >= 0,
   });
   ui.cards.scans.update({
     value: num(c.scan_count?.value ?? 0),
     changeText: pct(c.scan_count?.delta_vs_prev ?? 0),
-    positive: (c.scan_count?.delta_vs_prev ?? 0) >= 0
+    positive: (c.scan_count?.delta_vs_prev ?? 0) >= 0,
   });
 
   // charts
-  const dailyTotals = (data.charts?.daily_scans ?? []).map(d => d.total ?? 0);
+  const dailyTotals = (data.charts?.daily_scans ?? []).map((d) => d.total ?? 0);
   drawLineChart(ui.lineCanvas, dailyTotals.length ? dailyTotals : [0]);
 
-  const toolCounts = (data.charts?.tools_usage ?? []).map(t => t.count ?? 0);
+  const toolCounts = (data.charts?.tools_usage ?? []).map((t) => t.count ?? 0);
   drawBarChart(ui.barCanvas, toolCounts.length ? toolCounts : [0]);
 }
 
@@ -198,13 +220,13 @@ export async function mount(root, { signal }) {
   await refresh({ signal });
 
   // re-fetch when period changes (don’t rebuild DOM)
-  const unsub = subscribe(['period'], () => refresh({ signal }));
+  const unsub = subscribe(["period"], () => refresh({ signal }));
   onCleanup(unsub);
 
   // re-fetch on the global 60s tick
   const onTick = () => refresh({ signal });
-  window.addEventListener('admin:refresh', onTick);
-  onCleanup(() => window.removeEventListener('admin:refresh', onTick));
+  window.addEventListener("admin:refresh", onTick);
+  onCleanup(() => window.removeEventListener("admin:refresh", onTick));
 }
 
 export function unmount() {

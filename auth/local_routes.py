@@ -8,7 +8,7 @@ from flask import (
 from flask_limiter.util import get_remote_address
 import pyotp
 import qrcode
-from extensions import limiter
+from extensions import limiter, csrf
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies
 from . import auth_bp
 from .models import (
@@ -183,6 +183,7 @@ def local_login():
 
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
+@csrf.exempt   
 @limiter.limit("20 per hour", key_func=get_remote_address)
 def refresh():
     # new_at = create_access_token(identity=get_jwt_identity())

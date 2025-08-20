@@ -71,7 +71,7 @@ def init_jwt_manager(app, jwt):
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
         raw_jti   = jwt_payload.get("jti")
-        token_type= jwt_payload.get("type")
+        token_type= jwt_payload.get("type") or jwt_payload.get("typ")
         if token_type != "refresh":
             return False
 

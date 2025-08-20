@@ -47,6 +47,9 @@
       const res = await fetch("/auth/refresh", {
         method: "POST",
         credentials: "include",
+        csrf: "refresh",
+        refresh: false,
+        silent, 
         headers: {
           Accept: "application/json",
           "X-CSRF-TOKEN": csrf,
