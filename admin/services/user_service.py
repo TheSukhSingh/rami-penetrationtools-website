@@ -580,12 +580,16 @@ class UserService(BaseService):
         return rows, total
 
     def user_detail(self, user_id: int):
+        print(' user detail 1')
         u = self._safe(lambda: self.repo.user_detail(user_id), None) \
             if hasattr(self.repo, "user_detail") else User.query.get(user_id)
+        print(' user detail 2')
         self.ensure_found(u, "User not found")
+        print(' user detail 3')
 
         last_login = self._safe(lambda: self.repo.last_login_at(u.id), None) \
                      if hasattr(self.repo, "last_login_at") else self._fallback_last_login(u.id)
+        print(' user detail 4')
         scan_cnt   = self._safe(lambda: self.repo.scan_count(u.id), 0) \
                      if hasattr(self.repo, "scan_count") else self._fallback_scan_count(u.id)
         # if hasattr(self.repo, "recent_ip_logs"):
@@ -605,8 +609,10 @@ class UserService(BaseService):
         #         } for x in logs]
         #     except Exception:
         #         pass
+        print(' user detail 5')
         if hasattr(self.repo, "recent_ip_logs"):
             logs = self._safe(lambda: self.repo.recent_ip_logs(u.id, limit=20), []) or []
+            print(' user detail 6')
             ip_logs = [{
                 "ip": getattr(x, "ip", None),
                 "user_agent": getattr(x, "user_agent", None),
@@ -615,8 +621,9 @@ class UserService(BaseService):
             } for x in logs]
         else:
             ip_logs = []
+            print(' user detail 7')
             try:
-                from admin.models import UserIPLog
+                from auth.models import UserIPLog
                 logs = (db.session.query(UserIPLog)
                         .filter(UserIPLog.user_id == u.id)
                         .order_by(UserIPLog.created_at.desc())
@@ -628,6 +635,7 @@ class UserService(BaseService):
             except Exception:
                 pass
 
+        print(' user detail 1')
 
         tier = next((r.name for r in (u.roles or []) if (r.name or "").startswith("tier_")), None)
         return {
