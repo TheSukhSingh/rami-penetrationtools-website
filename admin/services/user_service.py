@@ -588,10 +588,32 @@ class UserService(BaseService):
                      if hasattr(self.repo, "last_login_at") else self._fallback_last_login(u.id)
         scan_cnt   = self._safe(lambda: self.repo.scan_count(u.id), 0) \
                      if hasattr(self.repo, "scan_count") else self._fallback_scan_count(u.id)
+        # if hasattr(self.repo, "recent_ip_logs"):
+        #     ip_logs = self._safe(lambda: self.repo.recent_ip_logs(u.id, limit=20), []) or []
+        # else:
+        #     # optional: try to read logs directly if model exists
+        #     ip_logs = []
+        #     try:
+        #         from admin.models import UserIPLog
+        #         logs = (db.session.query(UserIPLog)
+        #                 .filter(UserIPLog.user_id == u.id)
+        #                 .order_by(UserIPLog.created_at.desc())
+        #                 .limit(20).all())
+        #         ip_logs = [{
+        #             "ip": x.ip, "user_agent": x.user_agent, "device": x.device,
+        #             "created_at": x.created_at.isoformat() if x.created_at else None
+        #         } for x in logs]
+        #     except Exception:
+        #         pass
         if hasattr(self.repo, "recent_ip_logs"):
-            ip_logs = self._safe(lambda: self.repo.recent_ip_logs(u.id, limit=20), []) or []
+            logs = self._safe(lambda: self.repo.recent_ip_logs(u.id, limit=20), []) or []
+            ip_logs = [{
+                "ip": getattr(x, "ip", None),
+                "user_agent": getattr(x, "user_agent", None),
+                "device": getattr(x, "device", None),
+                "created_at": (x.created_at.isoformat() if getattr(x, "created_at", None) else None),
+            } for x in logs]
         else:
-            # optional: try to read logs directly if model exists
             ip_logs = []
             try:
                 from admin.models import UserIPLog
@@ -600,11 +622,12 @@ class UserService(BaseService):
                         .order_by(UserIPLog.created_at.desc())
                         .limit(20).all())
                 ip_logs = [{
-                    "ip": x.ip, "user_agent": x.user_agent, "device": x.device,
+                    "ip": x.ip, "user_agent": x.user_agent, "device": getattr(x, "device", None),
                     "created_at": x.created_at.isoformat() if x.created_at else None
                 } for x in logs]
             except Exception:
                 pass
+
 
         tier = next((r.name for r in (u.roles or []) if (r.name or "").startswith("tier_")), None)
         return {
