@@ -272,11 +272,11 @@
 
 
 
-# admin/api/users.py
 from flask import request
 from . import admin_api_bp            # same pattern as overview.py uses
-from .common import ok, bad_request   # ok(...) is used by overview
+from .common import ok   # ok(...) is used by overview
 from admin.services.user_service import UserService
+from admin.errors import BadRequest
 
 svc = UserService()
 
@@ -296,7 +296,7 @@ def users_summary():
         data = svc.users_summary(rng)
         return ok(data)
     except Exception as e:
-        return bad_request(str(e))
+        return BadRequest(str(e))
 
 @admin_api_bp.get("/users")
 def list_users():
@@ -315,7 +315,7 @@ def list_users():
         items, total = svc.list_users(page=page, per_page=per_page, q=q, sort_field=sort_field, desc=is_desc)
         return ok(items, meta={"page": page, "per_page": per_page, "total": int(total or 0)})
     except Exception as e:
-        return bad_request(str(e))
+        return BadRequest(str(e))
 
 @admin_api_bp.get("/users/<int:user_id>")
 def user_detail(user_id: int):
@@ -323,7 +323,7 @@ def user_detail(user_id: int):
         data = svc.user_detail(user_id)
         return ok(data)
     except Exception as e:
-        return bad_request(str(e))
+        return BadRequest(str(e))
 
 @admin_api_bp.post("/users/<int:user_id>/deactivate")
 def deactivate_user(user_id: int):
@@ -331,7 +331,7 @@ def deactivate_user(user_id: int):
         data = svc.deactivate(user_id)
         return ok(data)
     except Exception as e:
-        return bad_request(str(e))
+        return BadRequest(str(e))
 
 @admin_api_bp.post("/users/<int:user_id>/reactivate")
 def reactivate_user(user_id: int):
@@ -339,7 +339,7 @@ def reactivate_user(user_id: int):
         data = svc.reactivate(user_id)
         return ok(data)
     except Exception as e:
-        return bad_request(str(e))
+        return BadRequest(str(e))
 
 @admin_api_bp.post("/users/<int:user_id>/tier")
 def set_tier(user_id: int):
@@ -347,8 +347,8 @@ def set_tier(user_id: int):
         body = request.get_json(silent=True) or {}
         tier = (body.get("tier") or "").strip()
         if not tier:
-            return bad_request("Missing 'tier'")
+            return BadRequest("Missing 'tier'")
         data = svc.set_tier(user_id, tier)
         return ok(data)
     except Exception as e:
-        return bad_request(str(e))
+        return BadRequest(str(e))
