@@ -131,68 +131,92 @@ export default function mountUsers(root) {
     throw e;
   }
 }
+// function roField(label, value) {
+//   return el("div", {
+//     class: "form-row",
+//     style: {
+//       display: "grid",
+//       gridTemplateColumns: "160px 1fr", // label | input
+//       alignItems: "center",
+//       gap: "12px",
+//       marginBottom: "12px",
+//       width: "100%",
+//     },
+//   },
+//     el("div", { class: "form-label", style: { fontWeight: "600", opacity: "0.9", textAlign: "left" } }, label),
+//     el("input", {
+//       class: "form-input",
+//       value: value == null || value === "" ? "—" : String(value),
+//       disabled: true,
+//       readOnly: true,
+//       style: {
+//         width: "100%",
+//         padding: "12px 14px",
+//         borderRadius: "10px",
+//         border: "1px solid rgba(255,255,255,0.15)",
+//         background: "rgba(255,255,255,0.05)",
+//         color: "inherit",
+//         textAlign: "left",
+//       }
+//     })
+//   );
+// }
+
+// function roTextArea(label, value) {
+//   return el("div", {
+//     class: "form-row",
+//     style: {
+//       display: "grid",
+//       gridTemplateColumns: "160px 1fr",
+//       alignItems: "start",
+//       gap: "12px",
+//       marginBottom: "12px",
+//       width: "100%",
+//     },
+//   },
+//     el("div", { class: "form-label", style: { fontWeight: "600", opacity: "0.9", textAlign: "left", paddingTop: "10px" } }, label),
+//     el("textarea", {
+//       class: "form-input",
+//       disabled: true,
+//       readOnly: true,
+//       rows: 3,
+//       style: {
+//         width: "100%",
+//         padding: "12px 14px",
+//         borderRadius: "10px",
+//         border: "1px solid rgba(255,255,255,0.15)",
+//         background: "rgba(255,255,255,0.05)",
+//         color: "inherit",
+//         resize: "vertical",
+//         textAlign: "left",
+//       }
+//     }, value == null || value === "" ? "—" : String(value))
+//   );
+// }
 function roField(label, value) {
-  return el("div", {
-    class: "form-row",
-    style: {
-      display: "grid",
-      gridTemplateColumns: "160px 1fr", // label | input
-      alignItems: "center",
-      gap: "12px",
-      marginBottom: "12px",
-      width: "100%",
-    },
-  },
-    el("div", { class: "form-label", style: { fontWeight: "600", opacity: "0.9", textAlign: "left" } }, label),
+  return el("div", { class: "form-row" },
+    el("div", { class: "form-label" }, label),
     el("input", {
       class: "form-input",
       value: value == null || value === "" ? "—" : String(value),
       disabled: true,
       readOnly: true,
-      style: {
-        width: "100%",
-        padding: "12px 14px",
-        borderRadius: "10px",
-        border: "1px solid rgba(255,255,255,0.15)",
-        background: "rgba(255,255,255,0.05)",
-        color: "inherit",
-        textAlign: "left",
-      }
     })
   );
 }
 
 function roTextArea(label, value) {
-  return el("div", {
-    class: "form-row",
-    style: {
-      display: "grid",
-      gridTemplateColumns: "160px 1fr",
-      alignItems: "start",
-      gap: "12px",
-      marginBottom: "12px",
-      width: "100%",
-    },
-  },
-    el("div", { class: "form-label", style: { fontWeight: "600", opacity: "0.9", textAlign: "left", paddingTop: "10px" } }, label),
+  return el("div", { class: "form-row" },
+    el("div", { class: "form-label" }, label),
     el("textarea", {
       class: "form-input",
       disabled: true,
       readOnly: true,
       rows: 3,
-      style: {
-        width: "100%",
-        padding: "12px 14px",
-        borderRadius: "10px",
-        border: "1px solid rgba(255,255,255,0.15)",
-        background: "rgba(255,255,255,0.05)",
-        color: "inherit",
-        resize: "vertical",
-        textAlign: "left",
-      }
     }, value == null || value === "" ? "—" : String(value))
   );
 }
+
 
 
 //   const body = el("div", { class: "stack gap-2" },
