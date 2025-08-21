@@ -212,59 +212,143 @@
 
 
 
+# from flask import request
+# from admin.api import admin_api_bp
+# from admin.api.common import ok, parse_pagination, parse_sort, get_json
+# from admin.permissions import require_scopes  # keep/comment per your setup
+# from admin.services.user_service import UserService
+
+# svc = UserService()
+
+# @admin_api_bp.get("/users/summary")
+# # @require_scopes("admin.users.read")
+# def users_summary():
+#     # accept both ?range= and ?period= to stay backward compatible
+#     rng = (request.args.get("range") or request.args.get("period") or "7d").lower()
+#     data = svc.users_summary(rng)
+#     # FE expects data object (cards/range/computed_at)
+#     return ok(data)
+
+# @admin_api_bp.get("/users")
+# # @require_scopes("admin.users.read")
+# def list_users():
+#     page, per_page = parse_pagination(default_page=1, default_per_page=20, max_per_page=100)
+#     # supports ?sort=-last_login_at etc.
+#     sort_field, desc = parse_sort(
+#         default="-last_login_at",
+#         allowed_fields=("last_login_at", "created_at", "email", "username", "name"),
+#     )
+#     q = (request.args.get("q") or "").strip() or None
+
+#     items, total = svc.list_users(page=page, per_page=per_page, q=q, sort_field=sort_field, desc=desc)
+#     # FE wrapper returns res.data directly as an array; meta goes to top-level "meta"
+#     return ok(items, meta={"page": page, "per_page": per_page, "total": total})
+
+# @admin_api_bp.get("/users/<int:user_id>")
+# # @require_scopes("admin.users.read")
+# def user_detail(user_id: int):
+#     res = svc.user_detail(user_id)
+#     return ok(res)
+
+# @admin_api_bp.post("/users/<int:user_id>/deactivate")
+# # @require_scopes("admin.users.write")
+# def deactivate_user(user_id: int):
+#     res = svc.deactivate(user_id)
+#     return ok(res)
+
+# @admin_api_bp.post("/users/<int:user_id>/reactivate")
+# # @require_scopes("admin.users.write")
+# def reactivate_user(user_id: int):
+#     res = svc.reactivate(user_id)
+#     return ok(res)
+
+# @admin_api_bp.post("/users/<int:user_id>/tier")
+# # @require_scopes("admin.users.write")
+# def set_tier(user_id: int):
+#     data = get_json(required=("tier",))
+#     res = svc.set_tier(user_id, data["tier"])
+#     return ok(res)
+
+
+
+
+# admin/api/users.py
 from flask import request
-from admin.api import admin_api_bp
-from admin.api.common import ok, parse_pagination, parse_sort, get_json
-from admin.permissions import require_scopes  # keep/comment per your setup
+from . import admin_api_bp            # same pattern as overview.py uses
+from .common import ok, bad_request   # ok(...) is used by overview
 from admin.services.user_service import UserService
 
 svc = UserService()
 
+def _to_int(v, default, lo=None, hi=None):
+    try:
+        x = int(v)
+    except Exception:
+        return default
+    if lo is not None and x < lo: x = lo
+    if hi is not None and x > hi: x = hi
+    return x
+
 @admin_api_bp.get("/users/summary")
-# @require_scopes("admin.users.read")
 def users_summary():
-    # accept both ?range= and ?period= to stay backward compatible
     rng = (request.args.get("range") or request.args.get("period") or "7d").lower()
-    data = svc.users_summary(rng)
-    # FE expects data object (cards/range/computed_at)
-    return ok(data)
+    try:
+        data = svc.users_summary(rng)
+        return ok(data)
+    except Exception as e:
+        return bad_request(str(e))
 
 @admin_api_bp.get("/users")
-# @require_scopes("admin.users.read")
 def list_users():
-    page, per_page = parse_pagination(default_page=1, default_per_page=20, max_per_page=100)
-    # supports ?sort=-last_login_at etc.
-    sort_field, desc = parse_sort(
-        default="-last_login_at",
-        allowed_fields=("last_login_at", "created_at", "email", "username", "name"),
-    )
+    page = _to_int(request.args.get("page", 1), 1, 1, None)
+    per_page = _to_int(request.args.get("per_page", 20), 20, 1, 100)
     q = (request.args.get("q") or "").strip() or None
+    sort = (request.args.get("sort") or "-last_login_at").strip()
 
-    items, total = svc.list_users(page=page, per_page=per_page, q=q, sort_field=sort_field, desc=desc)
-    # FE wrapper returns res.data directly as an array; meta goes to top-level "meta"
-    return ok(items, meta={"page": page, "per_page": per_page, "total": total})
+    # normalize sort
+    is_desc = sort.startswith("-")
+    sort_field = sort[1:] if is_desc else sort
+    if sort_field not in ("last_login_at", "created_at", "email", "username", "name", "scan_count"):
+        sort_field = "last_login_at"
+
+    try:
+        items, total = svc.list_users(page=page, per_page=per_page, q=q, sort_field=sort_field, desc=is_desc)
+        return ok(items, meta={"page": page, "per_page": per_page, "total": int(total or 0)})
+    except Exception as e:
+        return bad_request(str(e))
 
 @admin_api_bp.get("/users/<int:user_id>")
-# @require_scopes("admin.users.read")
 def user_detail(user_id: int):
-    res = svc.user_detail(user_id)
-    return ok(res)
+    try:
+        data = svc.user_detail(user_id)
+        return ok(data)
+    except Exception as e:
+        return bad_request(str(e))
 
 @admin_api_bp.post("/users/<int:user_id>/deactivate")
-# @require_scopes("admin.users.write")
 def deactivate_user(user_id: int):
-    res = svc.deactivate(user_id)
-    return ok(res)
+    try:
+        data = svc.deactivate(user_id)
+        return ok(data)
+    except Exception as e:
+        return bad_request(str(e))
 
 @admin_api_bp.post("/users/<int:user_id>/reactivate")
-# @require_scopes("admin.users.write")
 def reactivate_user(user_id: int):
-    res = svc.reactivate(user_id)
-    return ok(res)
+    try:
+        data = svc.reactivate(user_id)
+        return ok(data)
+    except Exception as e:
+        return bad_request(str(e))
 
 @admin_api_bp.post("/users/<int:user_id>/tier")
-# @require_scopes("admin.users.write")
 def set_tier(user_id: int):
-    data = get_json(required=("tier",))
-    res = svc.set_tier(user_id, data["tier"])
-    return ok(res)
+    try:
+        body = request.get_json(silent=True) or {}
+        tier = (body.get("tier") or "").strip()
+        if not tier:
+            return bad_request("Missing 'tier'")
+        data = svc.set_tier(user_id, tier)
+        return ok(data)
+    except Exception as e:
+        return bad_request(str(e))
