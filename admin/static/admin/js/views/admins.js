@@ -1,11 +1,16 @@
-import { setHeader } from '../lib/state.js';
+import { setHeader } from "../lib/state.js";
 
 export async function mount(root) {
-  setHeader({ title: 'Analytics Dashboard', subtitle: 'Advanced analytics and performance metrics' });
+  setHeader({
+    title: "Admins",
+    subtitle: "Advanced analytics and performance metrics",
+  });
   root.innerHTML = `
-    <div class="panel" style="padding:20px">
-      <h2>Admins Dashboard</h2>
-      <p>Advanced analytics and reporting features coming soon...</p>
-    </div>`;
+    <div class="tab-content" id="analytics">
+                    <div class="coming-soon glass">
+                        <h2>Admins</h2>
+                        <p>Admin roster and 2FA resets coming soon...</p>
+                    </div>
+                </div>`;
 }
 export function unmount() {}

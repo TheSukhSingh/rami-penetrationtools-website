@@ -37,7 +37,7 @@ function buildSkeleton(root) {
   root.append(wrap);
 
   ui = {
-    cards: { total: cardTotal, scans: cardScans, newRegs: cardNew,  rate: cardRate },
+    cards: { total: cardTotal, rate: cardRate, newRegs: cardNew, scans: cardScans },
     lineCanvas, barCanvas
   };
 }
