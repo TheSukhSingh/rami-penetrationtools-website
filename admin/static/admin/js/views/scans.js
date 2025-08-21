@@ -15,7 +15,7 @@
 // static/admin/js/views/scans.js
 import { el } from "../lib/dom.js";
 import { getState, setHeader, subscribe } from "../lib/state.js";
-import { num, pct, ms } from "../lib/format.js";
+import { num, pct } from "../lib/format.js";
 import { getScansSummary, listScans, getScanDetail } from "../api/scans.js";
 import { createStatCard } from "../components/cards.js";
 import { drawTimeSeriesChart, drawBarChartLabeled } from "../components/charts.js";
