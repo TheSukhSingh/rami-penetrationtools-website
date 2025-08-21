@@ -33,26 +33,49 @@ export default function mountUsers(root) {
   root.replaceChildren(cardRow, toolbar, tableWrap);
 
   // --- Cards ---
+  // async function loadCards() {
+  //   const rng = state.period; // "1d" | "7d" | "30d" | "90d" | "all-time"
+  //   const data = await getUsersSummary(rng);
+  //   const c = data.cards || {};
+
+  //   const cards = [
+  //     { key: "total_users", title: "Total Users", value: c.total_users?.value, delta: null },
+  //     { key: "active_users", title: "Active Users", value: c.active_users?.value, delta: c.active_users?.delta_vs_prev },
+  //     { key: "new_registrations", title: "New Registrations", value: c.new_registrations?.value, delta: c.new_registrations?.delta_vs_prev },
+  //     { key: "deactivated_users", title: "Deactivated (New)", value: c.deactivated_users?.value, delta: c.deactivated_users?.delta_vs_prev },
+  //   ];
+
+  //   cardRow.update(cards.map(card => ({
+  //     title: card.title,
+  //     value: num(card.value || 0),
+  //     // show delta chip only if not null
+  //     delta: (card.delta === null || card.delta === undefined) ? null : pct(card.delta),
+  //     // optional: up/down color handled inside cards.js
+  //   })));
+  // }
+
   async function loadCards() {
-    const rng = state.period; // "1d" | "7d" | "30d" | "90d" | "all-time"
+  try {
+    const rng = state.period;
     const data = await getUsersSummary(rng);
     const c = data.cards || {};
-
     const cards = [
-      { key: "total_users", title: "Total Users", value: c.total_users?.value, delta: null },
-      { key: "active_users", title: "Active Users", value: c.active_users?.value, delta: c.active_users?.delta_vs_prev },
-      { key: "new_registrations", title: "New Registrations", value: c.new_registrations?.value, delta: c.new_registrations?.delta_vs_prev },
-      { key: "deactivated_users", title: "Deactivated (New)", value: c.deactivated_users?.value, delta: c.deactivated_users?.delta_vs_prev },
+      { title: "Total Users", value: num(c.total_users?.value || 0), delta: null },
+      { title: "Active Users", value: num(c.active_users?.value || 0), delta: c.active_users?.delta_vs_prev },
+      { title: "New Registrations", value: num(c.new_registrations?.value || 0), delta: c.new_registrations?.delta_vs_prev },
+      { title: "Deactivated (New)", value: num(c.deactivated_users?.value || 0), delta: c.deactivated_users?.delta_vs_prev },
     ];
-
-    cardRow.update(cards.map(card => ({
-      title: card.title,
-      value: num(card.value || 0),
-      // show delta chip only if not null
-      delta: (card.delta === null || card.delta === undefined) ? null : pct(card.delta),
-      // optional: up/down color handled inside cards.js
-    })));
+    cardRow.update(cards.map(x => ({ title: x.title, value: x.value, delta: x.delta == null ? null : x.delta })));
+  } catch (e) {
+    cardRow.update([
+      { title: "Total Users", value: "—", delta: null },
+      { title: "Active Users", value: "—", delta: null },
+      { title: "New Registrations", value: "—", delta: null },
+      { title: "Deactivated (New)", value: "—", delta: null },
+    ]);
+    throw e;
   }
+}
 
   // --- Table (search + pager) ---
   let page = 1, per_page = 20, q = "", sort = "-last_login_at";
@@ -92,12 +115,21 @@ export default function mountUsers(root) {
   });
   tableWrap.appendChild(pager.el);
 
+  // async function loadTable() {
+  //   const items = await listUsers({ page, per_page, q, sort });
+  //   table.setRows(items);
+  //   // NOTE: if your /users API also returns meta.total, hook it into pager.setTotal(total)
+  //   // For now, keep it simple until you extend /users to return meta in listUsers() wrapper.
+  // }
   async function loadTable() {
+  try {
     const items = await listUsers({ page, per_page, q, sort });
-    table.setRows(items);
-    // NOTE: if your /users API also returns meta.total, hook it into pager.setTotal(total)
-    // For now, keep it simple until you extend /users to return meta in listUsers() wrapper.
+    table.setRows(items || []);
+  } catch (e) {
+    table.setRows([]);
+    throw e;
   }
+}
 
   // --- Detail drawer (simple modal for now) ---
   async function openUserDetail(id) {
@@ -146,7 +178,14 @@ export default function mountUsers(root) {
   }
 
   // --- Wire to global period + refresh ticker ---
-  async function refresh() { await Promise.all([loadCards(), loadTable()]); }
+async function refresh() {
+  try {
+    await Promise.all([loadCards(), loadTable()]);
+  } catch (err) {
+    console.error(err);
+    toast.error(err?.data?.message || err?.message || "Failed to load Users data");
+  }
+}
   refresh();
 
   onRefresh(refresh);                
