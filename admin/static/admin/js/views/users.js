@@ -131,52 +131,115 @@ export default function mountUsers(root) {
     throw e;
   }
 }
+function roField(label, value) {
+  return el("label", { class: "form-row" },
+    el("span", { class: "form-label" }, label),
+    el("input", {
+      class: "form-input",
+      value: value == null || value === "" ? "—" : String(value),
+      disabled: true,
+      readOnly: true,
+    })
+  );
+}
+
+function roTextArea(label, value) {
+  return el("label", { class: "form-row" },
+    el("span", { class: "form-label" }, label),
+    el("textarea", {
+      class: "form-input",
+      disabled: true,
+      readOnly: true,
+      rows: 3,
+    }, value == null || value === "" ? "—" : String(value))
+  );
+}  
+
+//   const body = el("div", { class: "stack gap-2" },
+  //     el("div", {}, el("strong", {}, d.email), ` (${d.username})`),
+  //     el("div", {}, "Name: ", d.name || "—"),
+  //     el("div", {}, "Tier: ", d.tier || "—"),
+  //     el("div", {}, "Last login: ", d.last_login_at ? new Date(d.last_login_at).toLocaleString() : "—"),
+  //     el("div", {}, "Scans: ", num(d.scan_count || 0)),
+  //     el("hr"),
+  //     el("div", {}, el("strong", {}, "Recent IPs")),
+  //     el("ul", {},
+  //       ...(d.ip_logs || []).map(log =>
+  //         el("li", {}, `${log.ip} • ${log.device || log.user_agent || ""} • ${new Date(log.created_at).toLocaleString()}`)
+  //       )
+  //     )
+  //   );
+
 
   // --- Detail drawer (simple modal for now) ---
-  async function openUserDetail(id) {
-    const d = await getUserDetail(id);
-    const body = el("div", { class: "stack gap-2" },
-      el("div", {}, el("strong", {}, d.email), ` (${d.username})`),
-      el("div", {}, "Name: ", d.name || "—"),
-      el("div", {}, "Tier: ", d.tier || "—"),
-      el("div", {}, "Last login: ", d.last_login_at ? new Date(d.last_login_at).toLocaleString() : "—"),
-      el("div", {}, "Scans: ", num(d.scan_count || 0)),
-      el("hr"),
-      el("div", {}, el("strong", {}, "Recent IPs")),
-      el("ul", {},
-        ...(d.ip_logs || []).map(log =>
-          el("li", {}, `${log.ip} • ${log.device || log.user_agent || ""} • ${new Date(log.created_at).toLocaleString()}`)
-        )
-      )
-    );
+async function openUserDetail(id) {
+  const d = await getUserDetail(id);
 
-    const actions = [
-      d.is_deactivated
-        ? { label: "Reactivate", primary: true, onClick: async close => { await reactivateUser(id); toast.success("User reactivated"); await loadTable(); await loadCards(); close(); } }
-        : { label: "Deactivate", danger: true, onClick: async close => {
-            const ok = await confirm("Deactivate this user?");
-            if (!ok) return;
-            await deactivateUser(id);
-            toast.success("User deactivated");
-            await loadTable(); await loadCards();
-            close();
-          }}
-      ,
-      { label: "Set Tier…", onClick: async close => {
-          const tier = prompt("Enter tier role name (e.g. tier_pro, tier_free):");
-          if (!tier) return;
-          await setUserTier(id, tier);
-          toast.success("Tier updated");
-          await loadTable();
+  const body = el("form", {
+    class: "stack gap-3 readonly-form",
+    onSubmit: (e) => e.preventDefault(),
+  },
+    // Identity
+    roField("User ID", d.id),
+    roField("Email", d.email),
+    roField("Username", d.username || "—"),
+    roField("Name", d.name || "—"),
+
+    // Account meta
+    roField("Tier", d.tier || "—"),
+    roField("Status", d.is_deactivated ? "Deactivated" : "Active"),
+    roField("Last Login", d.last_login_at ? new Date(d.last_login_at).toLocaleString() : "—"),
+    roField("Created At", d.created_at ? new Date(d.created_at).toLocaleString() : "—"),
+
+    // Usage
+    roField("Scans", num(d.scan_count || 0)),
+
+    // Recent IPs (table-like list)
+    el("div", { class: "form-section" },
+      el("div", { class: "form-label" }, "Recent IPs"),
+      (d.ip_logs && d.ip_logs.length)
+        ? el("div", { class: "ip-table" },
+            el("div", { class: "ip-row ip-head" },
+              el("div", { class: "ip-cell" }, "IP"),
+              el("div", { class: "ip-cell" }, "Device / UA"),
+              el("div", { class: "ip-cell" }, "When"),
+            ),
+            // ↓↓↓ this line was `)))` before — remove one `)` so it’s just `))`
+            ...d.ip_logs.map(log => el("div", { class: "ip-row" },
+              el("div", { class: "ip-cell" }, log.ip || "—"),
+              el("div", { class: "ip-cell" }, log.device || log.user_agent || "—"),
+              el("div", { class: "ip-cell" }, log.created_at ? new Date(log.created_at).toLocaleString() : "—"),
+            ))
+          )
+        : el("div", { class: "ip-empty" }, "—")
+    ),
+  );
+
+  const actions = [
+    d.is_deactivated
+      ? { label: "Reactivate", primary: true, onClick: async close => { await reactivateUser(id); toast.success("User reactivated"); await loadTable(); await loadCards(); close(); } }
+      : { label: "Deactivate", danger: true, onClick: async close => {
+          const ok = await confirm("Deactivate this user?");
+          if (!ok) return;
+          await deactivateUser(id);
+          toast.success("User deactivated");
+          await loadTable(); await loadCards();
           close();
-        } },
-      { label: "Close", onClick: close => close() },
-    ];
+        }},
+    { label: "Set Tier…", onClick: async close => {
+        const tier = prompt("Enter tier role name (e.g. tier_pro, tier_free):");
+        if (!tier) return;
+        await setUserTier(id, tier);
+        toast.success("Tier updated");
+        await loadTable();
+        close();
+      } },
+    { label: "Close", onClick: close => close() },
+  ];
 
-    // simple modal factory you already have
-    const { open } = await import("../components/modal.js");
-    open({ title: "User Details", body, actions });
-  }
+  const { open } = await import("../components/modal.js");
+  open({ title: "User Details", body, actions });
+}
 
   // --- Wire to global period + refresh ticker ---
 async function refresh() {
