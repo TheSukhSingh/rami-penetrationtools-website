@@ -19,6 +19,7 @@ def handle_uncaught_error(err: Exception):
     payload = ServerError("Something went wrong").to_dict()
     if current_app and current_app.debug:
         payload["error"]["details"] = {"exception": repr(err)}
+    print(f"something is wrong - {err}")
     return jsonify(payload), 500
 
 from . import overview

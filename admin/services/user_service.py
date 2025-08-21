@@ -482,9 +482,8 @@ class UserService(BaseService):
         new_now  = self._safe(lambda: self.repo.count_new_between(start, end), 0)
         new_prev = self._safe(lambda: self.repo.count_new_between(pstart, pend), 0)
 
-        deact_now  = self._count_deactivations_between(start, end)
-        deact_prev = self._count_deactivations_between(pstart, pend)
-
+        deact_now  = self._safe(lambda: self._count_deactivations_between(start, end), 0)
+        deact_prev = self._safe(lambda: self._count_deactivations_between(pstart, pend), 0)
         return {
             "computed_at": UTC_NOW().isoformat(),
             "range": {"start": start.isoformat(), "end": end.isoformat()},
