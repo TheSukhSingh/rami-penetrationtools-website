@@ -177,7 +177,18 @@ class UserService(BaseService):
 
         print(' user detail 1')
 
+        # tier = next((r.name for r in (u.roles or []) if (r.name or "").startswith("tier_")), None)
+
         tier = next((r.name for r in (u.roles or []) if (r.name or "").startswith("tier_")), None)
+        role_names = [r.name for r in (u.roles or [])]  # all roles, not just tier
+        # email_verified is typically on LocalAuth; fall back to False if missing
+        try:
+            from auth.models import LocalAuth
+            la = self.session.get(LocalAuth, u.id)
+            email_verified = bool(getattr(la, "email_verified", False))
+        except Exception:
+            email_verified = False
+
         return {
             "id": u.id,
             "email": u.email,
@@ -185,6 +196,9 @@ class UserService(BaseService):
             "name": u.name,
             "is_deactivated": bool(u.is_deactivated),
             "tier": tier,
+            "roles": role_names,
+            "is_blocked": bool(getattr(u, "is_blocked", False)),
+            "email_verified": email_verified,
             "scan_count": int(scan_cnt or 0),
             "last_login_at": last_login.isoformat() if last_login else None,
             "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
@@ -278,7 +292,41 @@ class UserService(BaseService):
         return db.session.query(func.count(ToolScanHistory.id)).filter(
             ToolScanHistory.user_id == user_id
         ).scalar()
+    def set_blocked(self, user_id: int, value: bool):
+        with self.atomic():
+            u = self._safe(lambda: self.repo.user_detail(user_id), None)
+            self.ensure_found(u, message="User not found")
+            if hasattr(u, "is_master_user") and u.is_master_user:
+                from admin.errors import Forbidden
+                raise Forbidden("Cannot modify a master/owner account")
+            setattr(u, "is_blocked", bool(value))
+            from admin.audit import record_admin_action, audit_context
+            record_admin_action(
+                action="users.set_blocked",
+                subject_type="user", subject_id=user_id, success=True,
+                meta={"after": {"is_blocked": bool(value)}},
+                **audit_context()
+            )
+            return {"id": u.id, "is_blocked": bool(value)}
 
+    def set_email_verified(self, user_id: int, value: bool):
+        # lives on LocalAuth in most schemas
+        from auth.models import LocalAuth
+        with self.atomic():
+            la = self.session.get(LocalAuth, user_id)
+            if not la:
+                # create a LocalAuth row if your schema expects it; else, error:
+                from admin.errors import NotFound
+                raise NotFound("LocalAuth not found for user")
+            la.email_verified = bool(value)
+            from admin.audit import record_admin_action, audit_context
+            record_admin_action(
+                action="users.set_email_verified",
+                subject_type="user", subject_id=user_id, success=True,
+                meta={"after": {"email_verified": bool(value)}},
+                **audit_context()
+            )
+            return {"id": user_id, "email_verified": bool(value)}
     def _safe(self, fn, default=None):
         try:
             return fn()

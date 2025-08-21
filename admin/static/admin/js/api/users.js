@@ -29,3 +29,14 @@ export async function setUserTier(id, tier) {
   const res = await postJSON(`/users/${id}/tier`, { tier });
   return res.data;
 }
+
+
+export async function setUserBlocked(id, value) {
+  const res = await postJSON(`/users/${id}/blocked`, { value });
+  return res.data;
+}
+
+export async function setUserEmailVerified(id, value) {
+  const res = await postJSON(`/users/${id}/email_verified`, { value });
+  return res.data;
+}

@@ -217,6 +217,19 @@ function roTextArea(label, value) {
   );
 }
 
+function roSwitch(label, checked, onChange) {
+  return el("div", { class: "form-row" },
+    el("div", { class: "form-label" }, label),
+    el("label", { class: "switch" },
+      el("input", {
+        type: "checkbox",
+        checked: !!checked,
+        onChange: (e) => onChange?.(e.target.checked),
+      }),
+      el("span", { class: "switch-ui" })
+    )
+  );
+}
 
 
 //   const body = el("div", { class: "stack gap-2" },
@@ -244,8 +257,18 @@ async function openUserDetail(id) {
     onSubmit: (e) => e.preventDefault(),
   },
     // Identity
-    roField("User ID", d.id),
-    roField("Email", d.email),
+  // Account meta
+  roField("Tier", d.tier || "—"),
+  roField("Roles", (d.roles || []).join(", ") || "—"),
+  roField("Status", d.is_deactivated ? "Deactivated" : "Active"),
+  roSwitch("Blocked", d.is_blocked, async (val) => {
+    try { await setUserBlocked(id, val); toast.success(val ? "User blocked" : "User unblocked"); await loadTable(); }
+    catch (e) { toast.error(e?.message || "Failed"); }
+  }),
+  roSwitch("Email Verified", d.email_verified, async (val) => {
+    try { await setUserEmailVerified(id, val); toast.success(val ? "Marked verified" : "Marked unverified"); }
+    catch (e) { toast.error(e?.message || "Failed"); }
+  }),
     roField("Username", d.username || "—"),
     roField("Name", d.name || "—"),
 
@@ -287,6 +310,7 @@ const wrapper = el("div", {
 }, body);
 
   const actions = [
+    { label: "View Scans", onClick: () => navigate(`/admin/scans?user=${id}`) },
     d.is_deactivated
       ? { label: "Reactivate", primary: true, onClick: async close => { await reactivateUser(id); toast.success("User reactivated"); await loadTable(); await loadCards(); close(); } }
       : { label: "Deactivate", danger: true, onClick: async close => {
