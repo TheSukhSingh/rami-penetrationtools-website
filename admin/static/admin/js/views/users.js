@@ -268,7 +268,7 @@ async function openUserDetail(id) {
     catch (e) { toast.error(e?.message || "Failed"); }
   }),
     // Account meta
-    roField("Tier", d.tier || "—"),
+    roField("Tier", d.tier || "—Basic—"),
   roField("Roles", (d.roles || []).join(", ") || "—user—"),
     roField("Status", d.is_deactivated ? "Deactivated" : "Active"),
   roSwitch("Blocked", d.is_blocked, async (val) => {
