@@ -1,16 +1,11 @@
-import { setHeader } from "../lib/state.js";
+import { setHeader } from '../lib/state.js';
 
 export async function mount(root) {
-  setHeader({
-    title: "Scans",
-    subtitle: "Advanced analytics and performance metrics",
-  });
+  setHeader({ title: 'Scan History', subtitle: 'Scan history and activity timeline coming soon...' });
   root.innerHTML = `
-    <div class="tab-content" id="analytics">
-                    <div class="coming-soon glass">
-                        <h2>Scans</h2>
-                        <p>Scan history and activity timeline coming soon...</p>
-                    </div>
-                </div>`;
+    <div class="panel" style="padding:20px">
+      <h2>Scan History</h2>
+      <p>Scan history and activity timeline coming soon...</p>
+    </div>`;
 }
 export function unmount() {}
