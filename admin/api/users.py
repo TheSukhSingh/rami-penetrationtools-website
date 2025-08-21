@@ -297,13 +297,6 @@ def users_summary():
         data = svc.users_summary(rng)
         return ok(data)
     except Exception as e:
-        print()
-        print()
-
-        print(f'something is wrong here in summary - check - {e}')
-
-        print()
-
         raise BadRequest(str(e))
 
 @admin_api_bp.get("/users")

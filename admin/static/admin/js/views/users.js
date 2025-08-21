@@ -30,7 +30,8 @@ export default function mountUsers(root) {
   const toolbar = el("div", { class: "panel toolbar" });
   const tableWrap = el("div", { class: "panel" });
 
-  root.replaceChildren(cardRow, toolbar, tableWrap);
+  root.replaceChildren(cardRow.el, toolbar, tableWrap);
+
 
   // --- Cards ---
   // async function loadCards() {
