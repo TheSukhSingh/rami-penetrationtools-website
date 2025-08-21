@@ -1,4 +1,3 @@
-# admin/api/overview.py
 from flask import request
 from admin.api import admin_api_bp
 from admin.api.common import ok

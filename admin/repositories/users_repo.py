@@ -5,7 +5,7 @@ from sqlalchemy import func, select, exists, and_, or_, case
 
 from extensions import db
 from admin.repositories import BaseRepo
-from admin.errors import NotFound
+from admin.errors import NotFound, Forbidden
 
 from auth.models import User, Role, LocalAuth, LoginEvent, UserIPLog, user_roles
 from tools.models import ToolScanHistory
@@ -24,16 +24,21 @@ class UsersRepo(BaseRepo):
     """Data access for users (excludes admins where needed)."""
 
     # ---------- Helpers ----------
-
-    def _non_admin_user_query(self):
-        # NOT EXISTS any role with name starting 'admin'
-        admin_role_exists = exists(
-            select(user_roles.c.user_id)
-            .join(Role, Role.id == user_roles.c.role_id)
-            .where(and_(user_roles.c.user_id == User.id, Role.name.ilike("admin%")))
+    def _normal_user_query(self):
+        return self.session.query(User).filter(
+            ~User.is_admin_user,
+            ~User.is_master_user,
         )
-        return self.session.query(User).filter(~admin_role_exists)
+    
+    def _non_admin_user_query(self):
+        return self._normal_user_query()
+    
+    def _admin_user_query(self):
+        return self.session.query(User).filter(User.is_admin_user)
 
+    def _master_user_query(self):
+        return self.session.query(User).filter(User.is_master_user)
+    
     def _apply_search(self, query, q: Optional[str]):
         if not q:
             return query
@@ -50,6 +55,12 @@ class UsersRepo(BaseRepo):
 
     def count_total_users(self) -> int:
         return self._non_admin_user_query().count()
+    
+    def count_total_admins(self) -> int:
+        return self._admin_user_query().count()
+
+    def count_total_masters(self) -> int:
+        return self._master_user_query().count()
 
     def count_new_between(self, start: datetime, end: datetime) -> int:
         return (
@@ -160,8 +171,10 @@ class UsersRepo(BaseRepo):
         user = self.session.get(User, user_id)
         if not user:
             raise NotFound("User not found")
+        if user.is_master_user:
+            raise Forbidden("Cannot modify a master/owner account")
         user.is_deactivated = bool(value)
-        return user  # commit in service
+        return user  
 
     def get_role_by_name(self, name: str) -> Role:
         role = self.session.query(Role).filter(Role.name == name).first()
@@ -170,12 +183,12 @@ class UsersRepo(BaseRepo):
         return role
 
     def replace_tier_role(self, user_id: int, tier_role_name: str) -> User:
-        """
-        Simple tier model using roles: remove any role starting with 'tier_' and add the requested one.
-        """
         user = self.session.get(User, user_id)
         if not user:
             raise NotFound("User not found")
+        
+        if user.is_master_user:
+            raise Forbidden("Cannot change roles for a master/owner account")
 
         tier_roles = [r for r in user.roles if r.name.startswith("tier_")]
         for r in tier_roles:
