@@ -22,4 +22,4 @@ def handle_uncaught_error(err: Exception):
     print(f"something is wrong - {err}")
     return jsonify(payload), 500
 
-from . import overview, users
+from . import overview, users, scans
