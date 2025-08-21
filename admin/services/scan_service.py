@@ -168,30 +168,38 @@ class ScanService(BaseService):
 
     # ---- public API ----
     def summary(self, period: str, active_window_minutes: int = 30) -> Dict[str, Any]:
+        print('svc summary 1')
         start, end = self._range_from_period(period)
         pstart, pend = self._prev_range(start, end)
 
         total_now  = self.repo.count_between(start, end)
         total_prev = self.repo.count_between(pstart, pend)
+        print('svc summary 1')
 
         succ_now   = self.repo.success_count_between(start, end)
         succ_prev  = self.repo.success_count_between(pstart, pend)
+        print('svc summary 2')
 
         fail_now   = max(total_now - succ_now, 0)
         fail_prev  = max(total_prev - succ_prev, 0)
+        print('svc summary 1')
 
         success_rate_now  = (succ_now / total_now) if total_now else 0.0
         success_rate_prev = (succ_prev / total_prev) if total_prev else 0.0
+        print('svc summary 1')
 
         avg_ms_now  = self.repo.avg_duration_between(start, end) or 0
         avg_ms_prev = self.repo.avg_duration_between(pstart, pend) or 0
+        print('svc summary 3')
 
         # "Active now": heuristic = scans without diagnostics (i.e., not finished) within window
         window_start = utcnow() - timedelta(minutes=active_window_minutes)
         active_now = self.repo.active_since(window_start)
+        print('svc summary 1')
 
         daily_series = self.repo.daily_counts(start, end)
         tools_usage  = self.repo.tools_usage_between(start, end, limit=10)
+        print('svc summary 4')
 
         return {
             "computed_at": utcnow().isoformat(),
