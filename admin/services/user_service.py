@@ -453,7 +453,9 @@ from extensions import db
 
 from . import BaseService                      # same base as overview service uses
 from admin.repositories.users_repo import UsersRepo
-from admin.models import User, LoginEvent, ToolScanHistory, AdminAuditLog
+from auth.models import User, LoginEvent
+from tools.models import ToolScanHistory
+from admin.models import AdminAuditLog
 from admin.audit import record_admin_action, audit_context
 
 UTC_NOW = lambda: datetime.now(timezone.utc)
