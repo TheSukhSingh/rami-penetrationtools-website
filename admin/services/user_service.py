@@ -1,34 +1,87 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
+from sqlalchemy import func
+from admin.audit import record_admin_action, audit_context
 from admin.services import BaseService
-from admin.repositories.users_repo import UsersRepo, utc_start_of_day, days_ago
+from admin.repositories.users_repo import UsersRepo
+from admin.models import AdminAuditLog
 
 class UserService(BaseService):
     def __init__(self):
         super().__init__()
         self.repo = UsersRepo(self.session)
 
-    def users_summary(self) -> Dict[str, Any]:
-        today_start = utc_start_of_day()
-        month_start = today_start.replace(day=1)
-        year_start  = today_start.replace(month=1, day=1)
+    def users_summary(self, period: str):
+        period = (period or "7d").lower()
+        start, end = self._window_for(period)
+        prev_start, prev_end = self._previous_window(start, end)
 
-        total        = self.repo.count_total_users()
-        active_today = self.repo.count_active_between(today_start, today_start + timedelta(days=1))
-        active_30d   = self.repo.count_active_between(days_ago(30), datetime.now(timezone.utc))
-        new_today    = self.repo.count_new_between(today_start, today_start + timedelta(days=1))
-        new_month    = self.repo.count_new_between(month_start, datetime.now(timezone.utc))
-        new_year     = self.repo.count_new_between(year_start, datetime.now(timezone.utc))
+        # snapshots / counts
+        total_users_now = self.repo.count_total_users()  # snapshot (no delta on this card)
+
+        active_now  = self.repo.count_active_between(start, end)
+        active_prev = self.repo.count_active_between(prev_start, prev_end)
+
+        new_now  = self.repo.count_new_between(start, end)
+        new_prev = self.repo.count_new_between(prev_start, prev_end)
+
+        # deactivations = new deactivation events in window (from admin audit log)
+        deact_now  = self._count_deactivations_between(start, end)
+        deact_prev = self._count_deactivations_between(prev_start, prev_end)
 
         return {
-            "total_users": total,
-            "active_today": active_today,
-            "active_30d": active_30d,
-            "new_today": new_today,
-            "new_month": new_month,
-            "new_year": new_year,
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "range": {"start": start.isoformat(), "end": end.isoformat()},
+            "cards": {
+                "total_users": {
+                    "value": total_users_now,
+                    "delta_vs_prev": None,  # no delta for total snapshot
+                },
+                "active_users": {
+                    "value": active_now,
+                    "delta_vs_prev": self._pct_delta(active_now, active_prev),
+                },
+                "new_registrations": {
+                    "value": new_now,
+                    "delta_vs_prev": self._pct_delta(new_now, new_prev),
+                },
+                "deactivated_users": {
+                    "value": deact_now,
+                    "delta_vs_prev": self._pct_delta(deact_now, deact_prev),
+                },
+            },
         }
+    
+    def _window_for(self, period: str):
+        now = datetime.now(timezone.utc)
+        if period in ("1d", "1day", "today"): start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "7d":  start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "30d": start = (now - timedelta(days=29)).replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "90d": start = (now - timedelta(days=89)).replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period in ("all-time","all","at"): start = datetime(1970,1,1,tzinfo=timezone.utc)
+        else: start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return start, now
+
+    def _previous_window(self, start, end):
+        delta = end - start
+        return start - delta, start
+
+    def _pct_delta(self, curr, prev):
+        if prev <= 0: return 100.0 if curr > 0 else 0.0
+        return ((curr - prev) / prev) * 100.0
+
+    def _count_deactivations_between(self, start, end) -> int:
+        q = (
+            self.session.query(func.count(AdminAuditLog.id))
+            .filter(
+                AdminAuditLog.action == "users.deactivate",
+                AdminAuditLog.success.is_(True),
+                AdminAuditLog.created_at >= start,
+                AdminAuditLog.created_at < end,
+            )
+        )
+        return int(q.scalar() or 0)
 
     def list_users(self, page: int, per_page: int, q: Optional[str], sort_field: str, desc: bool):
         items, total = self.repo.list_users(page, per_page, q, sort_field, desc)
@@ -81,15 +134,49 @@ class UserService(BaseService):
 
     def deactivate(self, user_id: int):
         with self.atomic():
-            u = self.repo.set_deactivated(user_id, True)
-            return {"id": u.id, "is_deactivated": True}
+            u_before = self.repo.user_detail(user_id)
+            self.ensure_found(u_before, message="User not found")
+            res = self.repo.set_deactivated(user_id, True)
+            u_after = self.repo.user_detail(user_id)
+            record_admin_action(
+                action="users.deactivate",
+                subject_type="user",
+                subject_id=user_id,
+                success=True,
+                meta={"before": {"is_deactivated": u_before.is_deactivated}, "after": {"is_deactivated": u_after.is_deactivated}},
+                **audit_context()
+            )
+            return {"id": res.id, "is_deactivated": True}
 
     def reactivate(self, user_id: int):
         with self.atomic():
-            u = self.repo.set_deactivated(user_id, False)
-            return {"id": u.id, "is_deactivated": False}
+            u_before = self.repo.user_detail(user_id)
+            self.ensure_found(u_before, message="User not found")
+            res = self.repo.set_deactivated(user_id, False)
+            u_after = self.repo.user_detail(user_id)
+            record_admin_action(
+                action="users.reactivate",
+                subject_type="user",
+                subject_id=user_id,
+                success=True,
+                meta={"before": {"is_deactivated": u_before.is_deactivated}, "after": {"is_deactivated": u_after.is_deactivated}},
+                **audit_context()
+            )
+            return {"id": res.id, "is_deactivated": False}
 
     def set_tier(self, user_id: int, tier_role_name: str):
         with self.atomic():
+            u_before = self.repo.user_detail(user_id)
+            self.ensure_found(u_before, message="User not found")
+            before_tier = next((r.name for r in u_before.roles if r.name.startswith("tier_")), None)
             u = self.repo.replace_tier_role(user_id, tier_role_name)
+            after_tier = tier_role_name
+            record_admin_action(
+                action="users.set_tier",
+                subject_type="user",
+                subject_id=user_id,
+                success=True,
+                meta={"before": {"tier": before_tier}, "after": {"tier": after_tier}},
+                **audit_context()
+            )
             return {"id": u.id, "tier": tier_role_name}

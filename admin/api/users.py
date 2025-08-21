@@ -9,7 +9,8 @@ svc = UserService()
 @admin_api_bp.get("/users/summary")
 # @require_scopes("admin.users.read")
 def users_summary():
-    period = request.args.get("period", "7d")
+    # period = request.args.get("period", "7d")
+    rng = (request.args.get("range") or "7d").lower()
     data = svc.users_summary()
     return ok(data)
 
