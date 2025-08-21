@@ -296,25 +296,43 @@ def users_summary():
         data = svc.users_summary(rng)
         return ok(data)
     except Exception as e:
+        print()
+        print()
+
+        print(f'something is wrong here in summary - check - {e}')
+
+        print()
+
         raise BadRequest(str(e))
 
 @admin_api_bp.get("/users")
 def list_users():
+    print('users table  01')
     page = _to_int(request.args.get("page", 1), 1, 1, None)
+    print('users table  02')
+    
     per_page = _to_int(request.args.get("per_page", 20), 20, 1, 100)
+    
+    print('users table  03')
     q = (request.args.get("q") or "").strip() or None
+    print('users table  04')
     sort = (request.args.get("sort") or "-last_login_at").strip()
 
     # normalize sort
+    print('users table  05')
     is_desc = sort.startswith("-")
+    print('users table  6')
     sort_field = sort[1:] if is_desc else sort
+    print('users table  07')
     if sort_field not in ("last_login_at", "created_at", "email", "username", "name", "scan_count"):
         sort_field = "last_login_at"
 
+    print('users table  08')
     try:
         items, total = svc.list_users(page=page, per_page=per_page, q=q, sort_field=sort_field, desc=is_desc)
         return ok(items, meta={"page": page, "per_page": per_page, "total": int(total or 0)})
     except Exception as e:
+        print(f'users table  01 error now - {e}')
         raise BadRequest(str(e))
 
 @admin_api_bp.get("/users/<int:user_id>")
