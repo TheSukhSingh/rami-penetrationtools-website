@@ -22,7 +22,7 @@ function buildSkeleton(root) {
   const cardRate  = createStatCard({ title: "Scan Success Rate" });
   const cardNew   = createStatCard({ title: "New Registrations" });
   const cardScans = createStatCard({ title: "Scan Count" });
-  cardsRow.append(cardTotal.el, cardRate.el, cardNew.el, cardScans.el);
+  cardsRow.append(cardTotal.el, cardScans.el, cardNew.el, cardRate.el);
 
   // charts
   const chartsRow  = el("div", { class: "charts-row" });
