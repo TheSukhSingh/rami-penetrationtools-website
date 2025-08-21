@@ -137,7 +137,7 @@ class UserService(BaseService):
         u = self._safe(lambda: self.repo.user_detail(user_id), None) \
             if hasattr(self.repo, "user_detail") else User.query.get(user_id)
         print(' user detail 2')
-        
+
         self.ensure_found(u, message="User not found")
 
         
@@ -187,6 +187,7 @@ class UserService(BaseService):
             "tier": tier,
             "scan_count": int(scan_cnt or 0),
             "last_login_at": last_login.isoformat() if last_login else None,
+            "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
             "ip_logs": ip_logs,
         }
 

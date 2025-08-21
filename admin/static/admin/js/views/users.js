@@ -132,28 +132,68 @@ export default function mountUsers(root) {
   }
 }
 function roField(label, value) {
-  return el("label", { class: "form-row" },
-    el("span", { class: "form-label" }, label),
+  return el("div", {
+    class: "form-row",
+    style: {
+      display: "grid",
+      gridTemplateColumns: "160px 1fr", // label | input
+      alignItems: "center",
+      gap: "12px",
+      marginBottom: "12px",
+      width: "100%",
+    },
+  },
+    el("div", { class: "form-label", style: { fontWeight: "600", opacity: "0.9", textAlign: "left" } }, label),
     el("input", {
       class: "form-input",
       value: value == null || value === "" ? "—" : String(value),
       disabled: true,
       readOnly: true,
+      style: {
+        width: "100%",
+        padding: "12px 14px",
+        borderRadius: "10px",
+        border: "1px solid rgba(255,255,255,0.15)",
+        background: "rgba(255,255,255,0.05)",
+        color: "inherit",
+        textAlign: "left",
+      }
     })
   );
 }
 
 function roTextArea(label, value) {
-  return el("label", { class: "form-row" },
-    el("span", { class: "form-label" }, label),
+  return el("div", {
+    class: "form-row",
+    style: {
+      display: "grid",
+      gridTemplateColumns: "160px 1fr",
+      alignItems: "start",
+      gap: "12px",
+      marginBottom: "12px",
+      width: "100%",
+    },
+  },
+    el("div", { class: "form-label", style: { fontWeight: "600", opacity: "0.9", textAlign: "left", paddingTop: "10px" } }, label),
     el("textarea", {
       class: "form-input",
       disabled: true,
       readOnly: true,
       rows: 3,
+      style: {
+        width: "100%",
+        padding: "12px 14px",
+        borderRadius: "10px",
+        border: "1px solid rgba(255,255,255,0.15)",
+        background: "rgba(255,255,255,0.05)",
+        color: "inherit",
+        resize: "vertical",
+        textAlign: "left",
+      }
     }, value == null || value === "" ? "—" : String(value))
   );
-}  
+}
+
 
 //   const body = el("div", { class: "stack gap-2" },
   //     el("div", {}, el("strong", {}, d.email), ` (${d.username})`),
@@ -214,6 +254,13 @@ async function openUserDetail(id) {
         : el("div", { class: "ip-empty" }, "—")
     ),
   );
+const wrapper = el("div", {
+  style: {
+    minWidth: "70vw",         // about 70% of the viewport width
+    maxWidth: "1200px",       // cap so it doesn’t become absurdly wide on huge monitors
+    width: "100%",
+  }
+}, body);
 
   const actions = [
     d.is_deactivated
@@ -238,7 +285,7 @@ async function openUserDetail(id) {
   ];
 
   const { open } = await import("../components/modal.js");
-  open({ title: "User Details", body, actions });
+  open({ title: "User Details", body: wrapper, actions });
 }
 
   // --- Wire to global period + refresh ticker ---
