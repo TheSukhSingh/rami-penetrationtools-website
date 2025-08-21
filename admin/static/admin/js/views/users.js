@@ -258,28 +258,28 @@ async function openUserDetail(id) {
   },
     // Identity
   // Account meta
-  roField("Tier", d.tier || "—"),
-  roField("Roles", (d.roles || []).join(", ") || "—"),
-  roField("Status", d.is_deactivated ? "Deactivated" : "Active"),
+
+
+    roField("Username", d.username || "—"),
+    roField("Name", d.name || "—"),
+    roField("Email", d.email),
+    roSwitch("Email Verified", d.email_verified, async (val) => {
+    try { await setUserEmailVerified(id, val); toast.success(val ? "Marked verified" : "Marked unverified"); }
+    catch (e) { toast.error(e?.message || "Failed"); }
+  }),
+    // Account meta
+    roField("Tier", d.tier || "—"),
+  roField("Roles", (d.roles || []).join(", ") || "—user—"),
+    roField("Status", d.is_deactivated ? "Deactivated" : "Active"),
   roSwitch("Blocked", d.is_blocked, async (val) => {
     try { await setUserBlocked(id, val); toast.success(val ? "User blocked" : "User unblocked"); await loadTable(); }
     catch (e) { toast.error(e?.message || "Failed"); }
   }),
-  roSwitch("Email Verified", d.email_verified, async (val) => {
-    try { await setUserEmailVerified(id, val); toast.success(val ? "Marked verified" : "Marked unverified"); }
-    catch (e) { toast.error(e?.message || "Failed"); }
-  }),
-    roField("Username", d.username || "—"),
-    roField("Name", d.name || "—"),
-
-    // Account meta
-    roField("Tier", d.tier || "—"),
-    roField("Status", d.is_deactivated ? "Deactivated" : "Active"),
+  roField("Scans", num(d.scan_count || 0)),
     roField("Last Login", d.last_login_at ? new Date(d.last_login_at).toLocaleString() : "—"),
     roField("Created At", d.created_at ? new Date(d.created_at).toLocaleString() : "—"),
 
     // Usage
-    roField("Scans", num(d.scan_count || 0)),
 
     // Recent IPs (table-like list)
     el("div", { class: "form-section" },
