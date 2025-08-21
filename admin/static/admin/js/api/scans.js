@@ -1,3 +1,4 @@
+
 // import { getJSON } from "../lib/http.js";
 
 // export async function getScansSummary(period, { signal } = {}) {
@@ -19,24 +20,25 @@
 // }
 
 
-
-// static/admin/js/api/scans.js
 import { getJSON } from "../lib/http.js";
 
 export async function getScansSummary(period, { signal } = {}) {
-  const u = new URL("/admin/api/scans/summary", location.origin);
-  if (period) u.searchParams.set("range", period);
-  return getJSON(u.toString(), { method: "GET", signal }).then(r => r.data);
+  const params = new URLSearchParams();
+  if (period) params.set("range", period);
+  return getJSON(`/scans/summary?${params.toString()}`, { signal })
+    .then(r => r.data);
 }
 
 export async function listScans(params = {}, { signal } = {}) {
-  const u = new URL("/admin/api/scans", location.origin);
+  const u = new URLSearchParams();
   for (const [k, v] of Object.entries(params || {})) {
-    if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, v);
+    if (v !== undefined && v !== null && v !== "") u.set(k, v);
   }
-  return getJSON(u.toString(), { method: "GET", signal }).then(r => r.data);
+  return getJSON(`/scans?${u.toString()}`, { signal })
+    .then(r => r.data);
 }
 
 export async function getScanDetail(id, { signal } = {}) {
-  return getJSON(`/admin/api/scans/${id}`, { method: "GET", signal }).then(r => r.data);
+  return getJSON(`/scans/${encodeURIComponent(id)}`, { signal })
+    .then(r => r.data);
 }

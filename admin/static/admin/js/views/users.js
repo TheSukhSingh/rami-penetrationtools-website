@@ -269,7 +269,7 @@ async function openUserDetail(id) {
   }),
     // Account meta
     roField("Tier", d.tier || "—Basic—"),
-  roField("Roles", (d.roles || []).join(", ") || "—user—"),
+  roField("Roles", (d.roles || []).join(", ") || "roles"),
     roField("Status", d.is_deactivated ? "Deactivated" : "Active"),
   roSwitch("Blocked", d.is_blocked, async (val) => {
     try { await setUserBlocked(id, val); toast.success(val ? "User blocked" : "User unblocked"); await loadTable(); }

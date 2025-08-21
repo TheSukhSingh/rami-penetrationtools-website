@@ -93,24 +93,7 @@ class UsersRepo(BaseRepo):
         sort_field: str,
         desc: bool,
     ) -> Tuple[List[User], int]:
-        """
-        Supports sort_field in: last_login_at, created_at, email, username, name
-        Default is last_login_at desc.
-        """
-        # query = self._non_admin_user_query()
 
-        # # LEFT JOIN LocalAuth to expose last_login_at for sorting
-        # query = query.outerjoin(LocalAuth, LocalAuth.user_id == User.id)
-
-        # # Optional: attach a scan_count subquery for preview tables
-        # if ToolScanHistory is not None:
-        #     scans_sub = (
-        #         self.session.query(func.count(ToolScanHistory.id))
-        #         .filter(ToolScanHistory.user_id == User.id)
-        #         .correlate(User)
-        #         .as_scalar()
-        #     )
-        #     query = query.add_columns(scans_sub.label("scan_count"))
 
         query = self._non_admin_user_query()
 
