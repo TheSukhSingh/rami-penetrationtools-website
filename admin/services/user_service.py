@@ -137,10 +137,9 @@ class UserService(BaseService):
         u = self._safe(lambda: self.repo.user_detail(user_id), None) \
             if hasattr(self.repo, "user_detail") else User.query.get(user_id)
         print(' user detail 2')
-        try:
-            self.ensure_found(u, "User not found")
-        except Exception as e:
-            print(f'bhrava hun ki aa {e}')
+        
+        self.ensure_found(u, message="User not found")
+
         
         print(' user detail 3')
 
