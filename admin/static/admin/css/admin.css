@@ -1542,3 +1542,141 @@ body {
 
 /* make table header sticky-ish if tall */
 .data-card .table-wrap { overflow: auto; max-height: 60vh; }
+/* ----- Users: card + header ----- */
+.panel.data-card {
+  background: rgba(20,20,20,0.55);
+  border: 1px solid rgba(255,140,66,0.15);
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.25) inset, 0 10px 30px rgba(0,0,0,0.4);
+  padding: 0;
+  overflow: hidden;
+}
+.panel.data-card .card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255,140,66,0.12);
+}
+.panel.data-card .card-title {
+  font-weight: 600; letter-spacing: .2px;
+}
+.panel.data-card .card-actions .searchbox {
+  min-width: 280px;
+}
+
+/* ----- Users: table skin ----- */
+.data-table {
+  width: 100%;
+}
+.data-table table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.data-table thead th {
+  font-size: 12.5px;
+  text-transform: none;
+  font-weight: 600;
+  color: rgba(255,255,255,0.75);
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,140,66,0.12);
+}
+.data-table tbody tr {
+  border-top: 1px solid rgba(255,140,66,0.08);
+}
+.data-table tbody td {
+  padding: 14px 16px;
+  vertical-align: middle;
+}
+.data-table tbody tr:hover {
+  background: rgba(255,140,66,0.05);
+  cursor: pointer;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+
+/* ----- Users: user cell ----- */
+.user-cell { display: flex; align-items: center; gap: 12px; }
+.user-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, rgba(255,140,66,.25), rgba(0,255,224,.18));
+  border: 1px solid rgba(255,140,66,.25);
+  font-weight: 700; letter-spacing: .3px;
+}
+.user-info { display: flex; flex-direction: column; line-height: 1.1; }
+.user-email { font-weight: 600; }
+.user-subtle { color: rgba(255,255,255,0.55); font-size: 12px; }
+
+/* ----- Users: pills & badges ----- */
+.pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: .3px;
+  border: 1px solid transparent;
+}
+.pill-basic {
+  color: #9ad1c9;
+  border-color: rgba(154,209,201,.35);
+  background: rgba(154,209,201,.15);
+}
+.pill-pro {
+  color: #ffb17a;
+  border-color: rgba(255,177,122,.35);
+  background: rgba(255,177,122,.15);
+}
+.badge {
+  display: inline-block;
+  min-width: 76px;
+  text-align: center;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: .3px;
+}
+.badge-active {
+  color: #6be28b;
+  background: rgba(107,226,139,.12);
+  border: 1px solid rgba(107,226,139,.35);
+}
+.badge-deactivated {
+  color: #ff8080;
+  background: rgba(255,128,128,.12);
+  border: 1px solid rgba(255,128,128,.35);
+}
+
+/* ----- Modal read-only form rows ----- */
+.readonly-form .form-row {
+  display: grid; grid-template-columns: 160px 1fr;
+  gap: 12px; align-items: center;
+}
+.readonly-form .form-label { color: rgba(255,255,255,0.7); font-weight: 600; }
+.readonly-form .form-input {
+  width: 100%; padding: 8px 10px; border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fff;
+}
+.switch { position: relative; display: inline-flex; align-items: center; gap: 8px; }
+.switch input { display:none; }
+.switch .switch-ui {
+  width: 40px; height: 22px; border-radius: 999px;
+  background: rgba(255,255,255,0.2); position: relative; display: inline-block;
+}
+.switch .switch-ui::after {
+  content:""; position: absolute; left: 3px; top: 3px;
+  width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  transition: transform .18s ease;
+}
+.switch input:checked + .switch-ui { background: rgba(0,255,224,.35); }
+.switch input:checked + .switch-ui::after { transform: translateX(18px); }
+
+/* IP list in modal */
+.ip-table { border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; overflow: hidden; }
+.ip-row { display: grid; grid-template-columns: 1fr 1.2fr 1fr; }
+.ip-row.ip-head { background: rgba(255,255,255,0.06); font-weight: 600; }
+.ip-cell { padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.08); }
+.ip-row.ip-head .ip-cell { border-top: none; }
+.ip-empty { color: rgba(255,255,255,0.55); padding: 6px 0; }

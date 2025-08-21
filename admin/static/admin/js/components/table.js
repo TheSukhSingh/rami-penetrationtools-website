@@ -1,19 +1,9 @@
-// admin/static/admin/js/components/table.js
-
-/**
- * Simple, framework-free data table with:
- *  - configurable columns [{ key, label, width?, format?, sortable?, sortKey? }]
- *  - server-driven sort: header click -> onSort(nextSortKey, isDesc)
- *  - row click: onRowClick(row)
- *  - API: setRows(rows)
- *
- * No external CSS required; uses generic classNames.
- */
 
 export function makeTable({
   columns = [],
   onSort = null,
   onRowClick = null,
+  className = "",          // ← NEW
 } = {}) {
   // ---- DOM helpers ---------------------------------------------------------
   const $ = (tag, props = {}, ...kids) => {
@@ -43,7 +33,12 @@ export function makeTable({
   let sortDesc = false;
 
   const root = $("div", { class: "data-table-wrapper" });
-
+if (className) {
+  String(className)
+    .split(/\s+/)
+    .filter(Boolean)
+    .forEach(c => root.classList.add(c));
+}
   const table = $("table", { class: "data-table", role: "grid" });
   const thead = $("thead");
   const tbody = $("tbody");
@@ -156,14 +151,17 @@ export function makeTable({
 
       for (const col of columns) {
         const raw = safeGet(row, col.key);
-        const text =
-          typeof col.format === "function"
-            ? col.format(raw, row)
-            : (raw ?? "—");
+        // prefer a full-row renderer if provided, else fall back to formatter
+        const content =
+          typeof col.render === "function"
+            ? col.render(row, raw)              // render(row, raw)
+            : typeof col.format === "function"
+              ? col.format(raw, row)            // format(value, row)
+              : (raw ?? "—");
 
         const td = $("td", { class: "dt-td" });
-        if (text instanceof Node) td.appendChild(text);
-        else td.textContent = text;
+        if (content instanceof Node) td.appendChild(content);
+        else td.textContent = content;
 
         tr.appendChild(td);
       }
