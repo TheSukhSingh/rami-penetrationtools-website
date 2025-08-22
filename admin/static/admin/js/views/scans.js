@@ -61,7 +61,7 @@ function statusBadge(status) {
 
 // ---- main view ----
 export default function mountScans(root) {
-  setHeader("Scans", "History, success rate, and live activity");
+  setHeader("Scans", "History, status, duration, and live activity");
 
   const cardRow = makeCardRow();
 
