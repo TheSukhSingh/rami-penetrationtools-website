@@ -136,25 +136,8 @@ export default function mountScans(root) {
     onInput(value) { q = value; page = 1; loadTable(); },
   });
 
-  const toolInput = el("input", {
-    class: "search",
-    type: "text",
-    placeholder: "Tool (slug)",
-    oninput: (e) => { tool = e.target.value.trim(); },
-  });
-
-  const statusSel = el("select", { class: "sel" },
-    el("option", { value: "" }, "All statuses"),
-    el("option", { value: "success" }, "Success"),
-    el("option", { value: "failure" }, "Failure"),
-  );
-  statusSel.onchange = (e) => { status = e.target.value; };
-
-  const applyBtn = el("button", { class: "btn" }, "Apply");
-  applyBtn.onclick = () => { page = 1; loadTable(); };
-
   cardHeader.querySelector(".card-actions").replaceChildren(
-    search.el, toolInput, statusSel, applyBtn
+    search.el, 
   );
 
   const table = makeTable({
