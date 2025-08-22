@@ -195,10 +195,12 @@ async function loadTable() {
       const approxTotal = (page - 1) * per_page + items.length;
       pager.setTotal(approxTotal, per_page, page);
     }
-  } catch (e) {
+  }  catch (err) {
+    console.error(err);
     table.setRows([]);
+    // Defensive: say there are no more items beyond previous pages
     pager.setTotal((page - 1) * per_page, per_page, page);
-    throw e;
+    toast.error(err?.data?.message || err?.message || "Failed to load Scans");
   }
 }
 
