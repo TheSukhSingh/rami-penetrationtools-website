@@ -179,7 +179,8 @@ export default function mountUsers(root) {
 
 async function loadTable() {
   try {
-    const res = await listScans({ page, per_page, q, tool, status, sort });
+    // listUsers might return an array OR { items, meta: { total } }
+    const res = await listUsers({ page, per_page, q, sort });
 
     const items = Array.isArray(res) ? res : (res.items || []);
     const total = Array.isArray(res) ? undefined : (res.meta?.total ?? res.total);
@@ -187,16 +188,15 @@ async function loadTable() {
     table.setRows(items || []);
 
     if (typeof total === "number") {
-      pager.setTotal(total, per_page, page);                 // updates buttons if your paginator supports it
+      pager.setTotal(total, per_page, page);                 // if your paginator exposes this
       hasMore = page * per_page < total;                     // next exists only if more remain
     } else {
       hasMore = (items?.length || 0) === per_page;           // fallback: full page ⇒ maybe more
     }
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
     table.setRows([]);
-    hasMore = false;                                         // be conservative
-    toast.error(err?.data?.message || err?.message || "Failed to load Scans");
+    hasMore = false;
+    throw e;
   }
 }
 
