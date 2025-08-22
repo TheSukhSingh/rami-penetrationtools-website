@@ -1487,6 +1487,7 @@ body {
 .data-card .data-table {
   width: 100%;
   border-collapse: collapse;
+  padding: 0 1em;
 }
 
 .data-card .data-thead th {
@@ -1695,3 +1696,9 @@ body {
 .ip-cell { padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.08); }
 .ip-row.ip-head .ip-cell { border-top: none; }
 .ip-empty { color: rgba(255,255,255,0.55); padding: 6px 0; }
+
+
+
+.paginator{
+    padding: 10px 1em !important;
+}
