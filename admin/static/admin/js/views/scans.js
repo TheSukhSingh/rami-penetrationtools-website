@@ -186,8 +186,6 @@ export default function mountScans(root) {
 
 const pager = makePaginator({
   onPage(next) {
-    const goingForward = next > page;
-    if (goingForward && !hasMore) return; // block next if no more results
     page = next;
     loadTable();
   },
@@ -200,25 +198,36 @@ const pager = makePaginator({
 async function loadTable() {
   try {
     const res = await listScans({ page, per_page, q, tool, status, sort });
-
     const items = Array.isArray(res) ? res : (res.items || []);
     const total = Array.isArray(res) ? undefined : (res.meta?.total ?? res.total);
 
-    table.setRows(items || []);
+    // If we landed on an empty page (e.g., user clicked Next too far or filters changed),
+    // step back one page and reload once.
+    if (items.length === 0 && page > 1) {
+      page -= 1;
+      return loadTable();
+    }
+
+    table.setRows(items);
 
     if (typeof total === "number") {
-      pager.setTotal(total, per_page, page);                 // updates buttons if your paginator supports it
-      hasMore = page * per_page < total;                     // next exists only if more remain
+      // Precise: paginator can compute last page and disable Next
+      pager.setTotal(total, per_page, page);
     } else {
-      hasMore = (items?.length || 0) === per_page;           // fallback: full page ⇒ maybe more
+      // No total? Synthesize a total so Next disables correctly.
+      // “Everything up to this page” is all we can guarantee.
+      const approxTotal = (page - 1) * per_page + items.length;
+      pager.setTotal(approxTotal, per_page, page);
     }
   } catch (err) {
     console.error(err);
     table.setRows([]);
-    hasMore = false;                                         // be conservative
+    // Defensive: say there are no more items beyond previous pages
+    pager.setTotal((page - 1) * per_page, per_page, page);
     toast.error(err?.data?.message || err?.message || "Failed to load Scans");
   }
 }
+
 
   // --- Detail modal (reuse modal component for consistency) ---
   async function openScanDetail(id) {

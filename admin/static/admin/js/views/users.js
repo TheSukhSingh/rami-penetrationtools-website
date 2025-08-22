@@ -165,10 +165,8 @@ export default function mountUsers(root) {
   });
   tableShell.replaceChildren(table.el);
 
-  const pager = makePaginator({
+const pager = makePaginator({
   onPage(next) {
-    const goingForward = next > page;
-    if (goingForward && !hasMore) return; // block next if no more results
     page = next;
     loadTable();
   },
@@ -179,26 +177,31 @@ export default function mountUsers(root) {
 
 async function loadTable() {
   try {
-    // listUsers might return an array OR { items, meta: { total } }
+    // listUsers may return array OR { items, meta: { total } }
     const res = await listUsers({ page, per_page, q, sort });
-
     const items = Array.isArray(res) ? res : (res.items || []);
     const total = Array.isArray(res) ? undefined : (res.meta?.total ?? res.total);
 
-    table.setRows(items || []);
+    if (items.length === 0 && page > 1) {
+      page -= 1;
+      return loadTable();
+    }
+
+    table.setRows(items);
 
     if (typeof total === "number") {
-      pager.setTotal(total, per_page, page);                 // if your paginator exposes this
-      hasMore = page * per_page < total;                     // next exists only if more remain
+      pager.setTotal(total, per_page, page);
     } else {
-      hasMore = (items?.length || 0) === per_page;           // fallback: full page ⇒ maybe more
+      const approxTotal = (page - 1) * per_page + items.length;
+      pager.setTotal(approxTotal, per_page, page);
     }
   } catch (e) {
     table.setRows([]);
-    hasMore = false;
+    pager.setTotal((page - 1) * per_page, per_page, page);
     throw e;
   }
 }
+
 
 
   // ---- Detail modal (read-only fields) ----
