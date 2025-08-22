@@ -1,7 +1,7 @@
 import { setHeader } from '../lib/state.js';
 
 export async function mount(root) {
-  setHeader({ title: 'Analytics Dashboard', subtitle: 'Usage trends, retention, and tool performance' });
+  setHeader({ title: 'Analytics Dashboard', subtitle: 'Advanced analytics and performance metrics' });
   root.innerHTML = `
     <div class="panel" style="padding:20px">
       <h2>Analytics Dashboard</h2>
