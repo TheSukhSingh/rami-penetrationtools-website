@@ -1,181 +1,3 @@
-// import { setHeader, onRefresh, state } from "../lib/state.js";
-// import { el } from "../lib/dom.js";
-// import { num, pct } from "../lib/format.js";
-// import { getScansSummary, listScans, getScanDetail } from "../api/scans.js";
-// import { makeCardRow } from "../components/cards.js";
-// import { makeTable } from "../components/table.js";
-// import { makeSearchBox } from "../components/searchbox.js";
-// import { makePaginator } from "../components/paginator.js";
-// import { toast } from "../components/toast.js";
-
-// // ---- helpers ----
-// function baselineLabel(period) {
-//   switch (period) {
-//     case "1d":  return "from yesterday";
-//     case "7d":  return "from previous week";
-//     case "30d": return "from previous month";
-//     case "90d": return "from previous quarter";
-//     default:    return "vs previous period";
-//   }
-// }
-// function truncate(s, n = 15) {
-//   if (!s) return "—";
-//   s = String(s);
-//   return s.length > n ? s.slice(0, n) + "…" : s;
-// }
-// function fmtDuration(ms) {
-//   if (ms == null) return "—";
-//   const sec = ms / 1000;
-//   if (sec < 1) return `${ms} ms`;
-//   if (sec < 60) return `${sec.toFixed(1)} s`;
-//   const m = Math.floor(sec / 60);
-//   const s = Math.round(sec % 60);
-//   return `${m}m ${s}s`;
-// }
-
-// // ---- main view ----
-// export default function mountScans(root) {
-//   setHeader("Scans", "History, success rate, and live activity");
-
-//   const cardRow = makeCardRow();
-//   const toolbar = el("div", { class: "panel toolbar" });
-//   const tableWrap = el("div", { class: "panel" });
-
-//   root.replaceChildren(cardRow.el, toolbar, tableWrap);
-
-//   // --- Cards ---
-//   async function loadCards() {
-//     try {
-//       const rng = state.period; // "1d" | "7d" | "30d" | "90d" | "all"
-//       // You can tweak active_window minutes if you want:
-//       const data = await getScansSummary(rng, { active_window: 30 });
-//       const c = data.cards || {};
-//       const suffix = ` ${baselineLabel(rng)}`;
-
-//       const cards = [
-//         { title: "Total Scans",  value: num(c.scan_count?.value ?? 0),      delta: pct(c.scan_count?.delta_vs_prev ?? 0) + suffix,   positive: (c.scan_count?.delta_vs_prev ?? 0) >= 0 },
-//         { title: "Active Scans", value: num(c.active_now?.value ?? 0),      delta: "live now",                                       positive: true },
-//         { title: "Failed Scans", value: num(c.failures?.value ?? 0),        delta: pct(c.failures?.delta_vs_prev ?? 0) + suffix,     // fewer failures = good
-//           positive: (c.failures?.delta_vs_prev ?? 0) <= 0 },
-//         { title: "Success Rate", value: pct((c.success_rate?.value ?? 0) * 100), delta: pct(c.success_rate?.delta_vs_prev ?? 0) + suffix, positive: (c.success_rate?.delta_vs_prev ?? 0) >= 0 },
-//       ];
-
-//       cardRow.update(cards.map(x => ({
-//         title: x.title, value: x.value, delta: x.delta, positive: x.positive,
-//       })));
-//     } catch (e) {
-//       cardRow.update([
-//         { title: "Total Scans", value: "—", delta: null },
-//         { title: "Active Scans", value: "—", delta: null },
-//         { title: "Failed Scans", value: "—", delta: null },
-//         { title: "Success Rate", value: "—", delta: null },
-//       ]);
-//       throw e;
-//     }
-//   }
-
-//   // --- Table (search + pager) ---
-//   let page = 1, per_page = 20, q = "", tool = "", status = "", sort = "-scanned_at";
-
-//   const search = makeSearchBox({
-//     placeholder: "Search (tool, command, file, user)…",
-//     onInput(value) { q = value; page = 1; loadTable(); },
-//   });
-
-//   const toolInput = el("input", {
-//     class: "search",
-//     type: "text",
-//     placeholder: "Tool (slug)",
-//     oninput: (e) => { tool = e.target.value.trim(); },
-//   });
-
-//   const statusSel = el("select", { class: "sel" },
-//     el("option", { value: "" }, "All statuses"),
-//     el("option", { value: "success" }, "Success"),
-//     el("option", { value: "failure" }, "Failure"),
-//   );
-//   statusSel.onchange = (e) => { status = e.target.value; };
-
-//   const applyBtn = el("button", { class: "btn" }, "Apply");
-//   applyBtn.onclick = () => { page = 1; loadTable(); };
-
-//   toolbar.replaceChildren(search.el, toolInput, statusSel, applyBtn);
-
-//   const table = makeTable({
-//     columns: [
-//       { key: "id", label: "Scan ID", width: "10%" },
-//       { key: "user", label: "User", width: "16%", format: u => (u?.username || u?.email || u?.id || "—") },
-//       { key: "tool", label: "Tool", width: "12%" },
-//       { key: "target", label: "Target", width: "18%", format: v => truncate(v, 15) },
-//       { key: "location", label: "Location", width: "16%", format: loc => (loc?.ip ? [loc.city, loc.country].filter(Boolean).join(", ") || loc.ip : "—") },
-//       { key: "status", label: "Status", width: "12%" },
-//       { key: "duration_ms", label: "Duration", width: "8%", format: v => fmtDuration(v) },
-//       { key: "scanned_at", label: "When", width: "8%", format: t => t ? new Date(t).toLocaleString() : "—", sortable: true, sortKey: "scanned_at" },
-//     ],
-//     onSort(nextSortKey, isDesc) {
-//       sort = `${isDesc ? "-" : ""}${nextSortKey}`;
-//       page = 1;
-//       loadTable();
-//     },
-//     onRowClick(row) {
-//       openScanDetail(row.id);
-//     },
-//   });
-//   tableWrap.replaceChildren(table.el);
-
-//   const pager = makePaginator({
-//     onPage(next) { page = next; loadTable(); },
-//   });
-//   tableWrap.appendChild(pager.el);
-
-//   async function loadTable() {
-//     try {
-//       // NOTE: listScans can return either array or {items, meta}; handle both:
-//       const res = await listScans({ page, per_page, q, tool, status, sort });
-//       const items = Array.isArray(res) ? res : (res.items || []);
-//       const total = Array.isArray(res) ? undefined : (res.meta?.total ?? res.total);
-//       table.setRows(items || []);
-//       if (typeof total === "number") pager.setTotal(total, per_page, page);
-//     } catch (err) {
-//       console.error(err);
-//       toast.error(err?.data?.message || err?.message || "Failed to load Scans");
-//     }
-//   }
-
-//   // --- Row detail modal (plug your modal if you have one) ---
-//   async function openScanDetail(id) {
-//     try {
-//       const d = await getScanDetail(id);
-//       // Basic inline modal; replace with your own modal component if needed.
-//       const pre = el("pre", { style: "max-height:60vh;overflow:auto;margin:0" }, JSON.stringify(d, null, 2));
-//       const box = el("div", { class: "panel", style: "max-width: 900px" },
-//         el("h3", {}, "Scan Detail"),
-//         pre
-//       );
-//       const wrap = el("div", { class: "modal open" }, el("div", { class: "modal-box" }, box));
-//       function close(){ wrap.remove(); }
-//       wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
-//       document.body.appendChild(wrap);
-//     } catch (err) {
-//       console.error(err);
-//       toast.error(err?.data?.message || err?.message || "Failed to load Scan detail");
-//     }
-//   }
-
-//   // --- Wire to global period + refresh ticker ---
-//   async function refresh() {
-//     await Promise.all([loadCards(), loadTable()]);
-//   }
-//   refresh();
-
-//   onRefresh(refresh);
-//   state.subscribe("period", refresh);
-// }
-
-
-
-
-// admin/static/admin/js/views/scans.js
 
 import { setHeader, onRefresh, state } from "../lib/state.js";
 import { el } from "../lib/dom.js";
@@ -307,7 +129,7 @@ export default function mountScans(root) {
   }
 
   // --- Table (search + filters in header) ---
-  let page = 1, per_page = 20, q = "", tool = "", status = "", sort = "-scanned_at";
+  let page = 1, per_page = 20, q = "", tool = "", status = "", sort = "-scanned_at", hasMore = true;
 
   const search = makeSearchBox({
     placeholder: "Search (tool, command, file, user)…",
@@ -362,25 +184,41 @@ export default function mountScans(root) {
   });
   tableShell.replaceChildren(table.el);
 
-  const pager = makePaginator({
-    onPage(next) { page = next; loadTable(); },
-  });
+const pager = makePaginator({
+  onPage(next) {
+    const goingForward = next > page;
+    if (goingForward && !hasMore) return; // block next if no more results
+    page = next;
+    loadTable();
+  },
+});
+
+
+
   listCard.appendChild(pager.el);
 
-  async function loadTable() {
-    try {
-      // listScans can return either array or {items, meta/total}
-      const res = await listScans({ page, per_page, q, tool, status, sort });
-      const items = Array.isArray(res) ? res : (res.items || []);
-      const total = Array.isArray(res) ? undefined : (res.meta?.total ?? res.total);
-      table.setRows(items || []);
-      if (typeof total === "number") pager.setTotal(total, per_page, page);
-    } catch (err) {
-      console.error(err);
-      table.setRows([]);
-      toast.error(err?.data?.message || err?.message || "Failed to load Scans");
+async function loadTable() {
+  try {
+    const res = await listScans({ page, per_page, q, tool, status, sort });
+
+    const items = Array.isArray(res) ? res : (res.items || []);
+    const total = Array.isArray(res) ? undefined : (res.meta?.total ?? res.total);
+
+    table.setRows(items || []);
+
+    if (typeof total === "number") {
+      pager.setTotal(total, per_page, page);                 // updates buttons if your paginator supports it
+      hasMore = page * per_page < total;                     // next exists only if more remain
+    } else {
+      hasMore = (items?.length || 0) === per_page;           // fallback: full page ⇒ maybe more
     }
+  } catch (err) {
+    console.error(err);
+    table.setRows([]);
+    hasMore = false;                                         // be conservative
+    toast.error(err?.data?.message || err?.message || "Failed to load Scans");
   }
+}
 
   // --- Detail modal (reuse modal component for consistency) ---
   async function openScanDetail(id) {
