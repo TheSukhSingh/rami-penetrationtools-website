@@ -1,7 +1,7 @@
 import { setHeader } from '../lib/state.js';
 
 export async function mount(root) {
-  setHeader({ title: 'Tools', subtitle: 'Tools list and usage analytics coming soon...' });
+  setHeader({ title: 'Tools', subtitle: 'Configure tools, defaults, limits, and versions' });
   root.innerHTML = `
     <div class="panel" style="padding:20px">
       <h2>Tools</h2>

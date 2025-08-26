@@ -99,7 +99,7 @@ function baselineLabel(period) {
 }
 
 function updateUI(data){
-  setHeader({ subtitle: `Last updated ${new Date(data.computed_at).toLocaleString()}` });
+  setHeader("Overview", "At-a-glance metrics, trends, and recent activity");
 
   const period = getState().period;
   const suffix = ` ${baselineLabel(period)}`;

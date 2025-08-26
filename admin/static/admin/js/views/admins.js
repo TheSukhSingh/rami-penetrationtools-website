@@ -1,7 +1,7 @@
 import { setHeader } from '../lib/state.js';
 
 export async function mount(root) {
-  setHeader({ title: 'Admins Dashboard', subtitle: 'Advanced analytics and performance metrics' });
+  setHeader({ title: 'Admins Dashboard', subtitle: 'Admin accounts, roles, 2FA, and privileges' });
 
       root.innerHTML = `
     <div class="tab-content" id="analytics">

@@ -93,49 +93,50 @@ class UsersRepo(BaseRepo):
         sort_field: str,
         desc: bool,
     ) -> Tuple[List[User], int]:
-        """
-        Supports sort_field in: last_login_at, created_at, email, username, name
-        Default is last_login_at desc.
-        """
+
+
         query = self._non_admin_user_query()
 
-        # LEFT JOIN LocalAuth to expose last_login_at for sorting
-        query = query.outerjoin(LocalAuth, LocalAuth.user_id == User.id)
+        # SA 2.x-friendly scalar subqueries for sorting/enrichment
+        last_login_sub = (
+            select(func.max(LoginEvent.occurred_at))
+            .where(and_(LoginEvent.user_id == User.id, LoginEvent.successful.is_(True)))
+            .correlate(User)
+            .scalar_subquery()
+        )
 
-        # Optional: attach a scan_count subquery for preview tables
+        scan_count_sub = (
+            select(func.count(ToolScanHistory.id))
+            .where(ToolScanHistory.user_id == User.id)
+            .correlate(User)
+            .scalar_subquery()
+        )
+
         if ToolScanHistory is not None:
-            scans_sub = (
-                self.session.query(func.count(ToolScanHistory.id))
-                .filter(ToolScanHistory.user_id == User.id)
-                .correlate(User)
-                .as_scalar()
-            )
-            query = query.add_columns(scans_sub.label("scan_count"))
+            query = query.add_columns(scan_count_sub.label("scan_count"))
 
-        # search
         query = self._apply_search(query, q)
 
-        # sorting
         if sort_field == "last_login_at":
-            order_col = LocalAuth.last_login_at
-            # ensure NULLS LAST when descending (so users never logged in appear at the end)
-            nulls_rank = case((order_col.is_(None), 1), else_=0)
-            if desc:
-                query = query.order_by(nulls_rank.asc(), order_col.desc())
-            else:
-                query = query.order_by(nulls_rank.desc(), order_col.asc())
+            nulls_rank = case((last_login_sub.is_(None), 1), else_=0)
+            order_expr = last_login_sub.desc() if desc else last_login_sub.asc()
+            query = query.order_by(nulls_rank.asc(), order_expr)
+        elif sort_field == "scan_count":
+            order_expr = scan_count_sub.desc() if desc else scan_count_sub.asc()
+            query = query.order_by(order_expr)
         elif sort_field in {"created_at", "email", "username", "name"}:
             col = getattr(User, sort_field)
             query = query.order_by(col.desc() if desc else col.asc())
         else:
-            # fallback
-            query = query.order_by(LocalAuth.last_login_at.desc().nullslast(), User.created_at.desc())
+            # Safe fallback: prefer recent last_login_sub, then created_at
+            nulls_rank = case((last_login_sub.is_(None), 1), else_=0)
+            query = query.order_by(nulls_rank.asc(), last_login_sub.desc(), User.created_at.desc())
+
 
         items, total = self.paginate(query, page, per_page)
-        # SQLAlchemy returns tuples when add_columns() is used; normalize:
-        # - If scan_count was added, each row is (User, scan_count); else it's just User.
+
         if ToolScanHistory is not None:
-            items = [row[0] for row in items]  # keep User objects; scan_count can be recomputed in service if needed
+            items = [row[0] for row in items] 
         return items, total
 
     def user_detail(self, user_id: int):
@@ -143,8 +144,13 @@ class UsersRepo(BaseRepo):
         return user
 
     def last_login_at(self, user_id: int) -> Optional[datetime]:
-        la = self.session.get(LocalAuth, user_id)
-        return la.last_login_at if la else None
+        # la = self.session.get(LocalAuth, user_id)
+        # return la.last_login_at if la else None
+        return (
+            self.session.query(func.max(LoginEvent.occurred_at))
+            .filter(LoginEvent.user_id == user_id, LoginEvent.successful.is_(True))
+            .scalar()
+        )
 
     def scan_count(self, user_id: int) -> int:
         if ToolScanHistory is None:

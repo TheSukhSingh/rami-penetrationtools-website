@@ -1188,3 +1188,56 @@ body {
 
 
 }
+
+/* Read-only inline form layout */
+.readonly-form .form-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.readonly-form .form-label {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.readonly-form .form-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: inherit;
+}
+
+.readonly-form .form-input:disabled {
+  opacity: 0.9;
+  cursor: default;
+}
+
+/* Recent IPs table-ish */
+.ip-table {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1.2fr;
+  gap: 6px 12px;
+}
+
+.ip-row {
+  display: contents;
+}
+
+.ip-head .ip-cell {
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.ip-cell {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.ip-empty {
+  opacity: 0.6;
+  padding: 6px 0;
+}
