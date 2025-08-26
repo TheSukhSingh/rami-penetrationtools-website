@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}{{ category.name }} — Blog — Hackr.gg{% endblock %}
+
+{% block meta %}
+  <link rel="canonical" href="{{ url_for('blog.by_category', slug=category.slug, _external=True) }}">
+  {% if category.description %}
+    <meta name="description" content="{{ category.description }}">
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<section class="container blog-category">
+  <header class="mb-6">
+    <h1 class="page-title">{{ category.name }}</h1>
+    {% if category.description %}<p class="lead">{{ category.description }}</p>{% endif %}
+  </header>
+
+  <div class="posts-grid">
+    {% for post in items.items %}
+      <article class="post-card">
+        {% if post.cover_path %}
+          <a class="cover" href="{{ url_for('blog.detail', slug=post.slug) }}">
+            <img src="{{ post.cover_path }}" alt="{{ post.cover_alt or ('Cover for ' ~ post.title) }}" loading="lazy">
+          </a>
+        {% endif %}
+        <h2 class="post-title">
+          <a href="{{ url_for('blog.detail', slug=post.slug) }}">{{ post.title }}</a>
+        </h2>
+        <p class="meta">
+          {% if post.published_at %}{{ post.published_at.strftime('%b %d, %Y') }} · {% endif %}
+          {{ (post.reading_time or 1) }} min read
+        </p>
+        {% if post.summary %}<p class="summary">{{ post.summary }}</p>{% endif %}
+        {% if post.tags %}
+          <ul class="tags">
+            {% for t in post.tags %}
+              <li><a href="{{ url_for('blog.by_tag', slug=t.slug) }}">#{{ t.name }}</a></li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </article>
+    {% else %}
+      <p>No posts in this category yet.</p>
+    {% endfor %}
+  </div>
+
+  <nav class="pagination" aria-label="Pagination">
+    {% if items.has_prev %}
+      <a class="prev" href="{{ url_for('blog.by_category', slug=category.slug, page=items.prev_num) }}">← Newer</a>
+    {% endif %}
+    <span class="page">Page {{ items.page }} of {{ items.pages }}</span>
+    {% if items.has_next %}
+      <a class="next" href="{{ url_for('blog.by_category', slug=category.slug, page=items.next_num) }}">Older →</a>
+    {% endif %}
+  </nav>
+</section>
+{% endblock %}

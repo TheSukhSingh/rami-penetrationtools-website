@@ -8,6 +8,7 @@ from flask import current_app
 from auth import auth_bp
 from tools import tools_bp
 from admin import admin_bp
+from blog import blog_bp
 from admin.api import admin_api_bp
 import secrets
 from extensions import db, bcrypt, migrate, limiter, csrf
@@ -111,10 +112,11 @@ def create_app():
 
     init_mail(app)
 
-    app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(admin_api_bp)
-    app.register_blueprint(tools_bp, url_prefix='/tools')
+    app.register_blueprint(tools_bp)
+    app.register_blueprint(blog_bp)
 
     init_jwt_manager(app, jwt)
 

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}{{ post.title }} — Hackr.gg{% endblock %}
+
+{% block meta %}
+  <link rel="canonical" href="{{ url_for('blog.detail', slug=post.slug, _external=True) }}">
+  {% if post.summary %}<meta name="description" content="{{ post.summary }}">{% endif %}
+
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="{{ post.og_title or post.title }}">
+  {% if post.summary or post.og_description %}
+    <meta property="og:description" content="{{ post.og_description or post.summary }}">
+  {% endif %}
+  <meta property="og:url" content="{{ url_for('blog.detail', slug=post.slug, _external=True) }}">
+  {% if post.cover_path %}
+    <meta property="og:image" content="{{ post.cover_path }}">
+    <meta name="twitter:card" content="summary_large_image">
+  {% else %}
+    <meta name="twitter:card" content="summary">
+  {% endif %}
+
+  {% if is_preview %}<meta name="robots" content="noindex,nofollow">{% endif %}
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": {{ (post.og_title or post.title)|tojson }},
+    "description": {{ (post.og_description or post.summary or '')|tojson }},
+    "datePublished": {{ (post.published_at.isoformat() if post.published_at else '')|tojson }},
+    "dateModified": {{ post.updated_at.isoformat()|tojson }},
+    "image": {{ (post.cover_path or '')|tojson }},
+    "mainEntityOfPage": {"@type":"WebPage","@id": {{ url_for('blog.detail', slug=post.slug, _external=True)|tojson }}},
+    "author": {"@type":"Organization","name":"Hackr.gg"},
+    "publisher": {"@type":"Organization","name":"Hackr.gg"}
+  }
+  </script>
+{% endblock %}
+
+{% block content %}
+<article class="container post-detail">
+  {% if is_preview %}
+    <div class="preview-banner" role="note">Preview — not indexed</div>
+  {% endif %}
+
+  <header class="post-header">
+    <h1>{{ post.title }}</h1>
+    <p class="meta">
+      {% if post.published_at %}{{ post.published_at.strftime('%b %d, %Y') }} · {% endif %}
+      {{ (post.reading_time or 1) }} min read
+      {% if post.category %} · <a href="{{ url_for('blog.by_category', slug=post.category.slug) }}">{{ post.category.name }}</a>{% endif %}
+    </p>
+    {% if post.cover_path %}
+      <figure class="post-cover">
+        <img src="{{ post.cover_path }}" alt="{{ post.cover_alt or ('Cover image for ' ~ post.title) }}" loading="eager" fetchpriority="high">
+        {% if post.cover_alt %}<figcaption>{{ post.cover_alt }}</figcaption>{% endif %}
+      </figure>
+    {% endif %}
+  </header>
+
+  <section class="post-body">
+    {{ post.body_html|safe }}
+  </section>
+
+  {% if post.tags %}
+  <footer class="post-footer">
+    <ul class="tags">
+      {% for t in post.tags %}
+        <li><a href="{{ url_for('blog.by_tag', slug=t.slug) }}">#{{ t.name }}</a></li>
+      {% endfor %}
+    </ul>
+  </footer>
+  {% endif %}
+</article>
+{% endblock %}
