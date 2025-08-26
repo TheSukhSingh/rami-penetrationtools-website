@@ -9,4 +9,4 @@ blog_bp = Blueprint(
     static_url_path='/blog/static'
 )
  
-
+from . import routes
