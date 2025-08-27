@@ -12,6 +12,8 @@ ALL_SCOPES = {
     "admin.tools.read", "admin.tools.write", "admin.tools.delete",
     # Settings
     "admin.settings.read", "admin.settings.write",
+    # Blog
+    "blog.write", "blog.delete"
     # Audit
     "admin.audit.read",
 }
@@ -62,6 +64,15 @@ ROLE_DEFINITIONS = {
     "user": {
         "description": "Regular user",
         "scopes": [],
+    },
+
+    # Blogger: 
+    "blogger": {
+        "description": "Blogger",
+        "scopes": sorted([
+            "blog.write",
+            "blog.delete",
+        ]),
     },
 }
 
