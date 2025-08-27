@@ -1,6 +1,6 @@
-{% extends 'main.html' %}
+{% extends "main.html" %}
 
-{% block title %}{{ category.name }} — Blog — Hackr.gg{% endblock %}
+{% block title %}{{ category.name }} — Blog — Hunter's Terminal{% endblock %}
 
 {% block meta %}
   <link rel="canonical" href="{{ url_for('blog.by_category', slug=category.slug, _external=True) }}">
@@ -9,50 +9,62 @@
   {% endif %}
 {% endblock %}
 
-{% block content %}
-<section class="container blog-category">
-  <header class="mb-6">
-    <h1 class="page-title">{{ category.name }}</h1>
-    {% if category.description %}<p class="lead">{{ category.description }}</p>{% endif %}
-  </header>
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+{% endblock %}
 
-  <div class="posts-grid">
-    {% for post in items.items %}
-      <article class="post-card">
+{% block content %}
+<div class="grid-bg"></div>
+<div class="scan-lines"></div>
+<div class="particles" id="particles"></div>
+
+<section class="main-content">
+  <div class="container" style="padding-top: 80px;">
+    <header class="section-header">
+      <h1 class="section-title">{{ category.name }}</h1>
+      {% if category.description %}<p class="section-description">{{ category.description }}</p>{% endif %}
+    </header>
+
+    <div class="tools-grid">
+      {% for post in items.items %}
+      <article class="glass card-hover hover-glow-cyan" style="overflow:hidden;">
         {% if post.cover_path %}
           <a class="cover" href="{{ url_for('blog.detail', slug=post.slug) }}">
-            <img src="{{ post.cover_path }}" alt="{{ post.cover_alt or ('Cover for ' ~ post.title) }}" loading="lazy">
+            <img src="{{ post.cover_path }}" alt="{{ post.cover_alt or ('Cover for ' ~ post.title) }}" loading="lazy" style="width:100%; display:block; object-fit:cover;">
           </a>
         {% endif %}
-        <h2 class="post-title">
-          <a href="{{ url_for('blog.detail', slug=post.slug) }}">{{ post.title }}</a>
-        </h2>
-        <p class="meta">
-          {% if post.published_at %}{{ post.published_at.strftime('%b %d, %Y') }} · {% endif %}
-          {{ (post.reading_time or 1) }} min read
-        </p>
-        {% if post.summary %}<p class="summary">{{ post.summary }}</p>{% endif %}
-        {% if post.tags %}
-          <ul class="tags">
-            {% for t in post.tags %}
-              <li><a href="{{ url_for('blog.by_tag', slug=t.slug) }}">#{{ t.name }}</a></li>
-            {% endfor %}
-          </ul>
-        {% endif %}
+        <div style="padding: 20px;">
+          <h2 style="margin-bottom: 8px;">
+            <a href="{{ url_for('blog.detail', slug=post.slug) }}" style="text-decoration:none; color: var(--text-main);">{{ post.title }}</a>
+          </h2>
+          <p class="text-mute" style="color: var(--text-mute); margin-bottom: 12px;">
+            {% if post.published_at %}{{ post.published_at.strftime('%b %d, %Y') }} · {% endif %}
+            {{ (post.reading_time or 1) }} min read
+          </p>
+          {% if post.summary %}<p style="margin-bottom: 16px; color: var(--text-main); opacity: .9;">{{ post.summary }}</p>{% endif %}
+          {% if post.tags %}
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              {% for t in post.tags %}
+                <a class="glass-button" href="{{ url_for('blog.by_tag', slug=t.slug) }}">#{{ t.name }}</a>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
       </article>
-    {% else %}
-      <p>No posts in this category yet.</p>
-    {% endfor %}
-  </div>
+      {% else %}
+        <div class="glass" style="padding:20px;">No posts in this category yet.</div>
+      {% endfor %}
+    </div>
 
-  <nav class="pagination" aria-label="Pagination">
-    {% if items.has_prev %}
-      <a class="prev" href="{{ url_for('blog.by_category', slug=category.slug, page=items.prev_num) }}">← Newer</a>
-    {% endif %}
-    <span class="page">Page {{ items.page }} of {{ items.pages }}</span>
-    {% if items.has_next %}
-      <a class="next" href="{{ url_for('blog.by_category', slug=category.slug, page=items.next_num) }}">Older →</a>
-    {% endif %}
-  </nav>
+    <nav class="container" aria-label="Pagination" style="display:flex; gap:12px; align-items:center; justify-content:center; margin-top:32px;">
+      {% if items.has_prev %}
+        <a class="glass-button" href="{{ url_for('blog.by_category', slug=category.slug, page=items.prev_num) }}">← Newer</a>
+      {% endif %}
+      <span class="text-mute">Page {{ items.page }} of {{ items.pages }}</span>
+      {% if items.has_next %}
+        <a class="glass-button" href="{{ url_for('blog.by_category', slug=category.slug, page=items.next_num) }}">Older →</a>
+      {% endif %}
+    </nav>
+  </div>
 </section>
 {% endblock %}

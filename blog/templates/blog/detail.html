@@ -1,6 +1,6 @@
-{% extends 'main.html' %}
+{% extends "main.html" %}
 
-{% block title %}{{ post.title }} — Hackr.gg{% endblock %}
+{% block title %}{{ post.title }} — Hunter's Terminal{% endblock %}
 
 {% block meta %}
   <link rel="canonical" href="{{ url_for('blog.detail', slug=post.slug, _external=True) }}">
@@ -18,7 +18,6 @@
   {% else %}
     <meta name="twitter:card" content="summary">
   {% endif %}
-
   {% if is_preview %}<meta name="robots" content="noindex,nofollow">{% endif %}
 
   <script type="application/ld+json">
@@ -31,44 +30,53 @@
     "dateModified": {{ post.updated_at.isoformat()|tojson }},
     "image": {{ (post.cover_path or '')|tojson }},
     "mainEntityOfPage": {"@type":"WebPage","@id": {{ url_for('blog.detail', slug=post.slug, _external=True)|tojson }}},
-    "author": {"@type":"Organization","name":"Hackr.gg"},
-    "publisher": {"@type":"Organization","name":"Hackr.gg"}
+    "author": {"@type":"Organization","name":"Hunter's Terminal"},
+    "publisher": {"@type":"Organization","name":"Hunter's Terminal"}
   }
   </script>
 {% endblock %}
 
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+{% endblock %}
+
 {% block content %}
-<article class="container post-detail">
+<div class="grid-bg"></div>
+<div class="scan-lines"></div>
+<div class="particles" id="particles"></div>
+
+<article class="container" style="padding-top: 80px; padding-bottom: 60px;">
   {% if is_preview %}
-    <div class="preview-banner" role="note">Preview — not indexed</div>
+    <div class="glass" role="note" style="padding:12px; margin-bottom:16px;">Preview — not indexed</div>
   {% endif %}
 
-  <header class="post-header">
-    <h1>{{ post.title }}</h1>
-    <p class="meta">
+  <header class="glass card-hover" style="padding: 24px; margin-bottom: 24px;">
+    <h1 style="margin-bottom: 8px;">{{ post.title }}</h1>
+    <p class="text-mute" style="color: var(--text-mute);">
       {% if post.published_at %}{{ post.published_at.strftime('%b %d, %Y') }} · {% endif %}
       {{ (post.reading_time or 1) }} min read
-      {% if post.category %} · <a href="{{ url_for('blog.by_category', slug=post.category.slug) }}">{{ post.category.name }}</a>{% endif %}
+      {% if post.category %} · <a href="{{ url_for('blog.by_category', slug=post.category.slug) }}" class="text-cyan">{{ post.category.name }}</a>{% endif %}
     </p>
     {% if post.cover_path %}
-      <figure class="post-cover">
-        <img src="{{ post.cover_path }}" alt="{{ post.cover_alt or ('Cover image for ' ~ post.title) }}" loading="eager" fetchpriority="high">
-        {% if post.cover_alt %}<figcaption>{{ post.cover_alt }}</figcaption>{% endif %}
+      <figure class="glass glow-cyan" style="margin-top:16px; overflow:hidden;">
+        <img src="{{ post.cover_path }}" alt="{{ post.cover_alt or ('Cover image for ' ~ post.title) }}"
+             loading="eager" fetchpriority="high" style="width:100%; display:block; object-fit:cover;">
+        {% if post.cover_alt %}<figcaption style="padding:8px 12px; color: var(--text-mute);">{{ post.cover_alt }}</figcaption>{% endif %}
       </figure>
     {% endif %}
   </header>
 
-  <section class="post-body">
+  <section class="glass card-hover" style="padding: 24px;">
     {{ post.body_html|safe }}
   </section>
 
   {% if post.tags %}
-  <footer class="post-footer">
-    <ul class="tags">
+  <footer style="margin-top: 16px;">
+    <div style="display:flex; flex-wrap:wrap; gap:8px;">
       {% for t in post.tags %}
-        <li><a href="{{ url_for('blog.by_tag', slug=t.slug) }}">#{{ t.name }}</a></li>
+        <a class="glass-button" href="{{ url_for('blog.by_tag', slug=t.slug) }}">#{{ t.name }}</a>
       {% endfor %}
-    </ul>
+    </div>
   </footer>
   {% endif %}
 </article>
