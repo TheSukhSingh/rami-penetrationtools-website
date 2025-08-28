@@ -125,7 +125,7 @@ body {
 }
 
 /* Animated Backgrounds */
-.grid-bg {
+/* .grid-bg {
     position: absolute;
     top: 0;
     left: 0;
@@ -137,7 +137,21 @@ body {
     background-size: 50px 50px;
     animation: grid-move 20s linear infinite;
     pointer-events: none;
+} */
+.grid-bg{
+  position: fixed;      /* detach from document flow */
+  inset: 0;             /* shorthand for top/right/bottom/left:0 */
+  background-image:
+    linear-gradient(rgba(0,255,224,.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,255,224,.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+  background-position: 0 0, 0 0;
+  animation: grid-move 20s linear infinite;
+  pointer-events: none;
+  will-change: background-position; /* hint GPU compositing */
+  z-index: -1;          /* behind content if needed */
 }
+html { overflow-y: scroll; }  /* keep scrollbar stable */
 
 @keyframes grid-move {
     0% {
