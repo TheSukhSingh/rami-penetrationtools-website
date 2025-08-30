@@ -125,39 +125,12 @@ body {
 }
 
 /* Animated Backgrounds */
-/* .grid-bg {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-image:
-        linear-gradient(rgba(0, 255, 224, 0.1) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 255, 224, 0.1) 1px, transparent 1px);
-    background-size: 50px 50px;
-    animation: grid-move 20s linear infinite;
-    pointer-events: none;
-} */
-.grid-bg{
-  position: fixed;      /* detach from document flow */
-  inset: 0;             /* shorthand for top/right/bottom/left:0 */
-  background-image:
-    linear-gradient(rgba(0,255,224,.1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,255,224,.1) 1px, transparent 1px);
-  background-size: 50px 50px;
-  background-position: 0 0, 0 0;
-  animation: grid-move 20s linear infinite;
-  pointer-events: none;
-  will-change: background-position; /* hint GPU compositing */
-  z-index: -1;          /* behind content if needed */
-}
-html { overflow-y: scroll; }  /* keep scrollbar stable */
+
 
 @keyframes grid-move {
     0% {
         transform: translate(0, 0);
     }
-
     100% {
         transform: translate(50px, 50px);
     }
@@ -210,15 +183,7 @@ html { overflow-y: scroll; }  /* keep scrollbar stable */
     box-shadow: 0 0 12px rgba(161, 45, 255, 0.35);
 }
 
-/* Card Hover Effects */
-.card-hover {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
 
-.card-hover:hover {
-    /* transform: translateY(-8px) scale(1.02); */
-    box-shadow: 0 20px 40px rgba(0, 255, 224, 0.2);
-}
 
 /* Reveal Animation */
 .reveal {
@@ -1118,7 +1083,19 @@ html { overflow-y: scroll; }  /* keep scrollbar stable */
 }
 
 
-
+.grid-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        linear-gradient(rgba(0, 255, 224, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 224, 0.1) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: grid-move 20s linear infinite;
+    pointer-events: none;
+}
 
 
 
@@ -1255,3 +1232,78 @@ html { overflow-y: scroll; }  /* keep scrollbar stable */
   opacity: 0.6;
   padding: 6px 0;
 }
+/* --- Stabilize page scrolling & reserve scrollbar space --- */
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable both-edges;
+}
+.main-content {
+    padding-top: 80px;
+}
+.tools-header {
+    padding: 60px 0;
+    text-align: center;
+    position: relative;
+}
+/* --- Make the main regions positioning contexts to CLIP their background layers --- */
+.page-wrapper,
+.main-content,
+.footer,
+.tools-header {            /* tools-header is your blog header section */
+  position: relative;
+  overflow: hidden;        /* critical: clip .grid-bg / .scan-lines / .particles overflow */
+}
+@media (max-width: 480px) {
+    .main-content {
+        padding-top: 70px;
+    }
+}
+/* --- Keep your backgrounds scrolling, but animate background-position (not transform) --- */
+.grid-bg {
+  position: absolute;
+  inset: 0;
+  /* remove transform-based movement if present */
+  transform: none !important;
+  background-position: 0 0, 0 0;
+  animation: grid-shift 20s linear infinite;
+  will-change: background-position;
+  pointer-events: none;
+}
+
+/* Replace @keyframes grid-move → translate() with background-position shift */
+@keyframes grid-shift {
+  from { background-position: 0    0,    0    0; }
+  to   { background-position: 50px 50px, 50px 50px; } /* exactly one tile */
+}
+
+/* --- Clip other full-screen decor so they can't extend layout height --- */
+.particles,
+.scan-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* If you animate these with translateY, they will be clipped by overflow:hidden */
+}
+
+/* --- Stabilize cards near the fold: isolate hover paints so they don't change layout --- */
+.blog-card {
+  contain: paint;            /* hover glow/scale won't affect layout outside the card */
+  will-change: transform;
+  transform-origin: center;
+}
+
+/* --- Reserve cover image height to avoid grid reflow while images load --- */
+.blog-card .cover { 
+  display: block;
+  aspect-ratio: 16 / 9;      /* pick the ratio you use for covers */
+  overflow: hidden;
+}
+.blog-card .cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;            /* removes inline-img baseline gap */
+}
+
+/* --- Optional: tiny guard if a 1px flicker remains at certain breakpoints --- */
+/* .tools-grid { padding-bottom: 2px; } */
