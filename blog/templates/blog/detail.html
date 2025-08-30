@@ -38,6 +38,26 @@
 
 {% block head_extra %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+
+  <style>
+    /* Preserve code block whitespace, enable horizontal scroll for long lines */
+pre, pre code { white-space: pre; }
+pre { overflow-x: auto; }
+
+/* Optional: a subtle “glass” look that matches your theme */
+#post-body pre {
+  background: rgba(0, 10, 18, 0.6);
+  border: 1px solid rgba(0, 255, 224, 0.15);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+/* If any global reset had overridden code/pre, undo it */
+code { white-space: pre-wrap; word-break: normal; }
+
+  </style>
+
+
 {% endblock %}
 
 {% block content %}
@@ -66,8 +86,9 @@
     {% endif %}
   </header>
 
-  <section class="glass card-hover" style="padding: 24px;">
-    {{ post.body_html|safe }}
+  <!-- <section class="glass card-hover" style="padding: 24px;"> -->
+  <section class="prose prose-invert" id="post-body" style="padding: 24px;">
+    {{ post.body_html | safe }}
   </section>
 
   {% if post.tags %}

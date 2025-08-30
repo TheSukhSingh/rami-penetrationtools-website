@@ -51,42 +51,56 @@ _WORD_RE = re.compile(r"\w+")
 
 # bleach allowlists (only used if bleach is installed)
 _ALLOWED_TAGS = [
-    "p", "br", "hr",
-    "h1", "h2", "h3", "h4", "h5", "h6",
-    "strong", "em", "blockquote",
-    "ul", "ol", "li",
-    "code", "pre",
-    "a", "img",
-    "table", "thead", "tbody", "tr", "th", "td"
+    "p","br","hr",
+    "h1","h2","h3","h4","h5","h6",
+    "strong","em","blockquote",
+    "ul","ol","li",
+    "code","pre","span","div","kbd",
+    "a","img",
+    "table","thead","tbody","tr","th","td"
 ]
 _ALLOWED_ATTRS = {
-    "a": ["href", "title", "rel", "target"],
-    "img": ["src", "alt", "title", "width", "height"],
+    "a": ["href","title","rel","target"],
+    "img": ["src","alt","title","width","height"],
     "code": ["class"],
-    "pre": ["class"],
-    "th": ["colspan"], "td": ["colspan"]
+    "pre":  ["class"],
+    "span": ["class"],
+    "div":  ["class"],
+    "th": ["colspan"], 
+    "td": ["colspan"]
 }
 _ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
 
 def render_markdown_to_html(md_text: str) -> str:
     """
-    Render Markdown to HTML and sanitize.
-    Works even if 'markdown' / 'bleach' are not installed (safe fallbacks).
+    Render Markdown to HTML (with fenced code and codehilite) and sanitize.
     """
     text = md_text or ""
-    # Render
+
     if _mdlib is not None:
+        # Explicitly enable fenced code + codehilite
         html = _mdlib.markdown(
             text,
-            extensions=["extra", "sane_lists", "toc"]
+            extensions=[
+                "extra",            # includes tables, etc.
+                "sane_lists",
+                "toc",
+                "fenced_code",      # triple-backticks
+                "codehilite"        # wraps in <div class="codehilite"><pre>…
+            ],
+            extension_configs={
+                "codehilite": {
+                    "guess_lang": False,
+                    "noclasses": False,   # keep CSS classes like language-bash
+                }
+            }
         )
     else:
-        # minimal fallback: escape & do basic paragraph/line breaks
-        html = "<p>" + html_escape(text).replace("\r\n", "\n") \
-                                        .replace("\n\n", "</p><p>") \
-                                        .replace("\n", "<br>") + "</p>"
+        # minimal fallback
+        html = "<p>" + html_escape(text).replace("\r\n","\n") \
+                                        .replace("\n\n","</p><p>") \
+                                        .replace("\n","<br>") + "</p>"
 
-    # Sanitize
     if _bleach is not None:
         html = _bleach.clean(
             html,
@@ -95,9 +109,8 @@ def render_markdown_to_html(md_text: str) -> str:
             protocols=_ALLOWED_PROTOCOLS,
             strip=True,
         )
-        # Linkify plain URLs but skip inside code/pre
-        html = _bleach.linkify(html, skip_tags=["pre", "code"])
-    # Done
+        # Do not linkify inside code/pre/highlight wrappers
+        html = _bleach.linkify(html, skip_tags=["pre","code","div","span"])
     return html
 
 def compute_reading_time(md_text: str, wpm: int = 200) -> int:
