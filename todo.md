@@ -67,6 +67,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Enforce all the roles
 ## FINAL UPDATES
 - Change db from sqlite to postgresql
+- Using the in-memory storage for tracking rate limits as no storage was explicitly specified. -- solve this warning we receive in terminal when we run the server
 ## CREDENTIAL UPDATES REQUIRED
 - Github oauth id/secret
 - Google oauth id/secret
