@@ -317,7 +317,7 @@
             rgba(0, 255, 224, 0.03) 50%,
             transparent 100%);
     background-size: 100% 4px;
-    animation: scan 3s linear infinite;
+    animation: scan 25s linear infinite;
     pointer-events: none;
     z-index: 1;
 }

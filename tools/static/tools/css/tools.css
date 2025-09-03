@@ -96,23 +96,7 @@ body {
     100% { transform: translate(50px, 50px); }
 }
 
-/* Scan Lines Overlay */
-.scan-lines {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(
-        transparent 0%,
-        rgba(0, 255, 224, 0.03) 50%,
-        transparent 100%
-    );
-    background-size: 100% 4px;
-    animation: scan 3s linear infinite;
-    pointer-events: none;
-    z-index: -1;
-}
+
 
 @keyframes scan {
     0% { transform: translateY(-100%); }

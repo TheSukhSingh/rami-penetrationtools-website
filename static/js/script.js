@@ -66,7 +66,9 @@ function setupEventListeners() {
     .addEventListener("click", nextTestimonial);
   // CTA button -> scroll to tools
   const cta = document.getElementById("ctaTools");
-  if (cta) cta.addEventListener("click", () => scrollToSection("tools"));
+  if (cta) cta.addEventListener("click", () => {
+      window.location.href = "/tools";
+    });
 
   // Testimonial dots (no inline onclick)
   const dots = document.getElementById("testimonialDots");

@@ -53,7 +53,7 @@ function wireLogout() {
   if (!btn) return;
   btn.addEventListener("click", () => {
     btn.innerHTML = '<div class="loading-spinner"></div>';
-    setTimeout(() => (window.location.href = "/logout"), 700);
+    setTimeout(() => (window.location.href = "/auth/logout"), 700);
   });
 }
 

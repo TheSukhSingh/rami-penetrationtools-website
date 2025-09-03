@@ -26,13 +26,24 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - refresh token not working 
 - unable to logout
 - Google one tap not working
+- Auth login/register the input sections are not same size
+- Auth when pressed login button, it becomes dark and not visible
 ## NAVBAR
 - Dropdown from User needs design update
+- Dropdown needs user dashboard
+- Dropdown also needs admin dashboard for admins only
+## FOOTER
+- Add social links
 ## MAILS
 - Confirm mail design update required
 - Reset Password mail design update required
 ## LANDING PAGE
 - hero section touching navbar in laptop screen
+- Why hunters love us --> that heart does not look interesting
+- Choose your arsenal needs to be updated - tools are no longer served solo differently
+- Watch demo button not required
+- A section in which we show how we can use tools (a little gif or quick vid)
+- Change scrollbar color
 ## TOOLS
 - Launch button pressed multiple times without changing parameters is throwing errors
 - use celery to run the processes in backend
@@ -40,10 +51,42 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 ## ADMIN PAGE
 - Logout button not working
 - Auth page for admin section
+- Page - analytics
+- Page - tools
+- Page - blogs
+- Page - admins
+- Page - audit logs
+- Page - settings
+- Show admin user details in the left panel rather than static details
 ## BLOG
 - Like/comment functionality
 - Blog detail UI fix
 - Blog list UI fix
 ## ROLES
 - Check and confirm all the roles
+- Enforce all the roles
+## FINAL UPDATES
+- Change db from sqlite to postgresql
+## CREDENTIAL UPDATES REQUIRED
+- Github oauth id/secret
+- Google oauth id/secret
+- cloudflare turnstile creds
+- mail id pw 
+
+
+
+
+# TODO DONE LIST
+## FOOTER
+- Footer bg needs to be a little darker, just like navbar
+## LANDING PAGE
+- The overlay (opacity change) flowing down is too fast, slow the speed (for all pages)
+- Launch scan button should lead to tools page
+
+
+
+
+
+
+
 
