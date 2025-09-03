@@ -57,50 +57,23 @@ function wireSidebar() {
 //   });
 // }
 
-
 function wireLogout() {
-  const btn = document.querySelector('[data-logout]');
+  const btn = document.querySelector("[data-logout]");
   if (!btn) return;
 
   const originalHTML = btn.innerHTML;
 
-  btn.addEventListener('click', async (e) => {
+  btn.addEventListener("click", async (e) => {
     e.preventDefault();
     btn.disabled = true;
     btn.innerHTML = '<div class="loading-spinner"></div>';
 
-    // Optional: read CSRF from <meta name="csrf-token"> or cookie if you use it
-    const getCookie = (name) =>
-      document.cookie.split('; ').find(r => r.startsWith(name + '='))?.split('=')[1];
-    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || getCookie('XSRF-TOKEN');
+    await postJSON("/auth/logout", null, { csrf: "refresh" });
+    location.reload();
 
-    try {
-      const res = await fetch('/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(csrf ? {'X-CSRF-Token': csrf} : {})
-        },
-        body: '{}'
-      });
-
-      // Accept 200/204/302/401 (already logged out)
-      if (res.ok || [204, 302, 401].includes(res.status)) {
-        window.location.assign('/'); // or '/admin/' -> it should bounce to login
-      } else {
-        // fallback if server returns something unexpected
-        window.location.assign('/'); 
-      }
-    } catch (err) {
-      console.error('Logout failed', err);
-      btn.disabled = false;
-      btn.innerHTML = originalHTML;
-      alert('Could not log out. Please try again.');
-    }
+    window.location.assign("/");
   });
 }
-
 
 async function boot() {
   initParticles();
