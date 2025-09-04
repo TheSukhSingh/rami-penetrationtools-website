@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, set_access_cookies, set_refresh_coo
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import os, secrets, requests
-
+from app import csrf
 from auth.models import User
 
 from . import auth_bp
