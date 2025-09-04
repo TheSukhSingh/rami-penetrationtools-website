@@ -51,9 +51,31 @@ function wireSidebar() {
 function wireLogout() {
   const btn = document.querySelector("[data-logout]");
   if (!btn) return;
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const old = btn.innerHTML;
+    btn.disabled = true;
     btn.innerHTML = '<div class="loading-spinner"></div>';
-    setTimeout(() => (window.location.href = "/logout"), 700);
+    try {
+      // Same as navbar: POST, use refresh CSRF, never auto-refresh tokens
+      const { ok, status } = await postJSON(
+        "/auth/logout",
+        {},
+        { csrf: "refresh", refresh: false, silent: true }
+      );
+      // Treat "already logged out" as success too
+      if (!(ok || status === 401 || status === 422)) {
+        console.warn("Admin logout:", status);
+      }
+    } catch (_) {
+      // network hiccup: still force logged-out UX
+    } finally {
+      // Hard navigate to clear any protected state/UI
+      window.location.href = "/";
+      // (If you prefer an admin landing: window.location.href = "/admin";)
+      btn.innerHTML = old;
+      btn.disabled = false;
+    }
   });
 }
 
