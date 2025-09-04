@@ -60,6 +60,7 @@ def create_app():
         "JWT_REFRESH_CSRF_COOKIE_PATH": "/",      
         "WTF_CSRF_TIME_LIMIT":3600,
         "WTF_CSRF_METHODS":['POST','PUT','PATCH','DELETE'],
+        "WTF_CSRF_HEADERS": ["X-CSRFToken", "X-CSRF-Token", "X-CSRF-TOKEN"],
     })
     # app.config['UPLOAD_FOLDER'] = '/tmp/recon_uploads'
     app.config['UPLOAD_INPUT_FOLDER']  = '/tmp/recon_uploads/user_uploads'
