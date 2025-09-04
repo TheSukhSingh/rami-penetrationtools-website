@@ -72,13 +72,33 @@
     const headers = new Headers(opts.headers || {});
 
     // Attach CSRF only for mutating requests
+    // if (needCsrf(method)) {
+    //   const which =
+    //     options?.csrf === "refresh"
+    //       ? "csrf_refresh_token"
+    //       : "csrf_access_token";
+    //   const csrf = getCookie(which) || getMetaCSRF();
+    //   if (csrf) headers.set("X-CSRF-TOKEN", csrf);
+    // }
+
+    // before fetch(url, opts)
     if (needCsrf(method)) {
+      // JWT double-submit cookie value
       const which =
         options?.csrf === "refresh"
           ? "csrf_refresh_token"
           : "csrf_access_token";
-      const csrf = getCookie(which) || getMetaCSRF();
-      if (csrf) headers.set("X-CSRF-TOKEN", csrf);
+      const jwtCsrf = getCookie(which) || ""; // cookie only
+
+      // Flask-WTF token rendered in <meta name="csrf-token" ...>
+      const wtfCsrf = getMetaCSRF() || "";
+
+      // Send both families; each layer picks what it understands
+      if (jwtCsrf) headers.set("X-CSRF-TOKEN", jwtCsrf); // JWT-Extended only
+      if (wtfCsrf) {
+        headers.set("X-CSRFToken", wtfCsrf); // Flask-WTF
+        headers.set("X-CSRF-Token", wtfCsrf); // Flask-WTF alt
+      }
     }
 
     // If JSON body (not FormData), set header + stringify
@@ -160,13 +180,12 @@
             ? "csrf_refresh_token"
             : "csrf_access_token";
         const csrf = getCookie(which) || getMetaCSRF();
-        if (csrf){
+        if (csrf) {
           headers.set("X-CSRF-TOKEN", csrf);
           headers.set("X-CSRFToken", csrf);
           headers.set("X-CSRF-Token", csrf);
-          
         }
-           opts.headers = headers;
+        opts.headers = headers;
       }
       res = await fetch(url, opts);
     }

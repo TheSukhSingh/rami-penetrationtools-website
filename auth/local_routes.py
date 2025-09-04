@@ -339,6 +339,7 @@ def mfa_setup():
     return send_file(buf, mimetype="image/png")
 
 @auth_bp.route('/mfa/enable', methods=['POST'])
+@csrf.exempt  
 @jwt_required()
 def mfa_enable():
     user = get_current_user()

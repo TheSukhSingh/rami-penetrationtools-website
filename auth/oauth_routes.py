@@ -214,6 +214,7 @@ def github_callback():
 # Logout (refresh required)
 # =========================
 @auth_bp.route("/logout", methods=["POST"])
+@csrf.exempt  
 @jwt_required(refresh=True)
 @limiter.limit("20 per hour", key_func=get_remote_address)
 def logout():
