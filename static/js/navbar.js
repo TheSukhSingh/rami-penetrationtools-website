@@ -129,10 +129,33 @@ function showUser(user) {
   `;
   navMenu.appendChild(userElem);
 
-  document.getElementById("logoutBtn").onclick = async () => {
-    await postJSON("/auth/logout", null, { csrf: "refresh" });
-    location.reload();
-  };
+  // document.getElementById("logoutBtn").onclick = async () => {
+  //   await postJSON("/auth/logout", null, { csrf: "refresh" });
+  //   location.reload();
+  // };
+
+  document.getElementById("logoutBtn").onclick = async (e) => {
+  e.preventDefault();
+
+  try {
+    // must include cookies + refresh CSRF header
+    const { ok, status } = await postJSON("/auth/logout", {}, { csrf: "refresh", refresh: false, credentials: "include" });
+    // Treat "already logged out" as success too
+    if (!(ok || [401, 422].includes(status))) {
+      console.warn("Logout response:", status);
+    }
+  } catch (_) {
+    // Network hiccup? We’ll still force a logged-out UX.
+  } finally {
+    // Make the UI consistent immediately
+    document.getElementById("userMenu")?.remove();
+    const btn = document.getElementById("loginButton");
+    if (btn) btn.style.display = "inline-flex";
+    // Hard navigate to a safe page to clear any protected state
+    window.location.href = "/";
+  }
+};
+
 }
 
 function updateAuthModal() {

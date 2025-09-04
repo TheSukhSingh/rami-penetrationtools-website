@@ -120,6 +120,11 @@
     //   }
     // }
 
+    if (!res) {
+      // return a Response-like object so callers don’t explode
+      return new Response("", { status: 0 });
+    }
+    
     // If unauthorized, optionally try a single refresh then retry
     if (res.status === 401) {
       // Caller can opt-out of refresh for this request

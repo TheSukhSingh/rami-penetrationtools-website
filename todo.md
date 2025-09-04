@@ -28,6 +28,11 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Google one tap not working
 - Auth login/register the input sections are not same size
 - Auth when pressed login button, it becomes dark and not visible
+- csrf on cookie flows (since jwt is in cookies, enable csrf protection on all required endpoints)
+- rate limits set up for all endpoints (signin, verify mfa, forgot, reset pw, refresh)
+- cron to revoke expired tokens
+- email queueing so it's not blocked by smtp
+- throttle resend verify
 ## NAVBAR
 - Dropdown from User needs design update
 - Dropdown needs user dashboard

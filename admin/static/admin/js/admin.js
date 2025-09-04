@@ -48,30 +48,12 @@ function wireSidebar() {
   });
 }
 
-// function wireLogout() {
-//   const btn = document.querySelector("[data-logout]");
-//   if (!btn) return;
-//   btn.addEventListener("click", () => {
-//     btn.innerHTML = '<div class="loading-spinner"></div>';
-//     setTimeout(() => (window.location.href = "/auth/logout"), 700);
-//   });
-// }
-
 function wireLogout() {
   const btn = document.querySelector("[data-logout]");
   if (!btn) return;
-
-  const originalHTML = btn.innerHTML;
-
-  btn.addEventListener("click", async (e) => {
-    e.preventDefault();
-    btn.disabled = true;
+  btn.addEventListener("click", () => {
     btn.innerHTML = '<div class="loading-spinner"></div>';
-
-    await postJSON("/auth/logout", null, { csrf: "refresh" });
-    location.reload();
-
-    window.location.assign("/");
+    setTimeout(() => (window.location.href = "/logout"), 700);
   });
 }
 
