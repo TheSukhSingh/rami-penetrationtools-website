@@ -24,7 +24,6 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - mfa not set yet
 - On register (fe), create checks on frontend too so backend does little work (like pw checks, both pw same, etc)
 - refresh token not working 
-- unable to logout
 - Google one tap not working
 - Auth login/register the input sections are not same size
 - Auth when pressed login button, it becomes dark and not visible
@@ -54,7 +53,6 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - use celery to run the processes in backend
 - Files are being saved in app.py's folder on server
 ## ADMIN PAGE
-- Logout button not working
 - Auth page for admin section
 - Page - analytics
 - Page - tools
@@ -82,13 +80,22 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 
 
 
+
+
+
+
+
+
 # TODO DONE LIST
 ## FOOTER
 - Footer bg needs to be a little darker, just like navbar
 ## LANDING PAGE
 - The overlay (opacity change) flowing down is too fast, slow the speed (for all pages)
 - Launch scan button should lead to tools page
-
+## AUTH
+- unable to logout
+## ADMIN
+- Logout button not working
 
 
 
