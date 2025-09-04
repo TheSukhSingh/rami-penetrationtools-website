@@ -124,7 +124,7 @@
       // return a Response-like object so callers don’t explode
       return new Response("", { status: 0 });
     }
-    
+
     // If unauthorized, optionally try a single refresh then retry
     if (res.status === 401) {
       // Caller can opt-out of refresh for this request
@@ -160,8 +160,13 @@
             ? "csrf_refresh_token"
             : "csrf_access_token";
         const csrf = getCookie(which) || getMetaCSRF();
-        if (csrf) headers.set("X-CSRF-TOKEN", csrf);
-        opts.headers = headers;
+        if (csrf){
+          headers.set("X-CSRF-TOKEN", csrf);
+          headers.set("X-CSRFToken", csrf);
+          headers.set("X-CSRF-Token", csrf);
+          
+        }
+           opts.headers = headers;
       }
       res = await fetch(url, opts);
     }

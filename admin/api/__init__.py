@@ -9,11 +9,11 @@ def _health():
     return jsonify({"ok": True, "service": "admin_api"}), 200
 
 # Centralized error handling for AdminError and unexpected exceptions
-@admin_api_bp.app_errorhandler(AdminError)
+@admin_api_bp.errorhandler(AdminError)
 def handle_admin_error(err: AdminError):
     return jsonify(err.to_dict()), err.status_code
 
-@admin_api_bp.app_errorhandler(Exception)
+@admin_api_bp.errorhandler(Exception)
 def handle_uncaught_error(err: Exception):
     # In debug, include a short repr; in prod, hide internals.
     payload = ServerError("Something went wrong").to_dict()
