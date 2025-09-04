@@ -1,10 +1,10 @@
 from flask import flash, request, session, render_template, redirect, jsonify, url_for
-from flask_jwt_extended import jwt_required, set_access_cookies, set_refresh_cookies, unset_jwt_cookies
+from flask_jwt_extended import jwt_required, set_access_cookies, set_refresh_cookies, unset_jwt_cookies, verify_jwt_in_request
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import os, secrets, requests
 from auth.models import User
-
+from flask_wtf.csrf import CSRFError 
 from . import auth_bp
 from .utils import (
     login_required,
@@ -214,14 +214,43 @@ def github_callback():
 # =========================
 @auth_bp.route("/logout", methods=["POST"])
 @csrf.exempt  
-@jwt_required(refresh=True)
 @limiter.limit("20 per hour", key_func=get_remote_address)
 def logout():
-    # Revoke server-side + clear cookies for the client
-    jwt_logout()
+    """
+    Idempotent logout:
+    - Try to verify a refresh JWT (this will also enforce JWT CSRF if cookie is present)
+    - If verified, call your server-side revocation (jwt_logout)
+    - Always clear access+refresh cookies for the client
+    - Always return 200
+    """
+    try:
+        # If your FJWE version supports optional=True:
+        verify_jwt_in_request(optional=True, refresh=True)
+        # otherwise:
+        # try:
+        #     verify_jwt_in_request(refresh=True)
+        # except Exception:
+        #     pass
+        try:
+            jwt_logout()  # your helper that revokes the refresh token in DB
+        except Exception:
+            pass
+    except Exception:
+        # No/invalid refresh cookie (or CSRF mismatch) — that's fine; still clear cookies
+        pass
+
     resp = jsonify({"msg": "Logout successful"})
-    unset_jwt_cookies(resp)
+    unset_jwt_cookies(resp)  # clears both access + refresh cookies
     return resp, 200
+
+
+
+# def logout():
+#     # Revoke server-side + clear cookies for the client
+#     jwt_logout()
+#     resp = jsonify({"msg": "Logout successful"})
+#     unset_jwt_cookies(resp)
+#     return resp, 200
 
 
 
