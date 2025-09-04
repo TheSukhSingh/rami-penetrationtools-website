@@ -3,7 +3,6 @@ from flask_jwt_extended import jwt_required, set_access_cookies, set_refresh_coo
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import os, secrets, requests
-from app import csrf
 from auth.models import User
 
 from . import auth_bp
@@ -13,7 +12,7 @@ from .utils import (
     jwt_logout
 )
 from flask_limiter.util import get_remote_address
-from extensions import limiter
+from extensions import limiter, csrf
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")

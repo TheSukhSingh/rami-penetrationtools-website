@@ -179,14 +179,21 @@
           options?.csrf === "refresh"
             ? "csrf_refresh_token"
             : "csrf_access_token";
-        const csrf = getCookie(which) || getMetaCSRF();
-        if (csrf) {
-          headers.set("X-CSRF-TOKEN", csrf);
-          headers.set("X-CSRFToken", csrf);
-          headers.set("X-CSRF-Token", csrf);
+
+        // JWT CSRF (cookie)
+        const jwtCsrf = getCookie(which) || "";
+
+        // Flask-WTF CSRF (meta)
+        const wtfCsrf = getMetaCSRF() || "";
+
+        if (jwtCsrf) headers.set("X-CSRF-TOKEN", jwtCsrf); // JWT-Extended
+        if (wtfCsrf) {
+          headers.set("X-CSRFToken", wtfCsrf); // Flask-WTF
+          headers.set("X-CSRF-Token", wtfCsrf);
         }
         opts.headers = headers;
       }
+
       res = await fetch(url, opts);
     }
 

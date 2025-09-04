@@ -1,6 +1,5 @@
 from io import BytesIO
 from sqlalchemy.exc import IntegrityError, DataError, OperationalError, ProgrammingError, SQLAlchemyError
-from app import csrf
 from flask import (
     render_template, redirect, send_file, session,
     url_for, request, jsonify, current_app, flash
@@ -8,14 +7,13 @@ from flask import (
 from flask_limiter.util import get_remote_address
 import pyotp
 import qrcode
-from extensions import limiter, csrf
+from extensions import limiter, csrf, db
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies
 from . import auth_bp
 from .models import (
     MFASetting, RecoveryCode, RefreshToken, User, Role,
     PasswordReset,
 )
-from extensions import db
 from .utils import (
     _remember_device,
     generate_confirmation_token,

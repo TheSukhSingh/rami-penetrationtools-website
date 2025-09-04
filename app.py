@@ -3,7 +3,6 @@ from flask import Flask, g, render_template, request
 from dotenv import load_dotenv
 from datetime import timedelta
 from flask_jwt_extended import JWTManager
-from flask_wtf import CSRFProtect
 from flask import current_app
 from auth import auth_bp
 from tools import tools_bp
