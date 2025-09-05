@@ -24,6 +24,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - mfa not set yet
 - On register (fe), create checks on frontend too so backend does little work (like pw checks, both pw same, etc)
 - refresh token not working 
+- refresh tokens are not revoking, revoke at 1. when it expired we got to know 2. cron job revoking regularly
 - Google one tap not working
 - Auth login/register the input sections are not same size
 - Auth when pressed login button, it becomes dark and not visible
@@ -32,6 +33,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - cron to revoke expired tokens
 - email queueing so it's not blocked by smtp
 - throttle resend verify
+- login event is in db, make it work so we know the active users per day per month more easily rather than calculating every time...
 ## NAVBAR
 - Dropdown from User needs design update
 - Dropdown needs user dashboard

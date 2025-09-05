@@ -124,6 +124,7 @@ function showUser(user) {
   userElem.innerHTML = `
     <button id="userBtn" class="cyber-button">${username}</button>
     <div id="userDropdown" class="dropdown-content">
+    <a href="#" id="user-dashboard-btn">User Dashboard</a>
       <a href="#" id="logoutBtn">Logout</a>
     </div>
   `;
@@ -158,6 +159,9 @@ function showUser(user) {
       // Hard navigate to a safe page to clear any protected state
       window.location.href = "/";
     }
+  };
+  document.getElementById("user-dashboard-btn").onclick = async (e) => {
+    window.location.href = "/";
   };
 }
 
