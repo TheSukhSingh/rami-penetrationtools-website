@@ -819,3 +819,48 @@ footer.footer {
   position: relative;
   overflow: hidden;             /* clip its .grid-bg / effects */
 }
+
+  /* container/anchor */
+  .user-menu { position: relative; }
+
+  /* the pill/trigger */
+  .user-chip {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .4rem .6rem; border-radius: 9999px; cursor: pointer;
+  }
+  .user-chip .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 600;
+  }
+  .user-chip .caret { line-height: 1; opacity: .8; }
+
+  /* the dropdown itself (right-aligned to the trigger) */
+  .user-menu .menu {
+    position: absolute; top: calc(100% + 10px); right: 0;
+    min-width: 220px; padding: .5rem; border-radius: 12px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 12px 40px rgba(0,0,0,.45); z-index: 1000;
+  }
+  .user-menu .menu[hidden] { display: none; }
+
+  /* header */
+  .user-menu .menu-hd {
+    padding: .5rem .7rem .4rem; margin-bottom: .25rem;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .user-menu .menu-hd .name { font-weight: 600; }
+  .user-menu .menu-hd .muted { opacity: .75; font-size: .85rem; }
+
+  /* items */
+  .user-menu .menu a,
+  .user-menu .menu button {
+    display: block; width: 100%; text-align: left;
+    padding: .6rem .7rem; border-radius: 10px;
+  }
+  .user-menu .menu a:hover,
+  .user-menu .menu button:hover {
+    background: rgba(255,255,255,.06);
+  }
+  .user-menu .menu .sep {
+    height: 1px; margin: .35rem 0; background: rgba(255,255,255,.08);
+  }

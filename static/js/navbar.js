@@ -112,58 +112,133 @@ function togglePassword(fieldId) {
 //     ?.split("=")[1];
 // }
 
+
+// old show user - before when i updated the navbar to have user logo and multiple options in dropdown
+// function showUser(user) {
+//   document.getElementById("loginButton").style.display = "none";
+//   const navMenu = document.getElementById("navMenu");
+//   const username = user.username;
+
+//   // const initial = user.name ? user.name.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase();
+//   const userElem = document.createElement("div");
+//   userElem.id = "userMenu";
+//   userElem.className = "user-menu";
+//   userElem.innerHTML = `
+//     <button id="userBtn" class="cyber-button">${username}</button>
+//     <div id="userDropdown" class="dropdown-content">
+//     <a href="#" id="user-dashboard-btn">User Dashboard</a>
+//       <a href="#" id="logoutBtn">Logout</a>
+//     </div>
+//   `;
+//   navMenu.appendChild(userElem);
+
+//   // document.getElementById("logoutBtn").onclick = async () => {
+//   //   await postJSON("/auth/logout", null, { csrf: "refresh" });
+//   //   location.reload();
+//   // };
+
+//   document.getElementById("logoutBtn").onclick = async (e) => {
+//     e.preventDefault();
+
+//     try {
+//       // must include cookies + refresh CSRF header
+//       const { ok, status } = await postJSON(
+//         "/auth/logout",
+//         {},
+//         { csrf: "refresh", refresh: false, credentials: "include" }
+//       );
+//       // Treat "already logged out" as success too
+//       if (!(ok || [401, 422].includes(status))) {
+//         console.warn("Logout response:", status);
+//       }
+//     } catch (_) {
+//       // Network hiccup? We’ll still force a logged-out UX.
+//     } finally {
+//       // Make the UI consistent immediately
+//       document.getElementById("userMenu")?.remove();
+//       const btn = document.getElementById("loginButton");
+//       if (btn) btn.style.display = "inline-flex";
+//       // Hard navigate to a safe page to clear any protected state
+//       window.location.href = "/";
+//     }
+//   };
+//   document.getElementById("user-dashboard-btn").onclick = async (e) => {
+//     window.location.href = "/";
+//   };
+// }
+
 function showUser(user) {
-  document.getElementById("loginButton").style.display = "none";
+  // hide "Sign In" and mount the user menu
+  const loginBtn = document.getElementById("loginButton");
+  if (loginBtn) loginBtn.style.display = "none";
+
   const navMenu = document.getElementById("navMenu");
-  const username = user.username;
+  const name  = (user?.name || user?.username || "User").trim();
+  const email = (user?.email || "").trim();
+  const initial = (name || email || "?").charAt(0).toUpperCase();
 
-  // const initial = user.name ? user.name.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase();
-  const userElem = document.createElement("div");
-  userElem.id = "userMenu";
-  userElem.className = "user-menu";
-  userElem.innerHTML = `
-    <button id="userBtn" class="cyber-button">${username}</button>
-    <div id="userDropdown" class="dropdown-content">
-    <a href="#" id="user-dashboard-btn">User Dashboard</a>
-      <a href="#" id="logoutBtn">Logout</a>
-    </div>
+  const wrap = document.createElement("div");
+  wrap.id = "userMenu";
+  wrap.className = "user-menu";
+  wrap.innerHTML = `
+    <button id="userMenuBtn" class="user-chip glass" aria-haspopup="menu" aria-expanded="false">
+      <span class="avatar">${initial}</span>
+      <span class="caret">▾</span>
+    </button>
+
+    <ul id="userMenuList" class="menu glass card-hover" role="menu" aria-labelledby="userMenuBtn" hidden>
+      <li class="menu-hd">
+        <div class="name">${name}</div>
+        <div class="muted">${email}</div>
+      </li>
+
+      <li><a role="menuitem" href="/">User Dashboard</a></li>
+      <li><a role="menuitem" href="/">Account Settings</a></li>
+      <li><a role="menuitem" href="/">Billing &amp; Plan</a></li>
+      <li><a role="menuitem" href="/">Help</a></li>
+
+      <li class="sep" role="separator"></li>
+      <li><button role="menuitem" data-logout>Logout</button></li>
+    </ul>
   `;
-  navMenu.appendChild(userElem);
+  navMenu.appendChild(wrap);
 
-  // document.getElementById("logoutBtn").onclick = async () => {
-  //   await postJSON("/auth/logout", null, { csrf: "refresh" });
-  //   location.reload();
-  // };
+  // interactions
+  const btn  = wrap.querySelector("#userMenuBtn");
+  const menu = wrap.querySelector("#userMenuList");
 
-  document.getElementById("logoutBtn").onclick = async (e) => {
+  function openMenu(open) {
+    if (!menu) return;
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+  }
+
+  btn.addEventListener("click", (e) => { e.stopPropagation(); openMenu(menu.hidden); });
+  document.addEventListener("click", () => openMenu(false));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") openMenu(false); });
+
+  // close when clicking any item
+  menu.addEventListener("click", (e) => {
+    const item = e.target.closest("a,button");
+    if (!item) return;
+    openMenu(false);
+  });
+
+  // TEMP logout → home (replace with real /auth/logout later)
+  wrap.querySelector("[data-logout]")?.addEventListener("click", (e) => {
     e.preventDefault();
-
-    try {
-      // must include cookies + refresh CSRF header
-      const { ok, status } = await postJSON(
-        "/auth/logout",
-        {},
-        { csrf: "refresh", refresh: false, credentials: "include" }
-      );
-      // Treat "already logged out" as success too
-      if (!(ok || [401, 422].includes(status))) {
-        console.warn("Logout response:", status);
-      }
-    } catch (_) {
-      // Network hiccup? We’ll still force a logged-out UX.
-    } finally {
-      // Make the UI consistent immediately
-      document.getElementById("userMenu")?.remove();
-      const btn = document.getElementById("loginButton");
-      if (btn) btn.style.display = "inline-flex";
-      // Hard navigate to a safe page to clear any protected state
-      window.location.href = "/";
-    }
-  };
-  document.getElementById("user-dashboard-btn").onclick = async (e) => {
+    // TODO: call /auth/logout then redirect
     window.location.href = "/";
-  };
+  });
 }
+
+// Dummy current-user fetcher (replace with real API later)
+async function getCurrentUserStub() {
+  // return null to simulate logged-out state if you want
+  return { username: "sukh", name: "Sukh", email: "sukh@domain.com" };
+}
+
+
 
 function updateAuthModal() {
   const titles = {
@@ -815,10 +890,16 @@ async function initAuth() {
       refresh: false,
       silent: true,
     });
-    if (ok) showUser(user);
+    if (ok && user) { showUser(user); return; }
   } catch (err) {
     console.error("Auth check failed", err);
   }
+
+    // fallback for now (so you can see the menu immediately)
+  try {
+    const stub = await getCurrentUserStub();
+    if (stub) showUser(stub);
+  } catch (_) {}
 }
 
 document.addEventListener("DOMContentLoaded", () => {

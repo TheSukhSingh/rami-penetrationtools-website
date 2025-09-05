@@ -36,8 +36,8 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - login event is in db, make it work so we know the active users per day per month more easily rather than calculating every time...
 ## NAVBAR
 - Dropdown from User needs design update
-- Dropdown needs user dashboard
 - Dropdown also needs admin dashboard for admins only
+- Dropdown needs complete restyling like this image - ![complete restyle](md/image.png)
 ## FOOTER
 - Add social links
 ## MAILS
@@ -47,7 +47,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - hero section touching navbar in laptop screen
 - Why hunters love us --> that heart does not look interesting
 - Choose your arsenal needs to be updated - tools are no longer served solo differently
-- Watch demo button not required
+- Watch demo button not required, maybe replace it or remove it and fix design bcoz the other button will not be looking good after removing this
 - A section in which we show how we can use tools (a little gif or quick vid)
 - Change scrollbar color
 ## TOOLS
@@ -87,7 +87,6 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 
 
 
-
 # TODO DONE LIST
 ## FOOTER
 - Footer bg needs to be a little darker, just like navbar
@@ -98,7 +97,8 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - unable to logout
 ## ADMIN
 - Logout button not working
-
+## NAVBAR
+- Dropdown needs user dashboard
 
 
 
