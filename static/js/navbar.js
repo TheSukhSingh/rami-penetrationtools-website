@@ -244,7 +244,7 @@ function showUser(user) {
       <a href="/" id="help-btn">Help</a>
 
       <div class="sep"></div>
-      <a href="#" id="logoutBtn">Logout</a>
+      <a href="#" id="logoutBtn" style="color:red">Logout</a>
     </div>
   `;
   navMenu.appendChild(wrap);
