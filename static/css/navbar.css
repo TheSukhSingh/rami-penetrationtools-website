@@ -847,7 +847,8 @@ footer.footer {
 
   /* header */
   .user-menu .menu-hd {
-    padding: .5rem .7rem .4rem; margin-bottom: .25rem;
+    padding: .6rem .9rem .4rem; 
+    margin-bottom: .25rem;
     border-bottom: 1px solid rgba(255,255,255,.08);
   }
   .user-menu .menu-hd .name { font-weight: 600; }
