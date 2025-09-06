@@ -385,6 +385,7 @@
     border: 1px solid rgba(0, 255, 224, 0.3);
     border-radius: 8px;
     outline: none;
+    width: 100%;
     transition: all 0.3s ease;
 }
 
