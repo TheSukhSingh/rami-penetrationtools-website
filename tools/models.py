@@ -24,7 +24,7 @@ class ToolScanHistory(db.Model, PrettyIdMixin):
     
     id                 = db.Column(db.Integer, primary_key=True)
     user_id            = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
-    tool               = db.Column(db.String(64), nullable=False, index=True)
+    tool_id            = db.Column(db.Integer, db.ForeignKey('tools.id', ondelete='SET NULL'), nullable=True, index=True)
     parameters         = db.Column(db.JSON, nullable=False, default=dict)
     command            = db.Column(db.Text, nullable=False)
     raw_output         = db.Column(db.Text, nullable=False)
@@ -34,6 +34,7 @@ class ToolScanHistory(db.Model, PrettyIdMixin):
     filename_by_be     = db.Column(db.String(255), nullable=True)
     
     user = relationship('User', back_populates='scan_history', passive_deletes=True)
+    tool = relationship('Tool', back_populates='scan_history', passive_deletes=True)
 
     scan_diagnostics = db.relationship(
         'ScanDiagnostics',
@@ -42,6 +43,10 @@ class ToolScanHistory(db.Model, PrettyIdMixin):
         cascade="all, delete-orphan"
     )
 
+    __table_args__ = (
+        db.Index('ix_tool_scan_history_user_scanned', 'user_id', 'scanned_at'),
+        db.Index('ix_tool_scan_history_tool_scanned', 'tool_id', 'scanned_at'),
+    )
 
 class ScanStatus(enum.Enum):
     SUCCESS = "SUCCESS"
@@ -62,9 +67,6 @@ class ScanDiagnostics(db.Model):
     and easy to target on the point to improve our program on.
     """
     __tablename__ = 'scan_diagnostics'
-    __table_args__ = (
-        Index("ix_scan_diagnostics_created", "created_at"),
-    )
 
     id               = db.Column(
                         db.Integer,
@@ -124,6 +126,7 @@ class Tool(db.Model, TimestampMixin):
 
     # backrefs
     daily_usage = relationship("ToolUsageDaily", back_populates="tool", cascade="all, delete-orphan")
+    scan_history = relationship("ToolScanHistory", back_populates="tool") 
 
     def __repr__(self):
         return f"<Tool {self.slug} enabled={self.enabled}>"

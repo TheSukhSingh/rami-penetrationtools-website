@@ -26,7 +26,6 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - refresh token not working 
 - refresh tokens are not revoking, revoke at 1. when it expired we got to know 2. cron job revoking regularly
 - Google one tap not working
-- Auth login/register the input sections are not same size
 - Auth when pressed login button, it becomes dark and not visible
 - csrf on cookie flows (since jwt is in cookies, enable csrf protection on all required endpoints)
 - rate limits set up for all endpoints (signin, verify mfa, forgot, reset pw, refresh)
@@ -57,7 +56,8 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - use celery to run the processes in backend
 - Files are being saved in app.py's folder on server
 ## ADMIN PAGE
-- Auth page for admin section
+- Auth page for admin section (somewhat made in testing folder)
+- Unauthorized users's can see a page saying "You are not authorized for this page, redirecting in 3..2..1 " - then they get sent back to home page 
 - Page - analytics
 - Page - tools
 - Page - blogs
@@ -80,7 +80,10 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Google oauth id/secret
 - cloudflare turnstile creds
 - mail id pw 
-
+## OVERALL
+- add meta for author as me
+- add readme file
+- add copyright as this is my code developed
 
 
 
@@ -97,6 +100,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Launch scan button should lead to tools page
 ## AUTH
 - unable to logout
+- Auth login/register the input sections are not same size
 ## ADMIN
 - Logout button not working
 ## NAVBAR

@@ -95,7 +95,7 @@ def api_scan():
 
     scan = ToolScanHistory(
         user_id            = user_id,
-        tool          = tool,
+        tool               = tool,
         parameters         = options,
         command            = cmd,
         raw_output         = (result.get('output') or result.get('message')),
