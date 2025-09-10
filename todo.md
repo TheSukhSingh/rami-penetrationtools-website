@@ -66,7 +66,9 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Page - settings
 - Show admin user details in the left panel rather than static details
 ## BLOG
-- Like/comment functionality
+- Like functionality
+- Comment functionality
+- View Functionality
 - Blog detail UI fix
 - Blog list UI fix
 ## ROLES

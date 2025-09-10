@@ -61,9 +61,16 @@ def create_app():
         "WTF_CSRF_METHODS":['POST','PUT','PATCH','DELETE'],
         "WTF_CSRF_HEADERS": ["X-CSRFToken", "X-CSRF-Token"],
     })
-    # app.config['UPLOAD_FOLDER'] = '/tmp/recon_uploads'
-    app.config['UPLOAD_INPUT_FOLDER']  = '/tmp/recon_uploads/user_uploads'
-    app.config['UPLOAD_OUTPUT_FOLDER'] = '/tmp/recon_uploads/results'
+    from tempfile import gettempdir
+
+    # Base directory for uploads; override with RECON_ROOT if you want a custom path
+    RECON_ROOT = os.getenv("RECON_ROOT", os.path.join(gettempdir(), "recon_uploads"))
+
+    app.config['UPLOAD_INPUT_FOLDER']  = os.path.join(RECON_ROOT, "user_uploads")
+    app.config['UPLOAD_OUTPUT_FOLDER'] = os.path.join(RECON_ROOT, "results")
+    os.makedirs(app.config['UPLOAD_INPUT_FOLDER'],  exist_ok=True)
+    os.makedirs(app.config['UPLOAD_OUTPUT_FOLDER'], exist_ok=True)
+
 
     # app.config.update({
             # --- HIBP k-anonymity password check ---
@@ -96,12 +103,12 @@ def create_app():
     os.makedirs(app.config['UPLOAD_INPUT_FOLDER'],  exist_ok=True)
     os.makedirs(app.config['UPLOAD_OUTPUT_FOLDER'], exist_ok=True)
 
-    # csrf = CSRFProtect(app)  
     csrf.init_app(app)  
-    # csrf.exempt(auth_bp)
-    csrf.exempt(tools_bp)
 
     limiter.init_app(app)
+
+    limiter.default_limits = ["200 per day", "50 per hour"]
+
     os.makedirs(app.instance_path, exist_ok=True)
     jwt = JWTManager(app)
     
@@ -149,15 +156,13 @@ def create_app():
         if request.is_secure or app.config.get('FORCE_HTTPS'):
             resp.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
 
-        # CSP (safe defaults for current setup)
-        # Note: allows inline handlers for now ('unsafe-inline'); tighten later.
         resp.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}' https://accounts.google.com https://challenges.cloudflare.com; "
+            f"script-src 'self' 'nonce-{nonce}' https://accounts.google.com https://apis.google.com https://challenges.cloudflare.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; "
             "img-src 'self' data: https://*.googleusercontent.com; "
             "font-src 'self' https://fonts.gstatic.com; "
-            "connect-src 'self' https://accounts.google.com; "
+            "connect-src 'self' https://accounts.google.com https://apis.google.com; "
             "frame-ancestors 'none'; "
             "frame-src https://accounts.google.com https://challenges.cloudflare.com;"
         )
