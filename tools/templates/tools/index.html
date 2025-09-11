@@ -1,0 +1,182 @@
+{% extends 'main.html' %}
+
+{% block title %}Tools – Hunter's Terminal{% endblock %}
+
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('tools.static', filename='css/tools.css') }}">
+{% endblock %}
+
+{% block content %}
+  <!-- Animated Background -->
+  <div class="grid-bg"></div>
+  <div class="scan-lines"></div>
+  <div class="particles" id="particles"></div>
+
+  <!-- Main Workspace (NO navbar/footer here; main.html already includes them) -->
+  <div class="workspace">
+    <!-- Left: Tool Library -->
+<div class="tool-library glass">
+  <div class="library-header">
+    <h3>Tool Library</h3>
+    <div class="search-box">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="M21 21l-4.35-4.35"></path>
+      </svg>
+      <input type="text" placeholder="Search tools..." id="toolSearch" />
+    </div>
+  </div>
+
+  <!-- 👇 Leave this empty; JS will populate it -->
+<div class="tool-categories" id="toolCategories"
+     data-api="{{ url_for('tools.api_tools') }}"></div>
+
+</div>
+
+
+    <!-- Middle: Canvas Area -->
+    <div class="canvas-area">
+      <div class="canvas-header">
+        <h2>Workflow Canvas</h2>
+        <div class="canvas-stats">
+          <span id="toolCount">0 tools</span>
+        </div>
+      </div>
+
+      <div class="canvas-container">
+        <div class="canvas glass" id="workflowCanvas">
+          <div id="canvasContent" class="canvas-content">
+            <svg id="connectionLayer" class="connection-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+
+            <div class="workflow-boxes" id="workflowBoxes">
+              <div class="workflow-box empty" id="box-0" data-box-index="0">
+                <div class="box-content">
+                  <div class="box-placeholder">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span>Drop tool here</span>
+                  </div>
+                </div>
+              </div>
+            </div><!-- /#workflowBoxes -->
+          </div><!-- /#canvasContent -->
+        </div><!-- /.canvas -->
+      </div><!-- /.canvas-container -->
+    </div><!-- /.canvas-area -->
+
+    <!-- Right: Terminal Panel -->
+    <div class="terminal-panel glass">
+      <div class="terminal-header">
+        <div class="terminal-controls">
+          <div class="terminal-dot red"></div>
+          <div class="terminal-dot yellow"></div>
+          <div class="terminal-dot green"></div>
+        </div>
+        <div class="terminal-title">Terminal Output</div>
+        <div class="terminal-status">
+          <div class="status-dot"></div>
+          <span>Ready</span>
+        </div>
+      </div>
+      <div class="terminal-content">
+        <div class="terminal-output" id="terminalOutput">
+          <div class="terminal-line">
+            <span class="terminal-prompt">[14:30:25] root@pentest-suite:~$ </span>
+            <span class="terminal-text">Welcome to Hunter's Terminal</span>
+          </div>
+          <div class="terminal-line">
+            <span class="terminal-prompt">[14:30:25] root@pentest-suite:~$ </span>
+            <span class="terminal-text">Ready for reconnaissance workflow</span>
+            <div class="terminal-line">
+              <span class="terminal-prompt">├─ </span>
+              <span class="terminal-text">Tools: Ready</span>
+            </div>
+            <div class="terminal-line">
+              <span class="terminal-prompt">├─ </span>
+              <span class="terminal-text">Status: Standby</span>
+            </div>
+            <div class="terminal-line">
+              <span class="terminal-prompt">└─ </span>
+              <span class="terminal-text">Waiting for input...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /.terminal-panel -->
+  </div><!-- /.workspace -->
+
+  <!-- Tool Configuration Modal -->
+  <div class="modal" id="toolConfigModal">
+    <div class="modal-backdrop" onclick="closeToolConfig()"></div>
+    <div class="modal-content glass">
+      <div class="modal-header">
+        <h2 id="configToolName">Tool Configuration</h2>
+        <button class="modal-close" onclick="closeToolConfig()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="config-form" id="configForm">
+          <div class="form-group">
+            <label class="form-label">Domain/Target</label>
+            <input type="text" class="form-input" id="configDomain" placeholder="example.com" />
+          </div>
+          <div class="form-group">
+            <label class="checkbox-option">
+              <input type="checkbox" id="configSilent" />
+              <span class="checkbox-custom"></span>
+              <span class="checkbox-label">Silent Mode (--silent)</span>
+            </label>
+          </div>
+          <div class="form-actions">
+            <button class="glass-button" onclick="closeToolConfig()">Cancel</button>
+            <button class="cyber-button" onclick="saveToolConfig()">Save Configuration</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connection Modal -->
+  <div class="modal" id="connectionModal">
+    <div class="modal-backdrop" onclick="closeConnectionModal()"></div>
+    <div class="modal-content glass">
+      <div class="modal-header">
+        <h2>Connect Tools</h2>
+        <button class="modal-close" onclick="closeConnectionModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="connection-info">
+          <div class="connection-source">
+            <h4>From: <span id="sourceToolName"></span></h4>
+            <p>Output: <span id="sourceOutput"></span></p>
+          </div>
+          <div class="connection-arrow">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12,5 19,12 12,19"></polyline>
+            </svg>
+          </div>
+          <div class="connection-target">
+            <h4>To: <span id="targetToolName"></span></h4>
+            <p>Input: <span id="targetInput"></span></p>
+          </div>
+        </div>
+        <div class="connection-actions">
+          <button class="glass-button" onclick="closeConnectionModal()">Cancel</button>
+          <button class="cyber-button" onclick="confirmConnection()">Connect Tools</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"><span id="toastMessage"></span></div>
+{% endblock %}
+
+
+{% block scripts %}
+
+  <script src="{{ url_for('tools.static', filename='js/tools.js') }}"></script>
+{% endblock %}
+ 

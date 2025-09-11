@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from flask import render_template, request, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from tools.models import (
+    ToolCategory,
     ToolScanHistory, 
     ScanDiagnostics, 
     ScanStatus, 
@@ -24,9 +25,40 @@ from .alltools import (
 import time
 utcnow = lambda: datetime.now(timezone.utc)
 
-@tools_bp.route('/', methods=['GET'])
+@tools_bp.get("/")
 def tools_index():
-    return render_template('tools/tools.html')
+    return render_template("tools/index.html")
+
+@tools_bp.get("/api/tools")
+def api_tools():
+    # Fetch enabled categories with their enabled tools, ordered
+    cats = (
+        db.session.query(ToolCategory)
+        .filter(ToolCategory.enabled.is_(True))
+        .order_by(ToolCategory.sort_order.asc(), ToolCategory.name.asc())
+        .all()
+    )
+
+    payload = {"categories": {}}
+    for c in cats:
+        rows = []
+        # sort by link.sort_order then tool.name
+        links = sorted(c.tool_links, key=lambda l: ((l.sort_order or 100), (l.tool.name or "")))
+        for link in links:
+            t = link.tool
+            if not t or not t.enabled:
+                continue
+            meta = t.meta_info or {}
+            rows.append({
+                "slug": t.slug,
+                "name": t.name,
+                "desc": meta.get("desc") or meta.get("description") or "",
+                "type": meta.get("type") or meta.get("tool_type") or "",
+                "time": meta.get("time") or meta.get("est_runtime") or "",
+            })
+        payload["categories"][c.name] = rows
+
+    return jsonify(payload)
 
 @tools_bp.route('/api/scan', methods=['POST'])
 @jwt_required()

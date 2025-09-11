@@ -108,6 +108,68 @@ class ScanDiagnostics(db.Model):
 
 # --- Tools catalog & analytics -----------------------------------------------
 
+class ToolCategory(db.Model, TimestampMixin):
+    """
+    Admin-manageable headings/groups (e.g., Reconnaissance, Exploitation).
+    Shows on the Tools page; tools can belong to multiple categories.
+    """
+    __tablename__ = "tool_categories"
+
+    id          = db.Column(db.Integer, primary_key=True)
+    slug        = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    name        = db.Column(db.String(128), nullable=False, index=True)
+    description = db.Column(db.String(255))
+    enabled     = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    sort_order  = db.Column(db.Integer, default=100, nullable=False, index=True)
+    icon        = db.Column(db.String(128))   # optional: name or SVG key
+    color       = db.Column(db.String(32))    # optional: tailwind-like token
+
+    # Links to tools (association rows)
+    tool_links = relationship(
+        "ToolCategoryLink",
+        back_populates="category",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    def __repr__(self):
+        return f"<ToolCategory {self.slug} enabled={self.enabled}>"
+
+
+class ToolCategoryLink(db.Model, TimestampMixin):
+    """
+    Association table (many-to-many) Tool <-> ToolCategory with per-category ordering.
+    """
+    __tablename__ = "tool_category_link"
+    __table_args__ = (
+        UniqueConstraint("category_id", "tool_id", name="uq_tool_category_link"),
+        Index("ix_tool_category_order", "category_id", "sort_order"),
+        Index("ix_tool_category_tool", "tool_id", "category_id"),
+    )
+
+    id          = db.Column(db.Integer, primary_key=True)
+    category_id = db.Column(
+        db.Integer,
+        ForeignKey("tool_categories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tool_id     = db.Column(
+        db.Integer,
+        ForeignKey("tools.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sort_order  = db.Column(db.Integer, default=100, nullable=False, index=True)
+    is_featured = db.Column(db.Boolean, default=False, nullable=False, index=True)
+
+    # Relationships
+    category = relationship("ToolCategory", back_populates="tool_links", passive_deletes=True)
+    tool     = relationship("Tool", back_populates="category_links", passive_deletes=True)
+
+    def __repr__(self):
+        return f"<ToolCategoryLink cat={self.category_id} tool={self.tool_id} order={self.sort_order}>"
+
 class Tool(db.Model, TimestampMixin):
     """
     Canonical list of tools that your app exposes.
@@ -127,6 +189,13 @@ class Tool(db.Model, TimestampMixin):
     # backrefs
     daily_usage = relationship("ToolUsageDaily", back_populates="tool", cascade="all, delete-orphan")
     scan_history = relationship("ToolScanHistory", back_populates="tool") 
+    category_links = relationship(
+        "ToolCategoryLink",
+        back_populates="tool",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
 
     def __repr__(self):
         return f"<Tool {self.slug} enabled={self.enabled}>"

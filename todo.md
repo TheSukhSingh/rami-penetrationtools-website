@@ -55,6 +55,14 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Launch button pressed multiple times without changing parameters is throwing errors
 - use celery to run the processes in backend
 - Files are being saved in app.py's folder on server
+- Make these dynamic 
+ - tools category
+ - tools list per category
+ - tool count per category
+ - workflow canvas state
+ - config forms per tool
+ - terminal stream
+ - session list 
 ## ADMIN PAGE
 - Auth page for admin section (somewhat made in testing folder)
 - Unauthorized users's can see a page saying "You are not authorized for this page, redirecting in 3..2..1 " - then they get sent back to home page 
@@ -65,6 +73,8 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Page - audit logs
 - Page - settings
 - Show admin user details in the left panel rather than static details
+- Grant user some credits
+- Give user pro memberships (from admin panel)
 ## BLOG
 - Like functionality
 - Comment functionality
