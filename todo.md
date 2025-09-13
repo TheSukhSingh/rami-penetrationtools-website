@@ -19,7 +19,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 
 kulche chole
 aloo pakora
-
+imli chutney
 
 # BUGS/UPDATES
 ## AUTH
