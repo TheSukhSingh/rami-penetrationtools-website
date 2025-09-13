@@ -17,6 +17,8 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 
 4716976
 
+aloo pakora
+
 # BUGS/UPDATES
 ## AUTH
 - user deactivated logic to be written in local_routes
