@@ -196,7 +196,6 @@ class Tool(db.Model, TimestampMixin):
         passive_deletes=True,
     )
 
-
     def __repr__(self):
         return f"<Tool {self.slug} enabled={self.enabled}>"
 
