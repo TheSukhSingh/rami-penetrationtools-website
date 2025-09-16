@@ -1,5 +1,5 @@
 from flask import Blueprint
-
+from extensions import db
 tools_bp = Blueprint(
     'tools',
     __name__,
@@ -8,80 +8,73 @@ tools_bp = Blueprint(
     static_folder='static',  
     cli_group="tools",      
 )
-
+from .models import Tool, ToolCategory, ToolCategoryLink
 import click
 
 @tools_bp.cli.command("seed")
 def seed_tools():
-    """Seed the canonical 10 tools, two categories, and links + meta."""
-    from extensions import db
-    from tools.models import Tool, ToolCategory, ToolCategoryLink
-
-    # --- Categories ---
+    """Seed default tool categories and tools (aligned to models: sort_order, slug, meta_info)."""
+    # Categories in display order
     cats = [
-        {"slug": "reconnaissance", "name": "Reconnaissance", "sort_order": 1, "enabled": True},
-        {"slug": "vulnerability", "name": "Vulnerability Scanning", "sort_order": 2, "enabled": True},
+        {"name": "Reconnaissance", "slug": "recon",     "order": 1},
+        {"name": "Discovery",      "slug": "discovery", "order": 2},
+        {"name": "Vulnerability",  "slug": "vuln",      "order": 3},
     ]
-    slug_to_cat = {}
+
+    cat_by_slug = {}
     for c in cats:
         cat = ToolCategory.query.filter_by(slug=c["slug"]).first()
         if not cat:
-            cat = ToolCategory(**c)
+            cat = ToolCategory(slug=c["slug"])
             db.session.add(cat)
-        else:
-            cat.name = c["name"]
-            cat.sort_order = c["sort_order"]
-            cat.enabled = c["enabled"]
-        slug_to_cat[c["slug"]] = cat
+        cat.name = c["name"]
+        # Your model uses sort_order + enabled
+        setattr(cat, "sort_order", c["order"])
+        setattr(cat, "enabled", True)
+        cat_by_slug[c["slug"]] = cat
 
-    # --- Tools (10) ---
+    # Canonical tools (map our desired metadata into Tool.meta_info)
     tools = [
-        # slug, name, type, time, description
-        ("subfinder",        "Subfinder",         "SUBDOMAIN", "30s", "Subdomain discovery via passive sources."),
-        ("dnsx",             "DNSx",              "IP",        "20s", "Fast DNS resolution & probing."),
-        ("naabu",            "Naabu",             "PORTS",     "45s", "Fast port scanner (SYN/CONNECT)."),
-        ("httpx",            "HTTPx",             "URL",       "1m",  "HTTP probing with status, title, TLS, etc."),
-        ("gau",              "Gau",               "URL",       "1m",  "Fetch archived URLs from Wayback/OTX/etc."),
-        ("katana",           "Katana",            "URL",       "3m",  "High-speed, headless optional web crawler."),
-        ("hakrawler",        "Hakrawler",         "URL",       "2m",  "Link/endpoint crawler for reconnaissance."),
-        ("gospider",         "GoSpider",          "URL",       "2m",  "Crawl websites & extract endpoints."),
-        ("linkfinder",       "LinkFinder",        "PARAM",     "2m",  "Find endpoints/params in JS files."),
-        ("github-subdomains","GitHub Subdomains", "SUBDOMAIN", "45s", "Discover subdomains from GitHub code."),
+        # Recon
+        {"slug":"subfinder",         "name":"subfinder",         "type":"recon",     "time":"~30s", "desc":"Passive subdomain discovery",        "cat":"recon"},
+        {"slug":"dnsx",              "name":"dnsx",              "type":"recon",     "time":"~10s", "desc":"DNS probe & resolve",                 "cat":"recon"},
+        {"slug":"httpx",             "name":"httpx",             "type":"recon",     "time":"~15s", "desc":"Probe web services",                  "cat":"recon"},
+        {"slug":"gau",               "name":"gau",               "type":"recon",     "time":"~20s", "desc":"Fetch archived URLs",                  "cat":"recon"},
+        {"slug":"gospider",          "name":"gospider",          "type":"recon",     "time":"~40s", "desc":"Fast web spidering",                   "cat":"recon"},
+        # Discovery
+        {"slug":"hakrawler",         "name":"hakrawler",         "type":"discovery", "time":"~25s", "desc":"Crawl endpoints quickly",              "cat":"discovery"},
+        {"slug":"katana",            "name":"katana",            "type":"discovery", "time":"~35s", "desc":"Modern web crawler",                   "cat":"discovery"},
+        {"slug":"linkfinder",        "name":"linkfinder",        "type":"discovery", "time":"~20s", "desc":"Find JS endpoints",                    "cat":"discovery"},
+        # Vuln
+        {"slug":"naabu",             "name":"naabu",             "type":"vuln",      "time":"~30s", "desc":"Fast port scanner",                   "cat":"vuln"},
+        {"slug":"github-subdomains", "name":"github-subdomains", "type":"vuln",      "time":"~15s", "desc":"Find subdomains via code search",     "cat":"vuln"},
     ]
 
-    slug_to_tool = {}
-    for slug, name, ttype, time, desc in tools:
-        t = Tool.query.filter_by(slug=slug).first()
-        if not t:
-            t = Tool(slug=slug, name=name, enabled=True, meta_info={})
-            db.session.add(t)
-        # keep name/enabled up to date
-        t.name = name
-        t.enabled = True
-        # store display meta in meta_info
-        meta = dict(t.meta_info or {})
-        meta["type"] = ttype
-        meta["estimated_time"] = time
-        meta["description"] = desc
-        t.meta_info = meta
-        slug_to_tool[slug] = t
+    tool_by_slug = {}
+    for i, t in enumerate(tools, start=1):
+        tool = Tool.query.filter_by(slug=t["slug"]).first()
+        if not tool:
+            tool = Tool(slug=t["slug"])
+            db.session.add(tool)
+        tool.name = t["name"]
+        setattr(tool, "enabled", True)
+        # Your routes expect meta_info: desc/type/time
+        tool.meta_info = {"desc": t["desc"], "type": t["type"], "time": t["time"]}
+        tool_by_slug[t["slug"]] = tool
 
-    db.session.flush()
+    db.session.flush()  # ensure IDs exist for link rows
 
-    # --- Links: all 10 under Reconnaissance in this order ---
-    recon = slug_to_cat["reconnaissance"]
-    order = 1
-    for slug, *_ in tools:
-        tool = slug_to_tool[slug]
-        link = ToolCategoryLink.query.filter_by(category_id=recon.id, tool_id=tool.id).first()
+    # Link tools to categories (use sort_order on link)
+    for i, t in enumerate(tools, start=1):
+        cat = cat_by_slug[t["cat"]]
+        tool = tool_by_slug[t["slug"]]
+        link = ToolCategoryLink.query.filter_by(category_id=cat.id, tool_id=tool.id).first()
         if not link:
-            link = ToolCategoryLink(category_id=recon.id, tool_id=tool.id, sort_order=order)
+            link = ToolCategoryLink(category_id=cat.id, tool_id=tool.id)
             db.session.add(link)
-        else:
-            link.sort_order = order
-        order += 1
+        setattr(link, "sort_order", i)
 
     db.session.commit()
-    click.echo("Seed complete: categories, tools meta, and links updated.")
+    click.echo("Seeded tool categories and tools (models: sort_order/enabled + Tool.meta_info).")
 
-from . import routes 
+from . import routes

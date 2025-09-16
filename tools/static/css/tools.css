@@ -1589,3 +1589,39 @@ body {
   filter: none !important;
   cursor: grabbing;
 }
+/* Chain validity badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--glass-border);
+  background: rgba(0,0,0,.25);
+}
+.badge-valid {
+  color: var(--signal-green);
+  border-color: var(--signal-green);
+  background: rgba(108, 255, 87, 0.1);
+}
+.badge-invalid {
+  color: var(--hack-magenta);
+  border-color: var(--hack-magenta);
+  background: rgba(255, 0, 122, 0.08);
+}
+.chain-reason {
+  font-size: 12px;
+  color: var(--text-mute);
+  max-width: 360px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Selected edge highlight */
+.connection-layer path.selected {
+  stroke: var(--warning);
+  stroke-width: 3;
+}
