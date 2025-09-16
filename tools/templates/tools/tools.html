@@ -68,5 +68,5 @@
 {% endblock %}
 
 {% block scripts_extra %}
-<script src="{{ url_for('tools.static', filename='js/tools.js') }}"></script>
+<script src="{{ url_for('tools.static', filename='js/tools.js', v=range(1,999999)|random) }}"></script>
 {% endblock %}

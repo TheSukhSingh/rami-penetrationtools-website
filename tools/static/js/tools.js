@@ -15,7 +15,7 @@
     chainReason: document.getElementById('chainReason'),
     toast: document.getElementById('toast'),
   };
-
+window.__hackerTools__ = { renderVersion: Date.now() };
   // ---------- State ----------
   const state = {
     camera: { x: 0, y: 0, scale: 1, min: 0.25, max: 2 },
@@ -68,32 +68,40 @@
     toastTimer = setTimeout(() => el.toast.classList.remove('show'), ms);
   }
 async function loadAndRenderLibrary() {
-  if (!el.library) return;
+  const container = document.getElementById('toolCategories');
+  if (!container) {
+    console.warn('[tools] #toolCategories not found');
+    log?.('Library container missing (#toolCategories).', 'error');
+    return;
+  }
 
   let data = null;
   try {
-    const res = await fetch('/tools/api/tools', { credentials: 'same-origin' });
-    if (res.ok) data = await res.json();
-  } catch (_) {}
-
-  const container = el.library;
-  container.innerHTML = '';
-
-  let categories = [];
-  if (data && Array.isArray(data.categories)) {
-    categories = data.categories.map(c => ({ name: c.name || c.slug || 'Category', tools: c.tools || [], count: (c.tools||[]).length }));
-  } else if (data && data.categories && typeof data.categories === 'object') {
-    // dict: { "CategoryName": [tools...] }
-    categories = Object.entries(data.categories).map(([name, tools]) => ({
-      name, tools, count: (tools||[]).length
-    }));
+    const res = await fetch('/tools/api/tools', { credentials: 'same-origin', cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+    log?.(`Loaded tools catalog from /tools/api/tools`, 'info');
+  } catch (err) {
+    console.error('[tools] fetch catalog failed:', err);
+    container.innerHTML = '<div style="padding:12px;color:var(--hack-magenta)">Failed to load tools. Check console/network.</div>';
+    log?.(`Failed to load tools: ${err.message}`, 'error');
+    return;
   }
 
+  container.innerHTML = '';
+
+  // Accept both dict and array shapes
+  let categories = [];
+  if (data && data.categories && typeof data.categories === 'object' && !Array.isArray(data.categories)) {
+    categories = Object.entries(data.categories).map(([name, tools]) => ({ name, tools }));
+  } else if (data && Array.isArray(data.categories)) {
+    categories = data.categories.map(c => ({ name: c.name || c.slug || 'Category', tools: c.tools || [] }));
+  }
+
+  log?.(`Catalog contains ${categories.length} categories.`, 'info');
+
   if (!categories.length) {
-    const empty = document.createElement('div');
-    empty.style.cssText = 'padding:12px;color:var(--text-mute);font-size:14px;';
-    empty.textContent = 'No tools found. Seed with:  flask tools seed';
-    container.appendChild(empty);
+    container.innerHTML = '<div style="padding:12px;color:var(--text-mute)">No tools found. Seed with: <code>flask tools seed</code></div>';
     return;
   }
 
@@ -110,7 +118,7 @@ async function loadAndRenderLibrary() {
         </svg>
         <span>${cat.name}</span>
       </div>
-      <span class="category-count">${cat.count ?? (cat.tools?.length || 0)}</span>
+      <span class="category-count">${(cat.tools || []).length}</span>
       <span class="category-arrow">▾</span>
     `;
     sec.appendChild(header);
@@ -149,9 +157,12 @@ async function loadAndRenderLibrary() {
     });
   });
 
-  // attach drag handlers to freshly rendered items
-  setupLibrary();
+  // Hook up drag events to newly created items
+  if (typeof setupLibrary === 'function') setupLibrary();
 }
+
+
+
 
   // ---------- Node creation ----------
   function createNodeFromTool(toolMeta, worldX, worldY) {
