@@ -1391,3 +1391,38 @@ body {
         padding: 12px 8px;
     }
 }
+
+/* basic layout polish for dashboard sections */
+.udb-cards { display: grid; grid-template-columns: repeat(3, minmax(160px,1fr)); gap: 12px; margin-bottom: 16px; }
+.udb-card { padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.06); }
+.udb-card .label { font-size: 12px; opacity: .8; margin-bottom: 6px; }
+.udb-card .value { font-size: 22px; font-weight: 600; }
+.udb-card .value.green { color: #58d68d; } .udb-card .value.red { color: #ff7b7b; }
+
+.udb-panel { padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.04); }
+.udb-panel h3 { margin: 0 0 10px; }
+
+.udb-list { list-style: none; padding: 0; margin: 0; }
+.udb-list li { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.udb-list .muted { opacity: .7; }
+
+.udb-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.udb-table th, .udb-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
+.truncate { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.udb-filterbar { margin-bottom: 12px; }
+.udb-filterbar .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.udb-filterbar label { display: grid; gap: 6px; font-size: 12px; }
+.udb-filterbar input, .udb-filterbar select { padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); color: inherit; }
+
+.pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 12px; }
+button.small { font-size: 12px; padding: 6px 10px; border-radius: 8px; }
+button.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: inherit; }
+
+/* modal */
+#udb-modal-host { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.45); z-index: 9999; }
+.udb-modal { width: min(720px, 92vw); max-height: 86vh; overflow: auto; border-radius: 12px; padding: 14px; }
+.udb-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.udb-modal-header .close { font-size: 22px; line-height: 1; background: transparent; border: 0; color: inherit; cursor: pointer; }
+.udb-modal .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px; padding: 4px 0; }
+.udb-modal .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }

@@ -1,51 +1,67 @@
 from datetime import datetime, timedelta
-from sqlalchemy import func, desc, or_, and_, distinct
-from extensions import db
-# Adjust imports if your models live elsewhere:
-from tools.models import ToolScanHistory, ScanDiagnostics, Tool
+from sqlalchemy import func, desc, or_
+from flask import current_app
+import os
 
-def _status_filter(q, status):
-    if not status:
-        return q
-    status = status.upper()
-    if status in {"SUCCESS", "FAILURE"}:
-        return q.filter(ScanDiagnostics.status == status)
-    return q
+# Adjust these imports to your models module if needed
+from tools.models import ToolScanHistory, ScanDiagnostics  # ← change path if your models live elsewhere
+from app import db  # ← change if your db comes from a different place
 
-def _tool_filter(q, tool_slug):
-    if not tool_slug:
-        return q
-    return q.filter(Tool.slug == tool_slug)
 
-def _date_filter(q, date_from, date_to):
+def _parse_dates(date_from, date_to):
+    """Accept 'YYYY-MM-DD' strings or None; return (dt_from, dt_to_exclusive)."""
+    dt_from = None
+    dt_to = None
     if date_from:
-        q = q.filter(ToolScanHistory.scanned_at >= date_from)
+        dt_from = datetime.strptime(date_from, "%Y-%m-%d")
     if date_to:
-        q = q.filter(ToolScanHistory.scanned_at <= date_to)
-    return q
+        # make 'to' exclusive by pushing to end of day
+        dt_to = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+    return dt_from, dt_to
 
-def _search_filter(q, qtext):
-    if not qtext:
-        return q
-    like = f"%{qtext}%"
-    return q.filter(or_(
-        ToolScanHistory.filename_by_user.ilike(like),
-        ToolScanHistory.command.ilike(like),
-        Tool.name.ilike(like),
-        Tool.slug.ilike(like),
-    ))
 
-def _scan_to_dict(r):
-    # r is (history, diag, tool)
-    h, d, t = r
+def repo_get_overview(user_id: int, days: int = 30):
+    since = datetime.utcnow() - timedelta(days=days)
+
+    base = db.session.query(ToolScanHistory).filter(
+        ToolScanHistory.user_id == user_id,
+        ToolScanHistory.scanned_at >= since,
+    )
+
+    total = base.count()
+    success = base.filter(ToolScanHistory.scan_success_state.is_(True)).count()
+    failure = base.filter(ToolScanHistory.scan_success_state.is_(False)).count()
+
+    last_scan = (
+        db.session.query(func.max(ToolScanHistory.scanned_at))
+        .filter(ToolScanHistory.user_id == user_id)
+        .scalar()
+    )
+
+    top_rows = (
+        db.session.query(
+            ToolScanHistory.tool_id,
+            func.count().label("runs"),
+        )
+        .filter(
+            ToolScanHistory.user_id == user_id,
+            ToolScanHistory.scanned_at >= since,
+        )
+        .group_by(ToolScanHistory.tool_id)
+        .order_by(desc("runs"))
+        .limit(5)
+        .all()
+    )
+    top_tools = [{"tool_id": tid, "runs": runs} for tid, runs in top_rows]
+
     return {
-        "id": h.id,
-        "tool": {"id": t.id, "slug": t.slug, "name": t.name},
-        "scanned_at": h.scanned_at.isoformat() if h.scanned_at else None,
-        "status": getattr(d, "status", None),
-        "duration_ms": getattr(d, "duration_ms", None),
-        "filename_by_user": h.filename_by_user,
+        "total_scans": int(total or 0),
+        "success_count": int(success or 0),
+        "failure_count": int(failure or 0),
+        "last_scan_at": last_scan.isoformat() if last_scan else None,
+        "top_tools": top_tools,
     }
+
 
 def repo_list_scans(
     user_id: int,
@@ -57,156 +73,135 @@ def repo_list_scans(
     date_from=None,
     date_to=None,
 ):
-    base = (
-        db.session.query(ToolScanHistory, ScanDiagnostics, Tool)
-        .join(Tool, Tool.id == ToolScanHistory.tool_id)
+    dt_from, dt_to = _parse_dates(date_from, date_to)
+
+    qry = (
+        db.session.query(ToolScanHistory, ScanDiagnostics)
         .outerjoin(ScanDiagnostics, ScanDiagnostics.scan_id == ToolScanHistory.id)
         .filter(ToolScanHistory.user_id == user_id)
     )
 
-    # tool filter (accepts slug)
     if tool:
-        base = base.filter(Tool.slug == tool)
+        # allow tool id (int) or slug/name you pass as string id
+        if str(tool).isdigit():
+            qry = qry.filter(ToolScanHistory.tool_id == int(tool))
+        else:
+            # if you store tool slug/name in ToolScanHistory.command/parameters, match loosely
+            like = f"%{tool}%"
+            qry = qry.filter(
+                or_(
+                    ToolScanHistory.command.ilike(like),
+                    ToolScanHistory.parameters.ilike(like),
+                )
+            )
 
-    # status filter (matches diagnostics if present)
     if status:
-        base = base.filter(ScanDiagnostics.status == status)
+        s = status.upper()
+        if s == "SUCCESS":
+            qry = qry.filter(ToolScanHistory.scan_success_state.is_(True))
+        elif s in ("FAIL", "FAILED", "FAILURE", "ERROR"):
+            qry = qry.filter(ToolScanHistory.scan_success_state.is_(False))
 
-    # date range filters
-    if date_from:
-        base = base.filter(ToolScanHistory.scanned_at >= date_from)
-    if date_to:
-        base = base.filter(ToolScanHistory.scanned_at <= date_to)
+    if dt_from:
+        qry = qry.filter(ToolScanHistory.scanned_at >= dt_from)
+    if dt_to:
+        qry = qry.filter(ToolScanHistory.scanned_at < dt_to)
 
-    # free-text search in filename or command/parameters (if provided)
     if q:
         like = f"%{q}%"
-        base = base.filter(
-            (ToolScanHistory.filename_by_user.ilike(like)) |
-            (ToolScanHistory.filename_by_be.ilike(like)) |
-            (ToolScanHistory.command.ilike(like))
+        qry = qry.filter(
+            or_(
+                ToolScanHistory.parameters.ilike(like),
+                ToolScanHistory.command.ilike(like),
+                ScanDiagnostics.error_detail.ilike(like),
+                ScanDiagnostics.value_entered.ilike(like),
+            )
         )
 
-    total = base.with_entities(func.count(ToolScanHistory.id)).scalar() or 0
-
+    total = qry.count()
     rows = (
-        base.order_by(desc(ToolScanHistory.scanned_at))
-            .limit(per_page)
-            .offset((page - 1) * per_page)
-            .all()
+        qry.order_by(ToolScanHistory.scanned_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
     )
 
     items = []
-    for h, d, t in rows:
-        items.append({
-            "id": h.id,
-            "tool": {"id": t.id, "slug": t.slug, "name": t.name},
-            "status": d.status if d else None,
-            "scanned_at": h.scanned_at.isoformat() if h.scanned_at else None,
-            "filename": h.filename_by_be or h.filename_by_user,
-        })
+    for tsh, diag in rows:
+        items.append(
+            {
+                "id": tsh.id,
+                "tool_id": tsh.tool_id,
+                "user_id": tsh.user_id,
+                "status": (
+                    "SUCCESS" if tsh.scan_success_state is True
+                    else ("FAILURE" if tsh.scan_success_state is False else None)
+                ),
+                "scanned_at": (tsh.scanned_at.isoformat() if tsh.scanned_at else None),
+                "parameters": tsh.parameters,
+                "command": tsh.command,
+                "filename_by_user": tsh.filename_by_user,
+                "filename_by_be": tsh.filename_by_be,
+                "diagnostics": None
+                if not diag
+                else {
+                    "status": (diag.status.value if diag and diag.status else None),
+                    "total_domain_count": diag.total_domain_count,
+                    "valid_domain_count": diag.valid_domain_count,
+                    "invalid_domain_count": diag.invalid_domain_count,
+                    "duplicate_domain_count": diag.duplicate_domain_count,
+                    "file_size_b": diag.file_size_b,
+                    "execution_ms": diag.execution_ms,
+                    "error_reason": diag.error_reason,
+                    "error_detail": diag.error_detail,
+                    "value_entered": diag.value_entered,
+                },
+            }
+        )
 
-    return {
-        "items": items,
-        "page": page,
-        "per_page": per_page,
-        "total": int(total),
-    }
+    return {"items": items, "page": page, "per_page": per_page, "total": int(total or 0)}
 
 
 def repo_get_scan_detail(user_id: int, scan_id: int):
     row = (
-        db.session.query(ToolScanHistory, ScanDiagnostics, Tool)
-        .join(Tool, Tool.id == ToolScanHistory.tool_id)
-        .outerjoin(ScanDiagnostics, ScanDiagnostics.tool_scan_history_id == ToolScanHistory.id)
-        .filter(ToolScanHistory.id == scan_id, ToolScanHistory.user_id == user_id)
+        db.session.query(ToolScanHistory, ScanDiagnostics)
+        .outerjoin(ScanDiagnostics, ScanDiagnostics.scan_id == ToolScanHistory.id)
+        .filter(
+            ToolScanHistory.user_id == user_id,
+            ToolScanHistory.id == scan_id,
+        )
         .first()
     )
     if not row:
-        return {"id": scan_id, "not_found": True}
+        return None
 
-    h, d, t = row
-    raw = h.raw_output or ""
-    preview = raw[:5000]  # avoid huge payloads
+    tsh, diag = row
     return {
-        "id": h.id,
-        "tool": {"id": t.id, "slug": t.slug, "name": t.name},
-        "parameters": h.parameters or {},
-        "command": h.command,
-        "scanned_at": h.scanned_at.isoformat() if h.scanned_at else None,
-        "status": getattr(d, "status", None),
-        "duration_ms": getattr(d, "duration_ms", None),
-        "error_detail": getattr(d, "error_detail", None),
-        "raw_output_preview": preview,
-        "raw_output_truncated": len(raw) > len(preview),
-        "download_available": bool(h.filename_by_be),
-        "filename_by_user": h.filename_by_user,
-    }
-
-def repo_get_overview(user_id: int, days: int = 30):
-    since = datetime.utcnow() - timedelta(days=days)
-
-    # total scans (for this user in window)
-    total = (
-        db.session.query(func.count(ToolScanHistory.id))
-        .filter(
-            ToolScanHistory.user_id == user_id,
-            ToolScanHistory.scanned_at >= since,
-        )
-        .scalar()
-        or 0
-    )
-
-    # success / failed using OUTER JOIN to diagnostics and DISTINCT on scan id
-    success = (
-        db.session.query(func.count(distinct(ToolScanHistory.id)))
-        .outerjoin(ScanDiagnostics, ScanDiagnostics.scan_id == ToolScanHistory.id)
-        .filter(
-            ToolScanHistory.user_id == user_id,
-            ToolScanHistory.scanned_at >= since,
-            ScanDiagnostics.status == "SUCCESS",
-        )
-        .scalar()
-        or 0
-    )
-
-    failed = (
-        db.session.query(func.count(distinct(ToolScanHistory.id)))
-        .outerjoin(ScanDiagnostics, ScanDiagnostics.scan_id == ToolScanHistory.id)
-        .filter(
-            ToolScanHistory.user_id == user_id,
-            ToolScanHistory.scanned_at >= since,
-            ScanDiagnostics.status == "FAILED",
-        )
-        .scalar()
-        or 0
-    )
-
-    # top tools for the user in the window
-    by_tool_rows = (
-        db.session.query(
-            Tool.slug,
-            Tool.name,
-            func.count(ToolScanHistory.id).label("runs"),
-        )
-        .join(Tool, Tool.id == ToolScanHistory.tool_id)
-        .filter(
-            ToolScanHistory.user_id == user_id,
-            ToolScanHistory.scanned_at >= since,
-        )
-        .group_by(Tool.slug, Tool.name)
-        .order_by(desc("runs"))
-        .limit(10)
-        .all()
-    )
-    by_tool = [{"slug": slug, "name": name, "runs": int(runs)} for slug, name, runs in by_tool_rows]
-
-    return {
-        "summary": {
-            "total": int(total),
-            "success": int(success),
-            "failed": int(failed),
-            "days": days,
+        "id": tsh.id,
+        "tool_id": tsh.tool_id,
+        "user_id": tsh.user_id,
+        "status": (
+            "SUCCESS" if tsh.scan_success_state is True
+            else ("FAILURE" if tsh.scan_success_state is False else None)
+        ),
+        "scanned_at": tsh.scanned_at.isoformat() if tsh.scanned_at else None,
+        "parameters": tsh.parameters,
+        "command": tsh.command,
+        "filename_by_user": tsh.filename_by_user,
+        "filename_by_be": tsh.filename_by_be,
+        "raw_output": tsh.raw_output,
+        "diagnostics": None
+        if not diag
+        else {
+            "status": (diag.status.value if diag and diag.status else None),
+            "total_domain_count": diag.total_domain_count,
+            "valid_domain_count": diag.valid_domain_count,
+            "invalid_domain_count": diag.invalid_domain_count,
+            "duplicate_domain_count": diag.duplicate_domain_count,
+            "file_size_b": diag.file_size_b,
+            "execution_ms": diag.execution_ms,
+            "error_reason": diag.error_reason,
+            "error_detail": diag.error_detail,
+            "value_entered": diag.value_entered,
         },
-        "by_tool": by_tool,
-    }
+
