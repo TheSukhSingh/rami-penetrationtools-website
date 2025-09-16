@@ -1,4 +1,4 @@
-def repo_get_overview():
+def repo_get_overview(user_id: int, days: int = 30):
     # TODO: wire to ToolScanHistory + ScanDiagnostics
     return {
         "total_scans": 0,
@@ -8,11 +8,20 @@ def repo_get_overview():
         "top_tools": [],
     }
 
-def repo_list_scans(tool, status, q, page, per_page, date_from, date_to):
+def repo_list_scans(
+    user_id: int,
+    tool=None,
+    status=None,
+    q=None,
+    page: int = 1,
+    per_page: int = 20,
+    date_from=None,
+    date_to=None,
+):
     # TODO: query ToolScanHistory joined with ScanDiagnostics + Tool
     return {"items": [], "page": page, "per_page": per_page, "total": 0}
 
-def repo_get_scan_detail(scan_id: int):
+def repo_get_scan_detail(user_id: int, scan_id: int):
     # TODO: fetch one scan + diagnostics + output preview
     return {
         "id": scan_id,

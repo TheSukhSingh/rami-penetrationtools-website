@@ -1,4 +1,4 @@
-def repo_get_analytics(range="30d", tool=None):
+def repo_get_analytics(user_id: int, days: int = 30, tool=None):
     # TODO: read ToolUsageDaily or compute from history
     return {
         "series": [],
