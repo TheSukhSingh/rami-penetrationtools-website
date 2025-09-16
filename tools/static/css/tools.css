@@ -1577,3 +1577,5 @@ body {
   stroke-linecap: round;
   filter: drop-shadow(0 0 6px rgba(0,255,224,.35));
 }
+.workflow-node { will-change: transform; }
+.workflow-node.dragging { transition: none !important; box-shadow: none !important; filter: none !important; cursor: grabbing; }
