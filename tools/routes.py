@@ -7,8 +7,10 @@ from tools.models import (
     ScanDiagnostics, 
     ScanStatus, 
     ErrorReason, 
-    db
+    Tool,
+    ToolCategoryLink
 )
+from extensions import db
 from . import tools_bp
 from .alltools import (
     dnsx, 

@@ -67,6 +67,91 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.toast.classList.remove('show'), ms);
   }
+async function loadAndRenderLibrary() {
+  if (!el.library) return;
+
+  let data = null;
+  try {
+    const res = await fetch('/tools/api/tools', { credentials: 'same-origin' });
+    if (res.ok) data = await res.json();
+  } catch (_) {}
+
+  const container = el.library;
+  container.innerHTML = '';
+
+  let categories = [];
+  if (data && Array.isArray(data.categories)) {
+    categories = data.categories.map(c => ({ name: c.name || c.slug || 'Category', tools: c.tools || [], count: (c.tools||[]).length }));
+  } else if (data && data.categories && typeof data.categories === 'object') {
+    // dict: { "CategoryName": [tools...] }
+    categories = Object.entries(data.categories).map(([name, tools]) => ({
+      name, tools, count: (tools||[]).length
+    }));
+  }
+
+  if (!categories.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding:12px;color:var(--text-mute);font-size:14px;';
+    empty.textContent = 'No tools found. Seed with:  flask tools seed';
+    container.appendChild(empty);
+    return;
+  }
+
+  categories.forEach(cat => {
+    const sec = document.createElement('div');
+    sec.className = 'category-section';
+
+    const header = document.createElement('div');
+    header.className = 'category-header';
+    header.innerHTML = `
+      <div class="category-info">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        <span>${cat.name}</span>
+      </div>
+      <span class="category-count">${cat.count ?? (cat.tools?.length || 0)}</span>
+      <span class="category-arrow">▾</span>
+    `;
+    sec.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'category-tools active';
+
+    (cat.tools || []).forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'tool-item';
+      item.dataset.toolKey  = t.slug || t.key || t.name;
+      item.dataset.toolName = t.name || t.slug;
+      item.dataset.toolType = t.type || '';
+      item.dataset.toolTime = t.time || '';
+      item.dataset.toolDesc = t.desc || '';
+      item.innerHTML = `
+        <div class="tool-icon">${(t.name || t.slug || 'T').charAt(0).toUpperCase()}</div>
+        <div class="tool-info">
+          <div class="tool-name">${t.name || t.slug}</div>
+          <div class="tool-desc">${t.desc || ''}</div>
+        </div>
+        <div class="tool-meta">
+          <div class="tool-time">${t.time || ''}</div>
+          <div class="tool-type">${(t.type || '').toUpperCase()}</div>
+        </div>
+      `;
+      list.appendChild(item);
+    });
+
+    sec.appendChild(list);
+    container.appendChild(sec);
+
+    header.addEventListener('click', () => {
+      sec.classList.toggle('collapsed');
+      list.classList.toggle('active');
+    });
+  });
+
+  // attach drag handlers to freshly rendered items
+  setupLibrary();
+}
 
   // ---------- Node creation ----------
   function createNodeFromTool(toolMeta, worldX, worldY) {
@@ -556,10 +641,11 @@
   }
 
   // ---------- Boot ----------
-  function boot() {
+  async  function boot() {
+    await loadAndRenderLibrary(); 
     setupLibrary();
     requestAnimationFrame(render);
-    updateChainValidity();
+    updateChainValidity?.();
     log('Chain rules active: ≤1 input & ≤1 output per node, single start & end, linear path only.');
     log('Tip: Select an edge by clicking it; press Delete to remove.');
   }
