@@ -77,10 +77,15 @@
 
   <!-- CENTER: CANVAS -->
   <main class="canvas-area">
-    <div class="canvas-header">
-      <h2>Workflow</h2>
-      <div class="canvas-stats"><span id="zoomPct">100%</span></div>
-    </div>
+<div class="canvas-header">
+  <h2>Workflow</h2>
+  <div class="canvas-stats" style="display:flex;align-items:center;gap:12px;">
+    <span id="zoomPct">100%</span>
+    <span id="chainBadge" class="badge badge-invalid" title="Chain validity">Invalid</span>
+    <span id="chainReason" class="chain-reason"></span>
+  </div>
+</div>
+
 
     <div class="canvas-container">
       <div class="canvas pannable" id="canvas">
@@ -108,6 +113,8 @@
     </div>
   </aside>
 </section>
+<div id="toast" class="toast"></div>
+
 {% endblock %}
 
 {% block scripts_extra %}
