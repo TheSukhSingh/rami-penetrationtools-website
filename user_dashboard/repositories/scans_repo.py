@@ -205,3 +205,4 @@ def repo_get_scan_detail(user_id: int, scan_id: int):
             "value_entered": diag.value_entered,
         },
 
+    }
