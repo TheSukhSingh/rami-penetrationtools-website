@@ -72,10 +72,7 @@ def api_scans():
 def api_scan_detail(scan_id: int):
     user_id = get_jwt_identity()
     data = get_scan_detail(user_id=user_id, scan_id=scan_id)
-    if not data:
-        abort(404)
     return jsonify(data)
-
 
 @user_dashboard_bp.get("/api/dashboard/analytics")
 @jwt_required()
@@ -97,4 +94,3 @@ def api_download(scan_id: int):
     if not path:
         abort(404)
     return send_file(path, as_attachment=True)
-

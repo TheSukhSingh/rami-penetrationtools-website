@@ -27,9 +27,9 @@ class ToolScanHistory(db.Model, PrettyIdMixin):
     tool_id            = db.Column(db.Integer, db.ForeignKey('tools.id', ondelete='SET NULL'), nullable=True, index=True)
     parameters         = db.Column(db.JSON, nullable=False, default=dict)
     command            = db.Column(db.Text, nullable=False)
-    raw_output         = db.Column(db.Text, nullable=False)
+    raw_output         = db.Column(db.Text, nullable=False, default="")
     scanned_at         = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False, index=True)
-    scan_success_state = db.Column(db.Boolean, nullable=False, default=False)
+    scan_success_state = db.Column(db.Boolean, nullable=True)
     filename_by_user   = db.Column(db.String(255), nullable=True)
     filename_by_be     = db.Column(db.String(255), nullable=True)
     

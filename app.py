@@ -12,10 +12,17 @@ from admin.api import admin_api_bp
 import secrets
 from extensions import db, bcrypt, migrate, limiter, csrf
 from user_dashboard import user_dashboard_bp
-
+import enum
 from auth.utils import init_mail, init_jwt_manager
+from flask.json.provider import DefaultJSONProvider
 
 load_dotenv()
+
+class EnumJSONProvider(DefaultJSONProvider):
+    def default(self, o):
+        if isinstance(o, enum.Enum):
+            return o.value
+        return super().default(o)
 
 def create_app():
     app = Flask(
@@ -117,7 +124,10 @@ def create_app():
     bcrypt.init_app(app)
     migrate.init_app(app, db)
 
+    app.json_provider_class = EnumJSONProvider
+    app.json = app.json_provider_class(app)
 
+    
     init_mail(app)
 
     app.register_blueprint(auth_bp)
