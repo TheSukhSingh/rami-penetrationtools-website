@@ -11,6 +11,7 @@ from blog import blog_bp
 from admin.api import admin_api_bp
 import secrets
 from extensions import db, bcrypt, migrate, limiter, csrf
+from user_dashboard import user_dashboard_bp
 
 from auth.utils import init_mail, init_jwt_manager
 
@@ -124,6 +125,7 @@ def create_app():
     app.register_blueprint(admin_api_bp)
     app.register_blueprint(tools_bp)
     app.register_blueprint(blog_bp)
+    app.register_blueprint(user_dashboard_bp)
 
     init_jwt_manager(app, jwt)
 

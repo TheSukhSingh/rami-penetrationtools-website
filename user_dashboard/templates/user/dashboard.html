@@ -1,0 +1,24 @@
+{% extends "main.html" %}
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('user_dashboard.static', filename='user-dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="udb">
+  <aside class="udb-sidebar">
+    <!-- left sidebar from your sample -->
+    <nav>
+      <a data-section="overview" class="active">Overview</a>
+      <a data-section="analytics">Analytics</a>
+      <a data-section="scans">Recent Scans</a>
+    </nav>
+  </aside>
+
+  <main class="udb-main">
+    <section id="udb-overview" class="udb-section"></section>
+    <section id="udb-analytics" class="udb-section" hidden></section>
+    <section id="udb-scans" class="udb-section" hidden></section>
+  </main>
+</div>
+<script src="{{ url_for('user_dashboard.static', filename='user-dashboard.js') }}"></script>
+{% endblock %}
