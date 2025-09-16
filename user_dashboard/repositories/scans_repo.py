@@ -204,4 +204,4 @@ def repo_get_scan_detail(user_id: int, scan_id: int):
             "error_detail": diag.error_detail,
             "value_entered": diag.value_entered,
         },
-    }
+

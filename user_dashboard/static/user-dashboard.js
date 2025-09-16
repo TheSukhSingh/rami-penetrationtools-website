@@ -1,7 +1,7 @@
-// user_dashboard/static/user-dashboard.js
 (function () {
   const qs = (s) => document.querySelector(s);
   const qsa = (s) => Array.from(document.querySelectorAll(s));
+
   const sections = {
     overview: qs('#udb-overview'),
     analytics: qs('#udb-analytics'),
@@ -11,6 +11,7 @@
   function showSection(name) {
     Object.entries(sections).forEach(([k, el]) => el && (el.hidden = k !== name));
     qsa('.udb-sidebar a').forEach(a => a.classList.toggle('active', a.dataset.section === name));
+
   }
 
   async function fetchJSON(url) {
@@ -19,7 +20,6 @@
     return res.json();
   }
 
-  // ---------- OVERVIEW ----------
   function renderOverview(data) {
     const el = sections.overview;
     if (!el) return;
@@ -28,6 +28,7 @@
     el.innerHTML = `
       <div class="udb-cards">
         <div class="udb-card"><div class="label">Total Scans (${s.days ?? 30}d)</div><div class="value">${s.total ?? 0}</div></div>
+
         <div class="udb-card"><div class="label">Success</div><div class="value green">${s.success ?? 0}</div></div>
         <div class="udb-card"><div class="label">Failed</div><div class="value red">${s.failed ?? 0}</div></div>
       </div>
@@ -39,6 +40,7 @@
               ? byTool.map(t => `<li><strong>${t.name}</strong> <span class="muted">(${t.slug})</span> — ${t.runs} runs</li>`).join('')
               : '<li class="muted">No data yet</li>'
           }
+
         </ul>
       </div>
     `;
@@ -178,6 +180,7 @@
                   }).join('')
                 : `<tr><td colspan="5" class="muted">No scans yet</td></tr>`
             }
+
           </tbody>
         </table>
       </div>
@@ -258,6 +261,7 @@
   }
 
   // ---------- ANALYTICS ----------
+
   function renderAnalytics(data) {
     const el = sections.analytics;
     if (!el) return;
@@ -271,6 +275,7 @@
         </div>
         <ul class="udb-list">
           ${series.length ? series.map(p => `<li>${p.day}: ${p.runs}</li>`).join('') : '<li class="muted">No activity yet</li>'}
+
         </ul>
       </div>
     `;
@@ -305,4 +310,5 @@
       Object.values(sections).forEach(el => el && (el.innerHTML = `<div class="udb-error">Failed to load: ${err.message}</div>`));
     }
   })();
+
 })();

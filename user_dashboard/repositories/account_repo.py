@@ -1,3 +1,4 @@
+
 import os
 from flask import current_app
 from tools.models import ToolScanHistory  # ← adjust path if needed
@@ -22,3 +23,4 @@ def repo_resolve_download_path(user_id: int, scan_id: int):
     )
     path = os.path.join(base, candidate)
     return path if os.path.exists(path) else None
+
