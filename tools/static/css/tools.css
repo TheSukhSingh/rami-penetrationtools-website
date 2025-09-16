@@ -1576,6 +1576,16 @@ body {
   stroke-linejoin: round;    /* round elbow corners */
   stroke-linecap: round;
   filter: drop-shadow(0 0 6px rgba(0,255,224,.35));
+}/* Perf hints for silky dragging */
+.workflow-node { 
+  will-change: transform;               /* GPU compositing */
+  transition: box-shadow .2s, transform .2s; /* avoid "transition: all" on layout props */
 }
-.workflow-node { will-change: transform; }
-.workflow-node.dragging { transition: none !important; box-shadow: none !important; filter: none !important; cursor: grabbing; }
+
+/* Disable costly effects while dragging (avoid jank) */
+.workflow-node.dragging {
+  transition: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  cursor: grabbing;
+}
