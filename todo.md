@@ -118,6 +118,3 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Dropdown needs complete restyling like this image - ![complete restyle](md/image.png)
 
 
-
-
-
