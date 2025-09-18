@@ -77,4 +77,41 @@ def seed_tools():
     db.session.commit()
     click.echo("Seeded tool categories and tools (models: sort_order/enabled + Tool.meta_info).")
 
+@tools_bp.cli.command("wf-sample")
+def wf_sample():
+    """
+    Create a sample workflow definition with 2 steps, and a stub run/steps.
+    This is only for local sanity checks of the schema.
+    """
+    from .models import Tool, WorkflowDefinition, WorkflowRun, WorkflowRunStep, WorkflowRunStatus, WorkflowStepStatus, utcnow
+    from extensions import db
+
+    # pick two tools if present
+    t1 = Tool.query.filter_by(slug="subfinder").first()
+    t2 = Tool.query.filter_by(slug="httpx").first()
+    if not t1 or not t2:
+        click.echo("Seed tools first: flask tools seed")
+        return
+
+    graph = {
+        "nodes": [
+            {"id":"n1","tool_slug": t1.slug, "x": 200, "y": 150, "config": {}},
+            {"id":"n2","tool_slug": t2.slug, "x": 520, "y": 150, "config": {}},
+        ],
+        "edges": [{"from":"n1","to":"n2"}],
+    }
+
+    wf = WorkflowDefinition(title="Sample Recon Chain", description="subfinder → httpx", graph_json=graph)
+    db.session.add(wf); db.session.flush()
+
+    run = WorkflowRun(workflow_id=wf.id, status=WorkflowRunStatus.QUEUED, total_steps=2, current_step_index=0)
+    db.session.add(run); db.session.flush()
+
+    s0 = WorkflowRunStep(run_id=run.id, step_index=0, tool_id=t1.id, status=WorkflowStepStatus.QUEUED)
+    s1 = WorkflowRunStep(run_id=run.id, step_index=1, tool_id=t2.id, status=WorkflowStepStatus.QUEUED)
+    db.session.add_all([s0, s1]); db.session.commit()
+
+    click.echo(f"Created workflow #{wf.id} with run #{run.id} and 2 steps.")
+
+
 from . import routes

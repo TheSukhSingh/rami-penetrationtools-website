@@ -223,3 +223,115 @@ class ToolUsageDaily(db.Model):
         return f"<ToolUsageDaily tool={self.tool_id} day={self.day} runs={self.runs}>"
 
 
+class WorkflowDefinition(db.Model, TimestampMixin, PrettyIdMixin):
+    """
+    A reusable workflow ("preset") that captures the canvas graph and per-node config.
+    Store the full graph as JSON for v1; we can normalize to rows later if needed.
+    """
+    __tablename__ = "workflow_definitions"
+    _pretty_prefix = "WF"
+
+    id            = db.Column(db.Integer, primary_key=True)
+    owner_id      = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True)
+    title         = db.Column(db.String(150), nullable=False)
+    description   = db.Column(db.Text, nullable=True)
+    version       = db.Column(db.Integer, nullable=False, default=1)
+    is_shared     = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    is_archived   = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    forked_from_id= db.Column(db.Integer, db.ForeignKey("workflow_definitions.id", ondelete="SET NULL"), nullable=True)
+    graph_json    = db.Column(db.JSON, nullable=False, default=dict)  # { nodes: [...], edges: [...] }
+
+    # relations
+    runs          = relationship("WorkflowRun", back_populates="workflow", cascade="all, delete-orphan", passive_deletes=True)
+    fork_children = relationship("WorkflowDefinition", remote_side=[id])
+
+    __table_args__ = (
+        Index("ix_workflow_def_owner_updated", "owner_id", "updated_at"),
+        Index("ix_workflow_def_shared", "is_shared", "updated_at"),
+    )
+
+    def __repr__(self):
+        return f"<WorkflowDefinition {self.id} v{self.version} title={self.title!r}>"
+
+
+class WorkflowRunStatus(enum.Enum):
+    QUEUED    = "QUEUED"
+    RUNNING   = "RUNNING"
+    PAUSED    = "PAUSED"
+    COMPLETED = "COMPLETED"
+    FAILED    = "FAILED"
+    CANCELED  = "CANCELED"
+
+
+class WorkflowRun(db.Model, TimestampMixin, PrettyIdMixin):
+    """
+    A concrete execution of a WorkflowDefinition.
+    """
+    __tablename__ = "workflow_runs"
+    _pretty_prefix = "WR"
+
+    id                  = db.Column(db.Integer, primary_key=True)
+    workflow_id         = db.Column(db.Integer, db.ForeignKey("workflow_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id             = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    status              = db.Column(db.Enum(WorkflowRunStatus, name="workflow_run_status_enum"), nullable=False, default=WorkflowRunStatus.QUEUED)
+    current_step_index  = db.Column(db.Integer, nullable=False, default=0)  # 0-based
+    total_steps         = db.Column(db.Integer, nullable=False, default=0)
+    progress_pct        = db.Column(db.Float,   nullable=False, default=0.0)
+    started_at          = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    finished_at         = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    summary_json        = db.Column(db.JSON, nullable=True)  # free-form: totals, error summaries, etc.
+
+    workflow            = relationship("WorkflowDefinition", back_populates="runs")
+    steps               = relationship("WorkflowRunStep", back_populates="run",
+                                       order_by="WorkflowRunStep.step_index",
+                                       cascade="all, delete-orphan", passive_deletes=True)
+
+    __table_args__ = (
+        Index("ix_workflow_run_status_updated", "status", "updated_at"),
+        Index("ix_workflow_run_user_updated", "user_id", "updated_at"),
+    )
+
+    def __repr__(self):
+        return f"<WorkflowRun {self.id} wf={self.workflow_id} status={self.status.name} step={self.current_step_index}/{self.total_steps}>"
+
+
+class WorkflowStepStatus(enum.Enum):
+    QUEUED    = "QUEUED"
+    RUNNING   = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED    = "FAILED"
+    SKIPPED   = "SKIPPED"
+    CANCELED  = "CANCELED"
+
+
+class WorkflowRunStep(db.Model, TimestampMixin):
+    """
+    The Nth step of a WorkflowRun. Each step links to a tool and (when executed)
+    to the ToolScanHistory record your existing /api/scan flow already creates.
+    """
+    __tablename__ = "workflow_run_steps"
+    __table_args__ = (
+        UniqueConstraint("run_id", "step_index", name="uq_workflow_run_step_index"),
+        Index("ix_workflow_run_steps_run", "run_id", "step_index"),
+    )
+
+    id                   = db.Column(db.Integer, primary_key=True)
+    run_id               = db.Column(db.Integer, db.ForeignKey("workflow_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    step_index           = db.Column(db.Integer, nullable=False) 
+    tool_id              = db.Column(db.Integer, db.ForeignKey("tools.id", ondelete="SET NULL"), nullable=True, index=True)
+    status               = db.Column(db.Enum(WorkflowStepStatus, name="workflow_step_status_enum"), nullable=False, default=WorkflowStepStatus.QUEUED)
+    started_at           = db.Column(db.DateTime(timezone=True), nullable=True)
+    finished_at          = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    input_manifest       = db.Column(db.JSON, nullable=True)  
+    output_manifest      = db.Column(db.JSON, nullable=True)  
+
+    tool_scan_history_id = db.Column(db.Integer, db.ForeignKey("tool_scan_history.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # relationships
+    run                  = relationship("WorkflowRun", back_populates="steps")
+    tool                 = relationship("Tool", passive_deletes=True)
+    tool_scan_history    = relationship("ToolScanHistory", passive_deletes=True)
+
+    def __repr__(self):
+        return f"<WorkflowRunStep run={self.run_id} idx={self.step_index} tool={self.tool_id} status={self.status.name}>"
