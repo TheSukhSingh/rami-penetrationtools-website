@@ -31,6 +31,7 @@ import json, time
 from .events import _redis, _chan, publish_run_event
 from .tasks import advance_run
 from .runner import create_run_from_definition
+from celery_app import celery
 
 utcnow = lambda: datetime.now(timezone.utc)
 
@@ -555,7 +556,6 @@ def resume_run_api(run_id: int):
     advance_run.delay(run.id)
     return jsonify({"run": _serialize_run(run)})
 
-
 @tools_bp.post("/api/runs/<int:run_id>/cancel")
 @jwt_required()
 @limiter.limit("15/minute")
@@ -569,11 +569,23 @@ def cancel_run_api(run_id: int):
     if run.status in (WorkflowRunStatus.COMPLETED, WorkflowRunStatus.CANCELED):
         return jsonify({"error":"run already finished"}), 400
 
-    run.status = WorkflowRunStatus.CANCELED
-    # optional: mark remaining QUEUED steps as CANCELED now
+    # Revoke currently running step if any
+    running_step = next((s for s in run.steps if s.status == WorkflowStepStatus.RUNNING), None)
+    if running_step and running_step.celery_task_id:
+        try:
+            celery.control.revoke(running_step.celery_task_id, terminate=True, signal="SIGTERM")
+        except Exception as e:
+            current_app.logger.warning(f"cancel_run: revoke failed for task {running_step.celery_task_id}: {e}")
+        # mark it canceled in DB right away
+        running_step.status = WorkflowStepStatus.CANCELED
+        running_step.finished_at = utcnow()
+
+    # Mark remaining queued steps as canceled
     for s in run.steps:
-        if s.status in (WorkflowStepStatus.QUEUED,):
+        if s.status == WorkflowStepStatus.QUEUED:
             s.status = WorkflowStepStatus.CANCELED
+
+    run.status = WorkflowRunStatus.CANCELED
     db.session.commit()
 
     publish_run_event(run.id, "run", {
@@ -582,3 +594,59 @@ def cancel_run_api(run_id: int):
         "current_step_index": run.current_step_index
     })
     return jsonify({"run": _serialize_run(run)})
+
+@tools_bp.post("/api/runs/<int:run_id>/retry")
+@jwt_required()
+@limiter.limit("10/minute")
+def retry_run_api(run_id: int):
+    """
+    Reset a failed/canceled step (and all later steps) to QUEUED, then resume.
+    Body: {"step_index": <int>}
+    """
+    user_id = get_jwt_identity()
+    run = db.session.get(WorkflowRun, run_id)
+    if not run: return jsonify({"error":"not found"}), 404
+    if (run.user_id is not None) and (run.user_id != user_id):
+        return jsonify({"error":"forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
+    if "step_index" not in data:
+        return jsonify({"error":"step_index required"}), 400
+    step_index = int(data["step_index"])
+
+    step = next((s for s in run.steps if s.step_index == step_index), None)
+    if not step: return jsonify({"error":"step not found"}), 404
+
+    # Only allow retry from FAILED or CANCELED (or even COMPLETED to rerun intentionally)
+    if step.status not in (WorkflowStepStatus.FAILED, WorkflowStepStatus.CANCELED, WorkflowStepStatus.COMPLETED):
+        # If it's RUNNING, ask to cancel first
+        return jsonify({"error":"step not in retryable state"}), 400
+
+    # Reset this step and all later steps to QUEUED; clear outputs/task ids
+    affected = [s for s in run.steps if s.step_index >= step_index]
+    for s in affected:
+        s.status = WorkflowStepStatus.QUEUED
+        s.started_at = None
+        s.finished_at = None
+        s.output_manifest = None
+        s.tool_scan_history_id = None
+        s.celery_task_id = None
+
+    run.status = WorkflowRunStatus.QUEUED
+    run.current_step_index = step_index
+    # recompute progress
+    done = sum(1 for s in run.steps if s.status == WorkflowStepStatus.COMPLETED)
+    total = max(1, run.total_steps or len(run.steps))
+    run.progress_pct = round(100.0 * done / total, 2)
+    db.session.commit()
+
+    publish_run_event(run.id, "run", {
+        "status": run.status.name,
+        "progress_pct": run.progress_pct,
+        "current_step_index": run.current_step_index
+    })
+    # enqueue coordinator
+    advance_run.delay(run.id)
+    return jsonify({"run": _serialize_run(run)})
+
+

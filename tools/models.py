@@ -308,7 +308,8 @@ class WorkflowRunStep(db.Model, TimestampMixin):
     output_manifest      = db.Column(db.JSON, nullable=True)
 
     tool_scan_history_id = db.Column(db.Integer, db.ForeignKey("tool_scan_history.id", ondelete="SET NULL"), nullable=True, index=True)
-
+    celery_task_id       = db.Column(db.String(50), nullable=True, index=True)
+    
     run                  = relationship("WorkflowRun", back_populates="steps")
     tool                 = relationship("Tool", passive_deletes=True)
     tool_scan_history    = relationship("ToolScanHistory", passive_deletes=True)
