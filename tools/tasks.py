@@ -43,7 +43,7 @@ def advance_run(self, run_id: int):
         })
         return {'status': 'paused'}
 
-    # only QUEUED transitions to RUNNING
+    # Only QUEUED can transition to RUNNING here
     if run.status == WorkflowRunStatus.QUEUED:
         run.status = WorkflowRunStatus.RUNNING
         run.started_at = run.started_at or utcnow()
@@ -53,10 +53,9 @@ def advance_run(self, run_id: int):
             "current_step_index": run.current_step_index
         })
 
-    steps = list(run.steps)
-    next_step = next((s for s in steps if s.status in (
-        WorkflowStepStatus.QUEUED, WorkflowStepStatus.FAILED, WorkflowStepStatus.CANCELED
-    )), None)
+    # Next step: ONLY QUEUED (no auto-retry of FAILED/CANCELED)
+    steps = list(run.steps)  # ordered
+    next_step = next((s for s in steps if s.status == WorkflowStepStatus.QUEUED), None)
 
     if not next_step:
         run.status = WorkflowRunStatus.COMPLETED
@@ -72,13 +71,13 @@ def advance_run(self, run_id: int):
 
     publish_run_event(run.id, "dispatch", {"step_index": next_step.step_index})
     res = run_step.delay(run_id, next_step.step_index)
+    # record Celery task id for cancel/revoke
+    next_step.celery_task_id = res.id
+    db.session.commit()
     return {'status': 'dispatched', 'task_id': res.id}
 
 @celery.task(name='tools.tasks.run_step', bind=True)
 def run_step(self, run_id: int, step_index: int):
-    """
-    Executes a single step using the real tool adapter.
-    """
     run = db.session.get(WorkflowRun, run_id)
     if not run:
         log.warning(f'run_step: run {run_id} not found')
@@ -88,6 +87,25 @@ def run_step(self, run_id: int, step_index: int):
     if not step:
         log.warning(f'run_step: step {step_index} not found for run {run_id}')
         return {'status': 'not_found'}
+
+    # If run paused/canceled while we were queued, don't run
+    if run.status == WorkflowRunStatus.CANCELED:
+        step.status = WorkflowStepStatus.CANCELED
+        step.finished_at = utcnow()
+        db.session.commit()
+        publish_run_event(run.id, "step", {"step_index": step_index, "status": "CANCELED"})
+        publish_run_event(run.id, "run", {
+            "status": run.status.name, "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index
+        })
+        return {'status': 'canceled'}
+
+    if run.status == WorkflowRunStatus.PAUSED:
+        # put it back to QUEUED and exit; coordinator won't dispatch while paused
+        step.status = WorkflowStepStatus.QUEUED
+        db.session.commit()
+        publish_run_event(run.id, "step", {"step_index": step_index, "status": "QUEUED"})
+        return {'status': 'paused'}
 
     # mark running and publish
     step.status = WorkflowStepStatus.RUNNING
@@ -157,23 +175,23 @@ def run_step(self, run_id: int, step_index: int):
         db.session.commit()
         run.status = WorkflowRunStatus.FAILED
         db.session.commit()
-        publish_run_event(run.id, "step", {
-            "step_index": step_index, "status": "FAILED"
-        })
+        publish_run_event(run.id, "step", {"step_index": step_index, "status": "FAILED"})
         publish_run_event(run.id, "run", {
-            "status": run.status.name,
-            "progress_pct": run.progress_pct,
+            "status": run.status.name, "progress_pct": run.progress_pct,
             "current_step_index": run.current_step_index
         })
         log.exception(f'run_step: failed step {step_index} on run {run_id}: {e}')
         return {'status': 'failed', 'error': str(e)}
-    
+
+    # guard re-advance if paused/canceled right after commit
     db.session.refresh(run)
     if run.status in (WorkflowRunStatus.PAUSED, WorkflowRunStatus.CANCELED):
         log.info(f'run_step: not advancing (run {run_id} is {run.status.name})')
         return {'status': 'ok'}
-    advance_run.delay(run.id)
-    return {'status': 'ok'}
+
+    if step.status == WorkflowStepStatus.COMPLETED:
+        advance_run.delay(run.id)
+    return {'status': 'ok' if step.status == WorkflowStepStatus.COMPLETED else 'failed'}
 
 
 def _load_adapter_for_slug(slug: str):
