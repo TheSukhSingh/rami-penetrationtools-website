@@ -93,7 +93,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - add meta for author as me
 - add readme file
 - add copyright as this is my code developed
-
+- have timezone for user specific
 
 
 
