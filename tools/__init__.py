@@ -120,5 +120,25 @@ def celery_ping():
     r = ping.delay("hello-celery")
     click.echo(f"queued ping: {r.id}")
 
+@tools_bp.cli.command("wf-run")
+@click.argument("workflow_id", type=int)
+@click.option("--user", "user_id", type=int, default=None, help="Run as user id")
+def wf_run(workflow_id, user_id):
+    """Create a run from a workflow and enqueue it."""
+    from .runner import create_run_from_definition
+    from .tasks import advance_run
+    from extensions import db
+    run = create_run_from_definition(workflow_id, user_id)
+    advance_run.delay(run.id)
+    click.echo(f"Enqueued run #{run.id} for workflow #{workflow_id}")
+
+@tools_bp.cli.command("wf-advance")
+@click.argument("run_id", type=int)
+def wf_advance(run_id):
+    """Manually enqueue the coordinator for a run id."""
+    from .tasks import advance_run
+    r = advance_run.delay(run_id)
+    click.echo(f"advance_run queued: {r.id}")
+
 
 from . import routes
