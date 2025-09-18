@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from flask import render_template, request, jsonify, abort
+from flask import render_template, request, jsonify, abort, Response, stream_with_context
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy import or_
 from tools.models import (
@@ -10,7 +10,8 @@ from tools.models import (
     ErrorReason, 
     Tool,
     ToolCategoryLink,
-    WorkflowDefinition
+    WorkflowDefinition, WorkflowRun, WorkflowRunStep,
+    WorkflowRunStatus, WorkflowStepStatus,
 )
 from extensions import db, limiter
 from . import tools_bp
@@ -26,7 +27,10 @@ from .alltools import (
     naabu, 
     subfinder
 )
-import time
+import json, time
+from .events import _redis, _chan
+
+
 utcnow = lambda: datetime.now(timezone.utc)
 
 @tools_bp.get("/")
@@ -129,43 +133,39 @@ def api_scan():
         result.setdefault('status', 'success')
         result.setdefault('output', '')
 
+    tool_rec = db.session.query(Tool).filter_by(slug=tool).first()
+
     scan = ToolScanHistory(
         user_id            = user_id,
-        tool               = tool,
+        tool_id            = (tool_rec.id if tool_rec else None),
         parameters         = options,
         command            = cmd,
-        raw_output         = (result.get('output') or result.get('message')),
-        scan_success_state = success,
-        filename_by_user   = base_name,
-        filename_by_be     = filename
+        raw_output         = (result.get('output') or result.get('message') or ''),
+        scan_success_state = bool(success),
+        filename_by_user   = base_name or None,
+        filename_by_be     = filename or None,
     )
     db.session.add(scan)
     db.session.flush()
 
-    er_val = result.get('error_reason')
+    er_val  = (result.get('error_reason') or '')
     er_enum = ErrorReason[er_val] if er_val in ErrorReason.__members__ else None
 
     diag = ScanDiagnostics(
-        scan_id        = scan.id,
-        status         = ScanStatus.SUCCESS   if success else ScanStatus.FAILURE,
-        total_domain_count   = result.get('total_domain_count', None),
-        valid_domain_count   = result.get('valid_domain_count', None),
-        invalid_domain_count   = result.get('invalid_domain_count', None),
-        duplicate_domain_count   = result.get('duplicate_domain_count', None),
-        file_size_b    = result.get('file_size_b'),
-        execution_ms   = result.get('execution_ms', int((time.time() - start_req)*1000)),
-        # error_reason   = (ErrorReason[result.get('error_reason')]),
-        # error_reason   = ErrorReason[error_reason_value]
-        #                  if error_reason_value in ErrorReason.__members__
-        #                  else None,
-        error_reason   = er_enum,
-        error_detail   = result.get('error_detail'),
-        value_entered   = result.get('value_entered')
-
+        scan_id                = scan.id,
+        status                 = (ScanStatus.SUCCESS if success else ScanStatus.FAILURE),
+        total_domain_count     = result.get('total_domain_count'),
+        valid_domain_count     = result.get('valid_domain_count'),
+        invalid_domain_count   = result.get('invalid_domain_count'),
+        duplicate_domain_count = result.get('duplicate_domain_count'),
+        file_size_b            = result.get('file_size_b'),
+        execution_ms           = result.get('execution_ms'),
+        error_reason           = er_enum,
+        error_detail           = result.get('error_detail'),
+        value_entered          = result.get('value_entered'),
     )
     db.session.add(diag)
     db.session.commit()
-
     return jsonify(result)
 
 # ─────────────────────────────────────────────────────────
@@ -189,24 +189,22 @@ def _serialize_workflow(wf: WorkflowDefinition):
     }
 
 def _require_owner(wf: WorkflowDefinition, user_id: int):
-    # v1: only the owner may modify/delete. (Admin override can be added later.)
     if (wf.owner_id is not None) and (wf.owner_id != user_id):
-        abort(403, description="Not allowed")
+        return jsonify({"error": "forbidden"}), 403
 
 def _validate_graph(graph: dict):
     if not isinstance(graph, dict):
-        abort(400, description="graph must be an object")
+        return jsonify({"error":"graph must be an object"}), 400
     nodes = graph.get("nodes")
     edges = graph.get("edges")
     if not isinstance(nodes, list) or not isinstance(edges, list):
-        abort(400, description="graph must contain arrays: nodes[], edges[]")
-    # v1: minimal shape checks
+        return jsonify({"error":"graph must contain arrays: nodes[], edges[]"}), 400
     for n in nodes:
         if not isinstance(n, dict) or "tool_slug" not in n:
-            abort(400, description="each node must include tool_slug")
+            return jsonify({"error":"each node must include tool_slug"}), 400
     for e in edges:
         if not isinstance(e, dict) or "from" not in e or "to" not in e:
-            abort(400, description="each edge must include from/to")
+            return jsonify({"error":"each edge must include from/to"}), 400
 
 @tools_bp.post("/api/workflows")
 @jwt_required()
@@ -221,7 +219,9 @@ def create_workflow():
 
     if not title:
         return jsonify({"error": "title is required"}), 400
-    _validate_graph(graph)
+    err = _validate_graph(graph)
+    if err:
+        return err
 
     wf = WorkflowDefinition(
         owner_id=user_id,
@@ -249,17 +249,14 @@ def list_workflows():
     per_page = min(max(int(request.args.get("per_page", 20)), 1), 100)
 
     qry = db.session.query(WorkflowDefinition)
-
     filters = []
     if mine:
         filters.append(WorkflowDefinition.owner_id == user_id)
     if shared:
         filters.append(WorkflowDefinition.is_shared.is_(True))
-
     if filters:
         qry = qry.filter(or_(*filters))
     else:
-        # default: mine=true
         qry = qry.filter(WorkflowDefinition.owner_id == user_id)
 
     if not include_archived:
@@ -272,14 +269,10 @@ def list_workflows():
 
     qry = qry.order_by(WorkflowDefinition.updated_at.desc(), WorkflowDefinition.id.desc())
     page_obj = qry.paginate(page=page, per_page=per_page, error_out=False)
-
-    items = [_serialize_workflow(w) for w in page_obj.items]
     return jsonify({
-        "items": items,
-        "page": page_obj.page,
-        "per_page": page_obj.per_page,
-        "total": page_obj.total,
-        "pages": page_obj.pages
+        "items": [_serialize_workflow(w) for w in page_obj.items],
+        "page": page_obj.page, "per_page": page_obj.per_page,
+        "total": page_obj.total, "pages": page_obj.pages
     })
 
 @tools_bp.get("/api/workflows/<int:wf_id>")
@@ -289,9 +282,8 @@ def get_workflow(wf_id: int):
     wf = db.session.get(WorkflowDefinition, wf_id)
     if not wf:
         return jsonify({"error": "not found"}), 404
-    # view permission: owner or shared
     if (wf.owner_id != user_id) and not wf.is_shared:
-        abort(403, description="Not allowed")
+        return jsonify({"error":"forbidden"}), 403
     return jsonify({"workflow": _serialize_workflow(wf)})
 
 @tools_bp.put("/api/workflows/<int:wf_id>")
@@ -302,7 +294,8 @@ def update_workflow(wf_id: int):
     wf = db.session.get(WorkflowDefinition, wf_id)
     if not wf:
         return jsonify({"error": "not found"}), 404
-    _require_owner(wf, user_id)
+    err = _require_owner(wf, user_id)
+    if err: return err
 
     data = request.get_json(silent=True) or {}
     if "title" in data:
@@ -316,9 +309,9 @@ def update_workflow(wf_id: int):
         wf.is_shared = bool(data.get("is_shared"))
     if "graph" in data:
         graph = data.get("graph") or {}
-        _validate_graph(graph)
+        err = _validate_graph(graph)
+        if err: return err
         wf.graph_json = graph
-        # optional: bump version when graph changes
         wf.version = (wf.version or 1) + 1
 
     db.session.commit()
@@ -332,13 +325,11 @@ def clone_workflow(wf_id: int):
     src = db.session.get(WorkflowDefinition, wf_id)
     if not src:
         return jsonify({"error": "not found"}), 404
-    # view permission to clone: owner or shared
     if (src.owner_id != user_id) and not src.is_shared:
-        abort(403, description="Not allowed")
+        return jsonify({"error":"forbidden"}), 403
 
     data = request.get_json(silent=True) or {}
     new_title = (data.get("title") or f"{src.title} (Copy)").strip()
-
     clone = WorkflowDefinition(
         owner_id=user_id,
         title=new_title,
@@ -361,9 +352,73 @@ def delete_workflow(wf_id: int):
     wf = db.session.get(WorkflowDefinition, wf_id)
     if not wf:
         return jsonify({"error": "not found"}), 404
-    _require_owner(wf, user_id)
+    err = _require_owner(wf, user_id)
+    if err: return err
 
-    # soft-delete (archive)
     wf.is_archived = True
     db.session.commit()
     return ("", 204)
+
+# ─────────────────────────────────────────────────────────
+# SSE: live run events (reattach-safe)
+# ─────────────────────────────────────────────────────────
+
+def _serialize_step(s: WorkflowRunStep):
+    return {
+        "step_index": s.step_index,
+        "tool_id": s.tool_id,
+        "status": s.status.name if s.status else None,
+        "started_at": s.started_at.isoformat() if s.started_at else None,
+        "finished_at": s.finished_at.isoformat() if s.finished_at else None,
+    }
+
+def _serialize_run(run: WorkflowRun):
+    return {
+        "id": run.id,
+        "workflow_id": run.workflow_id,
+        "user_id": run.user_id,
+        "status": run.status.name if run.status else None,
+        "current_step_index": run.current_step_index,
+        "total_steps": run.total_steps,
+        "progress_pct": run.progress_pct,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "steps": [_serialize_step(s) for s in run.steps],
+    }
+
+@tools_bp.get("/api/runs/<int:run_id>/events")
+@jwt_required()
+def run_events(run_id: int):
+    user_id = get_jwt_identity()
+    run = db.session.get(WorkflowRun, run_id)
+    if not run:
+        return jsonify({"error":"not found"}), 404
+    if (run.user_id is not None) and (run.user_id != user_id):
+        return jsonify({"error":"forbidden"}), 403
+
+    def gen():
+        yield "retry: 3000\n\n"  # reconnection delay
+        snap = json.dumps({"type":"snapshot","run": _serialize_run(run)})
+        yield f"event: snapshot\ndata: {snap}\n\n"
+
+        r = _redis()
+        pubsub = r.pubsub()
+        pubsub.subscribe(_chan(run_id))
+        last_ping = time.time()
+        try:
+            for msg in pubsub.listen():
+                now = time.time()
+                if now - last_ping > 15:
+                    last_ping = now
+                    yield ": ping\n\n"
+                if msg.get("type") != "message":
+                    continue
+                yield f"event: update\ndata: {msg['data']}\n\n"
+        finally:
+            try: pubsub.close()
+            except: pass
+
+    resp = Response(stream_with_context(gen()), mimetype="text/event-stream")
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp

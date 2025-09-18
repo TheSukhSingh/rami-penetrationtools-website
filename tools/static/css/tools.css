@@ -1638,3 +1638,19 @@ body {
 }
 .connection-handle.input  { left: -6px; }
 .connection-handle.output { right: -6px; }
+.workflow-box.node-running  { outline: 2px solid var(--cyber-cyan); box-shadow: 0 0 16px rgba(0,255,224,.25); }
+.workflow-box.node-complete { outline: 2px solid #58d68d; box-shadow: 0 0 16px rgba(88,214,141,.25); }
+.workflow-box.node-failed   { outline: 2px solid #ff6b6b; box-shadow: 0 0 16px rgba(255,107,107,.3); }
+.workflow-node { position: absolute; will-change: transform; }
+.connection-handle {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid var(--cyber-cyan);
+  background: rgba(0,255,224,.12);
+  position: absolute; top: 50%; transform: translateY(-50%);
+  pointer-events: auto;
+}
+.connection-handle.input  { left: -6px; }
+.connection-handle.output { right: -6px; }
+.workflow-box.node-running  { outline: 2px solid var(--cyber-cyan); box-shadow: 0 0 16px rgba(0,255,224,.25); }
+.workflow-box.node-complete { outline: 2px solid #58d68d; box-shadow: 0 0 16px rgba(88,214,141,.25); }
+.workflow-box.node-failed   { outline: 2px solid #ff6b6b; box-shadow: 0 0 16px rgba(255,107,107,.3); }

@@ -12,6 +12,7 @@ from .models import (
 from datetime import datetime, timezone
 from .runner import create_run_from_definition
 from flask import current_app
+from .events import publish_run_event
 
 utcnow = lambda: datetime.now(timezone.utc)
 log = get_task_logger(__name__)
@@ -32,14 +33,19 @@ def advance_run(self, run_id: int):
         log.warning(f'advance_run: run {run_id} not found')
         return {'status': 'not_found'}
 
-    # if first time, mark running
+    # first activation
     if run.status in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.PAUSED):
         run.status = WorkflowRunStatus.RUNNING
         run.started_at = run.started_at or utcnow()
         db.session.commit()
+        publish_run_event(run.id, "run", {
+            "status": run.status.name,
+            "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index,
+        })
 
     # find next step
-    steps = list(run.steps)  # ordered by step_index (see model)
+    steps = list(run.steps)  # ordered by step_index
     next_step = None
     for s in steps:
         if s.status in (WorkflowStepStatus.QUEUED, WorkflowStepStatus.FAILED, WorkflowStepStatus.CANCELED):
@@ -47,16 +53,19 @@ def advance_run(self, run_id: int):
             break
 
     if not next_step:
-        # all done
         run.status = WorkflowRunStatus.COMPLETED
         run.finished_at = utcnow()
         run.progress_pct = 100.0
         db.session.commit()
+        publish_run_event(run.id, "run", {
+            "status": run.status.name,
+            "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index,
+        })
         log.info(f'advance_run: run {run_id} completed')
         return {'status': 'completed'}
 
-    # dispatch the concrete step
-    log.info(f'advance_run: dispatch step {next_step.step_index} for run {run_id}')
+    publish_run_event(run.id, "dispatch", {"step_index": next_step.step_index})
     res = run_step.delay(run_id, next_step.step_index)
     return {'status': 'dispatched', 'task_id': res.id}
 
@@ -75,10 +84,13 @@ def run_step(self, run_id: int, step_index: int):
         log.warning(f'run_step: step {step_index} not found for run {run_id}')
         return {'status': 'not_found'}
 
-    # mark running
+    # mark running and publish
     step.status = WorkflowStepStatus.RUNNING
     step.started_at = utcnow()
     db.session.commit()
+    publish_run_event(run.id, "step", {
+        "step_index": step_index, "status": "RUNNING"
+    })
 
     prev_output = {}
     if step_index > 0:
@@ -90,41 +102,48 @@ def run_step(self, run_id: int, step_index: int):
         if not tool or not tool.enabled:
             raise RuntimeError("tool disabled or missing")
         slug = tool.slug
-        adapter = _load_adapter_for_slug(slug)
 
+        # load adapter + prepare options
+        mod_name = slug.replace('-', '_')
+        adapter = import_module(f".alltools.{mod_name}", package="tools")
         options = _prep_options_for_tool(step, prev_output, run.user_id, current_app.config)
 
         # Execute tool
         result = adapter.run_scan(options) or {}
         success = (result.get("status") in ("success","ok"))
 
-        # Persist scan history + diagnostics
+        # Persist scan + diagnostics
         command_hint = f"{slug} (workflow step {step_index})"
-        from .models import ToolScanHistory  # avoid circulars at import time
         scan = _persist_scan_result(db, ToolScanHistory, ScanDiagnostics, ScanStatus, ErrorReason,
                                     tool=tool, user_id=run.user_id, result=result, command_hint=command_hint)
 
-        # Link step to the scan, save output manifest for the next step
         step.tool_scan_history_id = scan.id
         step.output_manifest = result
-
-        if success:
-            step.status = WorkflowStepStatus.COMPLETED
-        else:
-            step.status = WorkflowStepStatus.FAILED
-            run.status = WorkflowRunStatus.FAILED
-
+        step.status = WorkflowStepStatus.COMPLETED if success else WorkflowStepStatus.FAILED
         step.finished_at = utcnow()
         db.session.commit()
 
-        # progress: completed steps / total
+        # progress
         total = max(1, run.total_steps or len(run.steps))
         done = sum(1 for x in run.steps if x.status == WorkflowStepStatus.COMPLETED)
-        run.current_step_index = step_index + 1 if step_index + 1 < total else step_index
+        run.current_step_index = min(step_index + 1, total - 1)
+        if not success:
+            run.status = WorkflowRunStatus.FAILED
         run.progress_pct = round(100.0 * done / total, 2)
         db.session.commit()
 
-        log.info(f'run_step: {"completed" if success else "failed"} step {step_index} on run {run_id} [{run.progress_pct}%]')
+        # publish state after commit
+        publish_run_event(run.id, "step", {
+            "step_index": step_index,
+            "status": step.status.name,
+            "tool_id": step.tool_id,
+            "tool_scan_history_id": step.tool_scan_history_id,
+        })
+        publish_run_event(run.id, "run", {
+            "status": run.status.name,
+            "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index
+        })
 
     except Exception as e:
         db.session.rollback()
@@ -133,10 +152,17 @@ def run_step(self, run_id: int, step_index: int):
         db.session.commit()
         run.status = WorkflowRunStatus.FAILED
         db.session.commit()
+        publish_run_event(run.id, "step", {
+            "step_index": step_index, "status": "FAILED"
+        })
+        publish_run_event(run.id, "run", {
+            "status": run.status.name,
+            "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index
+        })
         log.exception(f'run_step: failed step {step_index} on run {run_id}: {e}')
         return {'status': 'failed', 'error': str(e)}
 
-    # If success, advance; if failed, coordinator will mark run end on next tick
     if step.status == WorkflowStepStatus.COMPLETED:
         advance_run.delay(run.id)
     return {'status': 'ok' if step.status == WorkflowStepStatus.COMPLETED else 'failed'}

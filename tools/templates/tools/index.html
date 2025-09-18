@@ -42,14 +42,19 @@
           <span id="toolCount">0 tools</span>
         </div>
       </div>
-        <div class="canvas-actions" style="display:flex; gap:8px; margin-left:auto; align-items:center;">
-          <button id="wfSaveBtn"   class="glass-button">Save</button>
-          <button id="wfSaveAsBtn" class="glass-button">Save as New</button>
-          <button id="wfCloneBtn"  class="glass-button">Clone</button>
-          <input id="wfIdInput" class="form-input" placeholder="Workflow ID" style="width:120px;">
-          <button id="wfLoadBtn"   class="glass-button">Load</button>
-          <span id="wfStatus" style="opacity:.7; font-size:.9rem;"></span>
-        </div>
+<div class="canvas-actions" style="display:flex; gap:8px; margin-left:auto; align-items:center;">
+  <button id="wfSaveBtn"   class="glass-button">Save</button>
+  <button id="wfSaveAsBtn" class="glass-button">Save as New</button>
+  <button id="wfCloneBtn"  class="glass-button">Clone</button>
+  <input id="wfIdInput" class="form-input" placeholder="Workflow ID" style="width:120px;">
+  <button id="wfLoadBtn"   class="glass-button">Load</button>
+  <span style="width:12px"></span>
+  <input id="runIdInput" class="form-input" placeholder="Run ID" style="width:100px;">
+  <button id="runAttachBtn" class="glass-button">Attach</button>
+  <span id="wfStatus" style="opacity:.7; font-size:.9rem;"></span>
+</div>
+
+
       <div class="canvas-container">
         <div class="canvas glass" id="canvas">
           <div id="canvasContent" class="canvas-content">
