@@ -113,4 +113,12 @@ def wf_sample():
 
     click.echo(f"Created workflow #{wf.id} with run #{run.id} and 2 steps.")
 
+@tools_bp.cli.command("celery-ping")
+def celery_ping():
+    """Queue a ping task to verify celery worker wiring."""
+    from .tasks import ping
+    r = ping.delay("hello-celery")
+    click.echo(f"queued ping: {r.id}")
+
+
 from . import routes

@@ -99,7 +99,12 @@ def create_app():
         "TRUSTED_DEVICE_DAYS": 30,
     })
 
-
+    app.config.setdefault('CELERY_BROKER_URL', os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0'))
+    app.config.setdefault('CELERY_RESULT_BACKEND', os.getenv('CELERY_RESULT_BACKEND', 'redis://127.0.0.1:6379/1'))
+    app.config.setdefault('CELERY_TIMEZONE', os.getenv('CELERY_TIMEZONE', 'UTC'))
+    app.config.setdefault('CELERY_TASK_ROUTES', {
+        'tools.tasks.*': {'queue': 'tools_default'}
+    })
 
     os.makedirs(app.config['UPLOAD_INPUT_FOLDER'],  exist_ok=True)
     os.makedirs(app.config['UPLOAD_OUTPUT_FOLDER'], exist_ok=True)
