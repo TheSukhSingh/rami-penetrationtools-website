@@ -1654,3 +1654,42 @@ body {
 .workflow-box.node-running  { outline: 2px solid var(--cyber-cyan); box-shadow: 0 0 16px rgba(0,255,224,.25); }
 .workflow-box.node-complete { outline: 2px solid #58d68d; box-shadow: 0 0 16px rgba(88,214,141,.25); }
 .workflow-box.node-failed   { outline: 2px solid #ff6b6b; box-shadow: 0 0 16px rgba(255,107,107,.3); }
+/* progress */
+.run-progress { position: relative; height: 10px; background: rgba(255,255,255,0.06); border-radius: 999px; margin: 10px 0 6px; overflow: hidden; }
+.run-progress .bar { height: 100%; width: 0%; background: var(--cyber-cyan); transition: width .25s ease; }
+.run-progress .label { position: absolute; top: -22px; right: 0; font-size: .85rem; opacity: .8; }
+
+/* separators & buttons */
+.sep { width: 12px; display: inline-block; }
+.primary-button { padding: 6px 10px; border-radius: 10px; background: var(--cyber-cyan); color: #000; border: none; cursor: pointer; }
+.danger-button { padding: 6px 10px; border-radius: 10px; background: #ff6b6b; color: #000; border: none; cursor: pointer; }
+.icon-btn { background: transparent; border: 1px solid rgba(255,255,255,.15); padding: 4px 8px; border-radius: 8px; cursor: pointer; color: inherit; }
+
+/* presets drawer (right) */
+.drawer { position: fixed; top: 0; right: 0; width: 420px; height: 100%; background: rgba(13,17,23,.95); backdrop-filter: blur(6px);
+  border-left: 1px solid rgba(255,255,255,.08); box-shadow: -12px 0 40px rgba(0,0,0,.35); z-index: 50; transform: translateX(0); transition: transform .25s ease; }
+.drawer.hidden { transform: translateX(100%); }
+.drawer-header, .sidepanel-header, .bottom-drawer .drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid rgba(255,255,255,.08);}
+.drawer-body, .sidepanel-body { padding: 12px; overflow: auto; height: calc(100% - 56px); }
+.presets-list .preset-card { border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 10px; margin-bottom: 8px; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.presets-list .title { font-weight: 600; }
+.presets-list .meta { font-size: .85rem; opacity: .75; }
+.presets-list .actions button { margin-left: 6px; }
+
+/* sidepanel (node config) */
+.sidepanel { position: fixed; top: 0; right: 420px; width: 360px; height: 100%; background: rgba(13,17,23,.95);
+  border-left: 1px solid rgba(255,255,255,.08); box-shadow: -12px 0 40px rgba(0,0,0,.35); z-index: 49; transform: translateX(0); transition: transform .25s ease; }
+.sidepanel.hidden { transform: translateX(100%); }
+.field-label { display:block; margin: 8px 0 6px; font-size:.9rem; opacity:.85; }
+.codearea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9rem; background: rgba(255,255,255,.04); color: #e6edf3; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 8px; }
+
+/* bottom output drawer */
+.bottom-drawer { position: fixed; left: 0; right: 0; bottom: 0; height: 38vh; background: rgba(13,17,23,.96); border-top: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 -12px 40px rgba(0,0,0,.35); z-index: 51; transform: translateY(0); transition: transform .25s ease;}
+.bottom-drawer.hidden { transform: translateY(100%); }
+.pre { white-space: pre-wrap; background: rgba(255,255,255,.04); padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.08); height: calc(100% - 56px); overflow: auto; }
+.links a { margin-right: 8px; font-size: .9rem; }
+.row { display:flex; gap:8px; align-items:center; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.small { font-size: .88rem; }
+.muted { opacity:.75; }
