@@ -28,8 +28,9 @@ from .alltools import (
     subfinder
 )
 import json, time
-from .events import _redis, _chan
-
+from .events import _redis, _chan, publish_run_event
+from .tasks import advance_run
+from .runner import create_run_from_definition
 
 utcnow = lambda: datetime.now(timezone.utc)
 
@@ -362,7 +363,6 @@ def delete_workflow(wf_id: int):
 # ─────────────────────────────────────────────────────────
 # SSE: live run events (reattach-safe)
 # ─────────────────────────────────────────────────────────
-
 def _serialize_step(s: WorkflowRunStep):
     return {
         "step_index": s.step_index,
@@ -370,6 +370,7 @@ def _serialize_step(s: WorkflowRunStep):
         "status": s.status.name if s.status else None,
         "started_at": s.started_at.isoformat() if s.started_at else None,
         "finished_at": s.finished_at.isoformat() if s.finished_at else None,
+        "tool_scan_history_id": s.tool_scan_history_id,
     }
 
 def _serialize_run(run: WorkflowRun):
@@ -385,6 +386,7 @@ def _serialize_run(run: WorkflowRun):
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
         "steps": [_serialize_step(s) for s in run.steps],
     }
+
 
 @tools_bp.get("/api/runs/<int:run_id>/events")
 @jwt_required()
@@ -422,3 +424,161 @@ def run_events(run_id: int):
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
+
+# ─────────────────────────────────────────────────────────
+# Runs API (start / get / list / pause / resume / cancel / step detail)
+# ─────────────────────────────────────────────────────────
+
+@tools_bp.post("/api/workflows/<int:wf_id>/run")
+@jwt_required()
+@limiter.limit("10/minute")
+def start_run_api(wf_id: int):
+    user_id = get_jwt_identity()
+
+    # permission: owner or shared (reuse your workflow get)
+    wf = db.session.get(WorkflowDefinition, wf_id)
+    if not wf:
+        return jsonify({"error": "not found"}), 404
+    if (wf.owner_id != user_id) and not wf.is_shared:
+        return jsonify({"error":"forbidden"}), 403
+
+    run = create_run_from_definition(wf_id, user_id)
+    # kick the coordinator
+    advance_run.delay(run.id)
+    publish_run_event(run.id, "run", {
+        "status": run.status.name,
+        "progress_pct": run.progress_pct,
+        "current_step_index": run.current_step_index
+    })
+    return jsonify({"run": _serialize_run(run)}), 201
+
+
+@tools_bp.get("/api/runs/<int:run_id>")
+@jwt_required()
+def get_run_api(run_id: int):
+    user_id = get_jwt_identity()
+    run = db.session.get(WorkflowRun, run_id)
+    if not run: return jsonify({"error":"not found"}), 404
+    if (run.user_id is not None) and (run.user_id != user_id):
+        return jsonify({"error":"forbidden"}), 403
+    return jsonify({"run": _serialize_run(run)})
+
+
+@tools_bp.get("/api/runs")
+@jwt_required()
+def list_runs_api():
+    user_id = get_jwt_identity()
+    mine = request.args.get("mine", "true").lower() in ("1","true","yes")
+    status = (request.args.get("status") or "").upper().strip()
+    wf_id = request.args.get("workflow_id", type=int)
+    page = max(int(request.args.get("page", 1)), 1)
+    per_page = min(max(int(request.args.get("per_page", 20)), 1), 100)
+
+    qry = db.session.query(WorkflowRun)
+    if mine:
+        qry = qry.filter(WorkflowRun.user_id == user_id)
+    if wf_id:
+        qry = qry.filter(WorkflowRun.workflow_id == wf_id)
+    if status and status in WorkflowRunStatus.__members__:
+        qry = qry.filter(WorkflowRun.status == WorkflowRunStatus[status])
+
+    qry = qry.order_by(WorkflowRun.updated_at.desc(), WorkflowRun.id.desc())
+    page_obj = qry.paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        "items": [_serialize_run(r) for r in page_obj.items],
+        "page": page_obj.page, "per_page": page_obj.per_page,
+        "total": page_obj.total, "pages": page_obj.pages
+    })
+
+
+@tools_bp.get("/api/runs/<int:run_id>/steps/<int:step_index>")
+@jwt_required()
+def get_run_step_api(run_id: int, step_index: int):
+    user_id = get_jwt_identity()
+    run = db.session.get(WorkflowRun, run_id)
+    if not run: return jsonify({"error":"not found"}), 404
+    if (run.user_id is not None) and (run.user_id != user_id):
+        return jsonify({"error":"forbidden"}), 403
+    step = next((s for s in run.steps if s.step_index == step_index), None)
+    if not step: return jsonify({"error":"step not found"}), 404
+    data = _serialize_step(step)
+    # include manifests (useful for debugging)
+    data["input_manifest"] = step.input_manifest
+    data["output_manifest"] = step.output_manifest
+    return jsonify({"step": data})
+
+
+@tools_bp.post("/api/runs/<int:run_id>/pause")
+@jwt_required()
+@limiter.limit("15/minute")
+def pause_run_api(run_id: int):
+    user_id = get_jwt_identity()
+    run = db.session.get(WorkflowRun, run_id)
+    if not run: return jsonify({"error":"not found"}), 404
+    if (run.user_id is not None) and (run.user_id != user_id):
+        return jsonify({"error":"forbidden"}), 403
+
+    if run.status in (WorkflowRunStatus.COMPLETED, WorkflowRunStatus.CANCELED, WorkflowRunStatus.FAILED):
+        return jsonify({"error":"run is already finished"}), 400
+
+    run.status = WorkflowRunStatus.PAUSED
+    db.session.commit()
+    publish_run_event(run.id, "run", {
+        "status": run.status.name,
+        "progress_pct": run.progress_pct,
+        "current_step_index": run.current_step_index
+    })
+    return jsonify({"run": _serialize_run(run)})
+
+
+@tools_bp.post("/api/runs/<int:run_id>/resume")
+@jwt_required()
+@limiter.limit("15/minute")
+def resume_run_api(run_id: int):
+    user_id = get_jwt_identity()
+    run = db.session.get(WorkflowRun, run_id)
+    if not run: return jsonify({"error":"not found"}), 404
+    if (run.user_id is not None) and (run.user_id != user_id):
+        return jsonify({"error":"forbidden"}), 403
+
+    if run.status not in (WorkflowRunStatus.PAUSED, WorkflowRunStatus.QUEUED):
+        return jsonify({"error":"run is not paused/queued"}), 400
+
+    # set QUEUED and let coordinator set RUNNING & dispatch
+    run.status = WorkflowRunStatus.QUEUED
+    db.session.commit()
+    publish_run_event(run.id, "run", {
+        "status": run.status.name,
+        "progress_pct": run.progress_pct,
+        "current_step_index": run.current_step_index
+    })
+    advance_run.delay(run.id)
+    return jsonify({"run": _serialize_run(run)})
+
+
+@tools_bp.post("/api/runs/<int:run_id>/cancel")
+@jwt_required()
+@limiter.limit("15/minute")
+def cancel_run_api(run_id: int):
+    user_id = get_jwt_identity()
+    run = db.session.get(WorkflowRun, run_id)
+    if not run: return jsonify({"error":"not found"}), 404
+    if (run.user_id is not None) and (run.user_id != user_id):
+        return jsonify({"error":"forbidden"}), 403
+
+    if run.status in (WorkflowRunStatus.COMPLETED, WorkflowRunStatus.CANCELED):
+        return jsonify({"error":"run already finished"}), 400
+
+    run.status = WorkflowRunStatus.CANCELED
+    # optional: mark remaining QUEUED steps as CANCELED now
+    for s in run.steps:
+        if s.status in (WorkflowStepStatus.QUEUED,):
+            s.status = WorkflowStepStatus.CANCELED
+    db.session.commit()
+
+    publish_run_event(run.id, "run", {
+        "status": run.status.name,
+        "progress_pct": run.progress_pct,
+        "current_step_index": run.current_step_index
+    })
+    return jsonify({"run": _serialize_run(run)})
