@@ -169,30 +169,31 @@ async function loadAndRenderLibrary() {
     const id = genId('node_');
 
     const nodeEl = document.createElement('div');
-    nodeEl.className = 'workflow-node';
+    nodeEl.className = 'workflow-node workflow-box filled';nodeEl.style.position = 'absolute';
     nodeEl.dataset.nodeId = id;
-    nodeEl.innerHTML = `
-      <div class="node-header">
-        <div class="node-title">${toolMeta.name}</div>
-        <div class="node-actions">
-          <button class="node-action-btn delete" title="Delete">✕</button>
-        </div>
-      </div>
-      <div class="node-body">
-        <div class="node-icon">${toolMeta.name[0]?.toUpperCase() ?? 'T'}</div>
-        <div class="node-info">
-          <div class="node-description">${toolMeta.desc || ''}</div>
-          <div class="node-meta">
-            <span class="node-time">${toolMeta.time || ''}</span>
-            <span class="node-type">${toolMeta.type || ''}</span>
+
+  nodeEl.innerHTML = `
+    <div class="box-content">
+      <div class="box-tool">
+        <div class="box-tool-header">
+          <div class="box-tool-info">
+            <div class="box-tool-icon">${(toolMeta.name || 'T').charAt(0).toUpperCase()}</div>
+            <div class="box-tool-name">${toolMeta.name || ''}</div>
+          </div>
+          <div class="box-tool-actions">
+            <button class="box-action-btn delete" title="Delete">✕</button>
           </div>
         </div>
+        <div class="box-tool-desc">${toolMeta.desc || ''}</div>
+        <div class="box-tool-time">${toolMeta.time || ''} ${(toolMeta.type || '').toUpperCase()}</div>
       </div>
-      <div class="connection-handles">
-        <div class="connection-handle input" data-handle="input"></div>
-        <div class="connection-handle output" data-handle="output"></div>
-      </div>
-    `;
+    </div>
+    <div class="connection-handles">
+      <div class="connection-handle input" data-handle="input"></div>
+      <div class="connection-handle output" data-handle="output"></div>
+    </div>
+  `;
+
     el.boxes.appendChild(nodeEl);
 
     // Cache metrics once
@@ -211,7 +212,7 @@ async function loadAndRenderLibrary() {
 
     // Events
     nodeEl.addEventListener('pointerdown', (e) => onNodePointerDown(e, node));
-    nodeEl.querySelector('.node-action-btn.delete')?.addEventListener('click', () => {
+    nodeEl.querySelector('.box-action-btn.delete')?.addEventListener('click', () => {
       deleteNode(id);
       updateChainValidity();
     });
@@ -654,7 +655,6 @@ async function loadAndRenderLibrary() {
   // ---------- Boot ----------
   async  function boot() {
     await loadAndRenderLibrary(); 
-    setupLibrary();
     requestAnimationFrame(render);
     updateChainValidity?.();
     log('Chain rules active: ≤1 input & ≤1 output per node, single start & end, linear path only.');

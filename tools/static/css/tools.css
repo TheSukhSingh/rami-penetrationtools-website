@@ -1625,3 +1625,16 @@ body {
   stroke: var(--warning);
   stroke-width: 3;
 }
+/* free-positioned nodes on the canvas */
+.workflow-node { position: absolute; will-change: transform; }
+
+/* minimalist handles so you can connect nodes */
+.connection-handle {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid var(--cyber-cyan);
+  background: rgba(0,255,224,.12);
+  position: absolute; top: 50%; transform: translateY(-50%);
+  pointer-events: auto;
+}
+.connection-handle.input  { left: -6px; }
+.connection-handle.output { right: -6px; }
