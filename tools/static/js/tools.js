@@ -27,8 +27,18 @@ window.__hackerTools__ = { renderVersion: Date.now() };
     connecting: null,    // { fromId, rubber?: SVGPathElement }
     idCounter: 1,
     selectedEdgeId: null,
-  };
+    currentWorkflowId: null,
+    dirty: false,
+    autosaveTimer: null,
+    catalogBySlug: new Map(), // slug -> {slug,name,desc,type,time}
 
+  };
+  function getCookie(name) {
+    return document.cookie.split('; ').find(r => r.startsWith(name + '='))?.split('=')[1] || '';
+  }
+  function getCsrf() {
+    return decodeURIComponent(getCookie('csrf_access_token') || '');
+  }
   const genId = (prefix='n') => `${prefix}${state.idCounter++}`;
 
   // ---------- Math: world/screen transforms ----------
@@ -105,7 +115,8 @@ async function loadAndRenderLibrary() {
     return;
   }
 
-  categories.forEach(cat => {
+  state.catalogBySlug.clear();
+ categories.forEach(cat => {
     const sec = document.createElement('div');
     sec.className = 'category-section';
 
@@ -127,6 +138,8 @@ async function loadAndRenderLibrary() {
     list.className = 'category-tools active';
 
     (cat.tools || []).forEach(t => {
+      const slug = t.slug || t.key || t.name;
+      state.catalogBySlug.set(slug, { slug, name: t.name || slug, desc: t.desc || '', type: t.type || '', time: t.time || '' });
       const item = document.createElement('div');
       item.className = 'tool-item';
       item.dataset.toolKey  = t.slug || t.key || t.name;
@@ -267,6 +280,79 @@ async function loadAndRenderLibrary() {
     }
     return false;
   }
+  // ---------- Graph <-> Canvas ----------
+  function serializeGraph() {
+    // nodes: tool_slug, id, x, y, config
+    const nodes = [...state.nodes.values()].map(n => ({
+      id: n.id,
+      tool_slug: n.toolKey,
+      x: n.x, y: n.y,
+      config: n.config || {}
+    }));
+    // edges: from, to
+    const edges = [...state.edges.values()].map(e => ({ from: e.fromId, to: e.toId }));
+    return { nodes, edges };
+  }
+
+  function clearCanvas() {
+    // remove edges
+    [...state.edges.values()].forEach(e => e?.pathEl?.parentNode?.removeChild(e.pathEl));
+    state.edges.clear();
+    // remove nodes
+    [...state.nodes.values()].forEach(n => n?.el?.parentNode?.removeChild(n.el));
+    state.nodes.clear();
+    state.needsRender = true;
+    updateChainValidity();
+  }
+
+  function createNodeFromSaved(savedNode) {
+    const meta = state.catalogBySlug.get(savedNode.tool_slug) || {
+      slug: savedNode.tool_slug,
+      name: savedNode.tool_slug,
+      desc: '',
+      type: '',
+      time: ''
+    };
+    // Reuse your existing node creation, but keep the saved id
+    const node = createNodeFromTool(meta, savedNode.x, savedNode.y);
+    // overwrite auto-generated id with saved id for stable edges
+    if (node.id !== savedNode.id) {
+      const oldId = node.id;
+      node.id = savedNode.id;
+      node.el.dataset.nodeId = node.id;
+      // fix any edge records pointing to oldId (none yet for brand new node)
+      state.nodes.delete(oldId);
+      state.nodes.set(node.id, node);
+    }
+    node.config = savedNode.config || {};
+    return node;
+  }
+
+  function createEdgeByIds(fromId, toId) {
+    // mirrors finishConnect() but without the rubberband checks (assumes valid)
+    const id = genId('edge_');
+    const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    pathEl.addEventListener('click', () => selectEdge(id));
+    el.svg.appendChild(pathEl);
+    state.edges.set(id, { id, fromId, toId, pathEl });
+    state.needsRender = true;
+  }
+
+  function renderGraph(graph) {
+    clearCanvas();
+    const nodesById = new Map();
+    (graph.nodes || []).forEach(n => {
+      const node = createNodeFromSaved(n);
+      nodesById.set(node.id, node);
+    });
+    (graph.edges || []).forEach(e => {
+      if (nodesById.has(e.from) && nodesById.has(e.to)) {
+        createEdgeByIds(e.from, e.to);
+      }
+    });
+    updateChainValidity();
+    log(`Workflow loaded: ${nodesById.size} nodes, ${state.edges.size} edges`);
+  }
 
   function chainValidity() {
     const n = state.nodes.size;
@@ -363,6 +449,7 @@ async function loadAndRenderLibrary() {
     state.connecting = null;
     state.needsRender = true;
     updateChainValidity();
+    markDirty();
   }
 
   function cancelConnect() {
@@ -379,6 +466,7 @@ async function loadAndRenderLibrary() {
     if (state.selectedEdgeId === id) state.selectedEdgeId = null;
     state.edges.delete(id);
     state.needsRender = true;
+    markDirty();
   }
 
   function selectEdge(id) {
@@ -452,6 +540,7 @@ async function loadAndRenderLibrary() {
       node.el.removeEventListener('pointercancel', onNodePointerUp);
     }
     state.draggingNode = null;
+    markDirty();
   }
 
   // ---------- Handle clicks (start/finish connect) ----------
@@ -468,6 +557,20 @@ async function loadAndRenderLibrary() {
       finishConnect(node.id);
       log(`Connected → ${node.name}`);
     }
+  }
+  function markDirty() {
+    state.dirty = true;
+    setStatus('Unsaved changes…');
+    if (state.autosaveTimer) clearTimeout(state.autosaveTimer);
+    // autosave only if we have a current workflow
+    state.autosaveTimer = setTimeout(() => {
+      if (state.currentWorkflowId) saveWorkflow(false /*asNew*/);
+    }, 1000);
+  }
+
+  function setStatus(msg) {
+    const s = document.getElementById('wfStatus');
+    if (s) s.textContent = msg || '';
   }
 
   // ---------- Canvas pan / zoom ----------
@@ -503,6 +606,75 @@ async function loadAndRenderLibrary() {
     el.canvas.removeEventListener('pointerup', onCanvasPointerUp);
     el.canvas.removeEventListener('pointercancel', onCanvasPointerUp);
     state.panning = null;
+  }
+  async function apiFetch(url, opts={}) {
+    const headers = new Headers(opts.headers || {});
+    headers.set('Content-Type','application/json');
+    headers.set('X-CSRF-Token', getCsrf());
+    const res = await fetch(url, { credentials:'same-origin', ...opts, headers });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(`HTTP ${res.status}: ${msg}`);
+    }
+    return res.json().catch(() => ({}));
+  }
+
+  async function saveWorkflow(asNew=false) {
+    const graph = serializeGraph();
+    try {
+      if (asNew || !state.currentWorkflowId) {
+        const title = prompt('Workflow title?')?.trim();
+        if (!title) { showToast('Save cancelled'); return; }
+        const body = { title, description:'', is_shared:false, graph };
+        const data = await apiFetch('/tools/api/workflows', { method:'POST', body: JSON.stringify(body) });
+        state.currentWorkflowId = data?.workflow?.id;
+        state.dirty = false;
+        setStatus(`Saved as #${state.currentWorkflowId}`);
+        showToast(`Saved new workflow #${state.currentWorkflowId}`);
+      } else {
+        const body = { graph };
+        const id = state.currentWorkflowId;
+        const data = await apiFetch(`/tools/api/workflows/${id}`, { method:'PUT', body: JSON.stringify(body) });
+        state.dirty = false;
+        setStatus(`Saved #${id} (v${data?.workflow?.version ?? ''})`);
+      }
+    } catch (e) {
+      console.error(e);
+      showToast(`Save failed: ${e.message}`);
+      setStatus('Save failed');
+    }
+  }
+
+  async function cloneWorkflow() {
+    if (!state.currentWorkflowId) { showToast('Load a workflow first'); return; }
+    try {
+      const title = prompt('Clone title?', 'Clone of ' + (state.currentWorkflowId))?.trim();
+      const data = await apiFetch(`/tools/api/workflows/${state.currentWorkflowId}/clone`, {
+        method:'POST', body: JSON.stringify({ title })
+      });
+      state.currentWorkflowId = data?.workflow?.id;
+      setStatus(`Cloned to #${state.currentWorkflowId}`);
+      showToast(`Cloned → #${state.currentWorkflowId}`);
+    } catch (e) {
+      console.error(e);
+      showToast(`Clone failed: ${e.message}`);
+    }
+  }
+
+  async function loadWorkflow(id) {
+    try {
+      const data = await apiFetch(`/tools/api/workflows/${id}`);
+      const wf = data?.workflow;
+      if (!wf) throw new Error('No workflow in response');
+      state.currentWorkflowId = wf.id;
+      renderGraph(wf.graph || {nodes:[], edges:[]});
+      state.dirty = false;
+      setStatus(`Loaded #${wf.id} (v${wf.version})`);
+    } catch (e) {
+      console.error(e);
+      showToast(`Load failed: ${e.message}`);
+      setStatus('Load failed');
+    }
   }
 
   function onWheelZoom(e) {
@@ -659,6 +831,23 @@ async function loadAndRenderLibrary() {
     updateChainValidity?.();
     log('Chain rules active: ≤1 input & ≤1 output per node, single start & end, linear path only.');
     log('Tip: Select an edge by clicking it; press Delete to remove.');
+    // Buttons
+    document.getElementById('wfSaveBtn')?.addEventListener('click', () => saveWorkflow(false));
+    document.getElementById('wfSaveAsBtn')?.addEventListener('click', () => saveWorkflow(true));
+    document.getElementById('wfCloneBtn')?.addEventListener('click', () => cloneWorkflow());
+    document.getElementById('wfLoadBtn')?.addEventListener('click', () => {
+      const idStr = document.getElementById('wfIdInput')?.value?.trim();
+      const id = parseInt(idStr, 10);
+      if (!id) { showToast('Enter a valid ID'); return; }
+      loadWorkflow(id);
+    });
+
+    // Load by URL ?wf=ID
+    const params = new URLSearchParams(location.search);
+    const wfParam = params.get('wf');
+    if (wfParam && /^\d+$/.test(wfParam)) {
+      loadWorkflow(parseInt(wfParam,10));
+    }
   }
 
   boot();
