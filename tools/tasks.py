@@ -24,33 +24,39 @@ def ping(msg='ok'):
 
 @celery.task(name='tools.tasks.advance_run', bind=True)
 def advance_run(self, run_id: int):
-    """
-    Coordinator: picks next QUEUED step, dispatches run_step, updates run status.
-    v1: sequential, linear chains.
-    """
     run = db.session.get(WorkflowRun, run_id)
     if not run:
         log.warning(f'advance_run: run {run_id} not found')
         return {'status': 'not_found'}
 
-    # first activation
-    if run.status in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.PAUSED):
+    # Respect paused/canceled immediately
+    if run.status == WorkflowRunStatus.CANCELED:
+        publish_run_event(run.id, "run", {
+            "status": run.status.name, "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index
+        })
+        return {'status': 'canceled'}
+    if run.status == WorkflowRunStatus.PAUSED:
+        publish_run_event(run.id, "run", {
+            "status": run.status.name, "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index
+        })
+        return {'status': 'paused'}
+
+    # only QUEUED transitions to RUNNING
+    if run.status == WorkflowRunStatus.QUEUED:
         run.status = WorkflowRunStatus.RUNNING
         run.started_at = run.started_at or utcnow()
         db.session.commit()
         publish_run_event(run.id, "run", {
-            "status": run.status.name,
-            "progress_pct": run.progress_pct,
-            "current_step_index": run.current_step_index,
+            "status": run.status.name, "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index
         })
 
-    # find next step
-    steps = list(run.steps)  # ordered by step_index
-    next_step = None
-    for s in steps:
-        if s.status in (WorkflowStepStatus.QUEUED, WorkflowStepStatus.FAILED, WorkflowStepStatus.CANCELED):
-            next_step = s
-            break
+    steps = list(run.steps)
+    next_step = next((s for s in steps if s.status in (
+        WorkflowStepStatus.QUEUED, WorkflowStepStatus.FAILED, WorkflowStepStatus.CANCELED
+    )), None)
 
     if not next_step:
         run.status = WorkflowRunStatus.COMPLETED
@@ -58,9 +64,8 @@ def advance_run(self, run_id: int):
         run.progress_pct = 100.0
         db.session.commit()
         publish_run_event(run.id, "run", {
-            "status": run.status.name,
-            "progress_pct": run.progress_pct,
-            "current_step_index": run.current_step_index,
+            "status": run.status.name, "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index
         })
         log.info(f'advance_run: run {run_id} completed')
         return {'status': 'completed'}
@@ -162,10 +167,13 @@ def run_step(self, run_id: int, step_index: int):
         })
         log.exception(f'run_step: failed step {step_index} on run {run_id}: {e}')
         return {'status': 'failed', 'error': str(e)}
-
-    if step.status == WorkflowStepStatus.COMPLETED:
-        advance_run.delay(run.id)
-    return {'status': 'ok' if step.status == WorkflowStepStatus.COMPLETED else 'failed'}
+    
+    db.session.refresh(run)
+    if run.status in (WorkflowRunStatus.PAUSED, WorkflowRunStatus.CANCELED):
+        log.info(f'run_step: not advancing (run {run_id} is {run.status.name})')
+        return {'status': 'ok'}
+    advance_run.delay(run.id)
+    return {'status': 'ok'}
 
 
 def _load_adapter_for_slug(slug: str):
