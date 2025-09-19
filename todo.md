@@ -94,7 +94,15 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - add readme file
 - add copyright as this is my code developed
 - have timezone for user specific
-
+## IN-WEBSITE CURRENCY
+- enable credits
+    - 10 per day (reset everyday, no rollover, used first)
+    - Paid includes 
+        - 100 monthly credits (pro version - $25/month)
+        - Top-up packs
+            - $25 - 100 credits
+            - $40 - 200 credits
+            - $90 - 500 credits
 
 
 
