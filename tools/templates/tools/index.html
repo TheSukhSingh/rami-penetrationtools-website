@@ -43,16 +43,35 @@
         </div>
       </div>
 <div class="canvas-actions" style="display:flex; gap:8px; margin-left:auto; align-items:center;">
+  <!-- Presets -->
+  <button id="presetsOpenBtn" class="glass-button">Presets</button>
+  <span class="sep"></span>
+
+  <!-- Workflow Save/Load -->
   <button id="wfSaveBtn"   class="glass-button">Save</button>
   <button id="wfSaveAsBtn" class="glass-button">Save as New</button>
   <button id="wfCloneBtn"  class="glass-button">Clone</button>
   <input id="wfIdInput" class="form-input" placeholder="Workflow ID" style="width:120px;">
   <button id="wfLoadBtn"   class="glass-button">Load</button>
-  <span style="width:12px"></span>
+  <span class="sep"></span>
+
+  <!-- Run Controls -->
+  <button id="runStartBtn"  class="primary-button">Run</button>
+  <button id="runPauseBtn"  class="glass-button">Pause</button>
+  <button id="runResumeBtn" class="glass-button">Resume</button>
+  <button id="runCancelBtn" class="danger-button">Cancel</button>
+  <button id="runRetryBtn"  class="glass-button" title="Retry selected step">Retry Step</button>
   <input id="runIdInput" class="form-input" placeholder="Run ID" style="width:100px;">
   <button id="runAttachBtn" class="glass-button">Attach</button>
-  <span id="wfStatus" style="opacity:.7; font-size:.9rem;"></span>
 </div>
+
+<!-- Live progress -->
+<div id="runProgress" class="run-progress">
+  <div class="bar"></div>
+  <div class="label" id="runProgressLabel">Idle</div>
+</div>
+<span id="wfStatus" style="opacity:.7; font-size:.9rem;"></span>
+
 
 
       <div class="canvas-container">
@@ -184,6 +203,59 @@
 
   <!-- Toast -->
   <div class="toast" id="toast"><span id="toastMessage"></span></div>
+
+
+<!-- Presets drawer -->
+<div id="presetsDrawer" class="drawer hidden">
+  <div class="drawer-header">
+    <div class="title">Presets</div>
+    <button id="presetsCloseBtn" class="icon-btn">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div class="row">
+      <input id="presetsSearch" class="form-input" placeholder="Search my & shared workflows…">
+      <button id="presetsSearchBtn" class="glass-button">Search</button>
+    </div>
+    <div id="presetsList" class="presets-list"></div>
+  </div>
+</div>
+
+<!-- Node Config panel (right) -->
+<div id="configPanel" class="sidepanel">
+  <div class="sidepanel-header">
+    <div class="title">Node Config</div>
+    <button id="configCloseBtn" class="icon-btn">✕</button>
+  </div>
+  <div class="sidepanel-body">
+    <div id="configNodeTitle" class="mono small muted">No node selected</div>
+    <label class="field-label">Config (JSON)</label>
+    <textarea id="configJson" class="codearea" rows="10" placeholder='{"input_method":"manual","value":"example.com"}'></textarea>
+    <div class="row">
+      <button id="configApplyBtn" class="primary-button">Apply</button>
+      <button id="configResetBtn" class="glass-button">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- Output drawer (bottom) -->
+<div id="outputDrawer" class="bottom-drawer hidden">
+  <div class="drawer-header">
+    <div class="title">Output</div>
+    <div class="row">
+      <select id="outputStepSelect" class="form-input"></select>
+      <button id="outputRefreshBtn" class="glass-button">Refresh</button>
+      <button id="outputCloseBtn" class="icon-btn">✕</button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <pre id="outputPre" class="pre"></pre>
+    <div id="outputLinks" class="links"></div>
+  </div>
+</div>
+
+
+
+
 {% endblock %}
 
 
