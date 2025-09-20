@@ -650,3 +650,20 @@ def retry_run_api(run_id: int):
     return jsonify({"run": _serialize_run(run)})
 
 
+@tools_bp.route("/tools/api/runs/<int:run_id>/summary", methods=["GET"])
+def get_run_summary(run_id: int):
+    run = WorkflowRun.query.get_or_404(run_id)
+    # Ensure structure even if empty
+    manifest = run.run_manifest or {
+        "buckets": {k: {"count": 0, "items": []} for k in ("domains","hosts","ips","ports","urls","endpoints","findings")},
+        "provenance": {k: {} for k in ("domains","hosts","ips","ports","urls","endpoints","findings")},
+        "steps": {},
+        "last_updated": None,
+    }
+    # Add top-level counters for convenience
+    counters = {k: manifest["buckets"][k]["count"] for k in manifest["buckets"].keys()}
+    return jsonify({
+        "run_id": run_id,
+        "counters": counters,
+        "manifest": manifest,
+    })

@@ -4,6 +4,7 @@ from sqlalchemy import UniqueConstraint, Index, ForeignKey
 from sqlalchemy.orm import relationship
 from extensions import db
 from mixin import PrettyIdMixin
+from sqlalchemy.dialects.postgresql import JSONB
 
 utcnow = lambda: datetime.now(timezone.utc)
 
@@ -270,6 +271,7 @@ class WorkflowRun(db.Model, TimestampMixin, PrettyIdMixin):
     started_at          = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     finished_at         = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     summary_json        = db.Column(db.JSON, nullable=True)
+    run_manifest        = db.Column(JSONB, default=dict)
 
     workflow            = relationship("WorkflowDefinition", back_populates="runs")
     steps               = relationship("WorkflowRunStep", back_populates="run",
