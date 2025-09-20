@@ -2,32 +2,39 @@
 {% block content %}
 <h1>Sessions</h1>
 {% include "account/_tabs.html" %}
-    {% if tokens %}
-<form method="post" action="{{ url_for('account.revoke_session', token_id=tokens[0].id) }}" data-jwt="1" style="margin-bottom:1rem;">
+
+{% if tokens %}
+<form method="post"
+      action="{{ url_for('account.revoke_all_sessions') }}"
+      data-jwt="1"
+      style="margin-bottom:1rem;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="btn" type="submit">Sign out of all other sessions</button>
 </form>
-  {% endif %}
+{% endif %}
+
 <table border="1" cellpadding="8" cellspacing="0">
   <thead><tr><th>ID</th><th>Expires</th><th>Status</th><th>Action</th></tr></thead>
   <tbody>
     {% if tokens %}
-  {% for t in tokens %}
+    {% for t in tokens %}
     <tr>
       <td>{{ t.id }}</td>
       <td>{{ t.expires_at or '—' }}</td>
       <td>{{ 'revoked' if t.revoked else 'active' }}</td>
       <td>
         {% if not t.revoked %}
-        <form method="post" action="{{ url_for('account.revoke_session', token_id=t.id) }}">
+        <form method="post"
+              action="{{ url_for('account.revoke_session', token_id=t.id) }}"
+              data-jwt="1">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn" type="submit">Revoke</button>
         </form>
         {% else %}—{% endif %}
       </td>
     </tr>
-  {% endfor %}
-  {% endif %}
+    {% endfor %}
+    {% endif %}
   </tbody>
 </table>
 {% endblock %}

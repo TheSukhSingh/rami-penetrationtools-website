@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Notifications</h1>
 {% include "account/_tabs.html" %}
-<form method="post">
+<form method="post" data-jwt="1">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label><input type="checkbox" name="product_updates"  {% if prefs.product_updates %}checked{% endif %}> Product updates</label><br>
   <label><input type="checkbox" name="marketing_emails" {% if prefs.marketing_emails %}checked{% endif %}> Marketing emails</label><br>
