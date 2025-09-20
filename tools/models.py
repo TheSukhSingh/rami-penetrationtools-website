@@ -271,7 +271,7 @@ class WorkflowRun(db.Model, TimestampMixin, PrettyIdMixin):
     started_at          = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     finished_at         = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     summary_json        = db.Column(db.JSON, nullable=True)
-    run_manifest        = db.Column(JSONB, default=dict)
+    run_manifest        = db.Column(db.JSON, default=dict)
 
     workflow            = relationship("WorkflowDefinition", back_populates="runs")
     steps               = relationship("WorkflowRunStep", back_populates="run",

@@ -122,9 +122,6 @@ def signup():
 
     return jsonify(message="Signup successful! Check your email to confirm your account."), 201
 
-
-
-
 @auth_bp.route('/confirm/<token>')
 def confirm_email(token):
     email = confirm_token(token)
@@ -227,7 +224,6 @@ def refresh():
     set_refresh_cookies(resp, new_rt)
     return resp, 200
 
-
 @auth_bp.route('/forgot-password', methods=['POST'])
 @limiter.limit("3 per hour", key_func=get_remote_address)
 def forgot_password():
@@ -304,8 +300,6 @@ def reset_password(token):
     db.session.commit()
     flash('Your password has been updated! Please log in.', 'success')
     return redirect(url_for('index'))
-
-
 
 @auth_bp.route('/me', methods=['GET'])
 @jwt_required()

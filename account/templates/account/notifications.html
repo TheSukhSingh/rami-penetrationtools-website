@@ -1,0 +1,12 @@
+{% extends "main.html" %}
+{% block content %}
+<h1>Notifications</h1>
+{% include "account/_tabs.html" %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label><input type="checkbox" name="product_updates"  {% if prefs.product_updates %}checked{% endif %}> Product updates</label><br>
+  <label><input type="checkbox" name="marketing_emails" {% if prefs.marketing_emails %}checked{% endif %}> Marketing emails</label><br>
+  <label><input type="checkbox" name="security_alerts"  {% if prefs.security_alerts %}checked{% endif %}> Security alerts</label><br><br>
+  <button class="btn" type="submit">Save</button>
+</form>
+{% endblock %}

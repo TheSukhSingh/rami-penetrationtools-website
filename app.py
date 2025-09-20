@@ -9,6 +9,7 @@ from tools import tools_bp
 from admin import admin_bp
 from blog import blog_bp
 from admin.api import admin_api_bp
+from account import account_bp
 import secrets
 from extensions import db, bcrypt, migrate, limiter, csrf
 from user_dashboard import user_dashboard_bp
@@ -47,6 +48,9 @@ def create_app():
         TURNSTILE_SECRET_KEY=os.getenv('TURNSTILE_SECRET_KEY', ''),
 
         RATELIMIT_HEADERS_ENABLED=True,
+
+        FEATURE_BILLING=os.getenv("FEATURE_BILLING", "0") == "1",
+        FEATURE_HELP=os.getenv("FEATURE_HELP", "0") == "1",
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
@@ -128,6 +132,7 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(admin_api_bp)
+    app.register_blueprint(account_bp)
     app.register_blueprint(tools_bp)
     app.register_blueprint(blog_bp)
     app.register_blueprint(user_dashboard_bp)
