@@ -813,8 +813,10 @@ body {
   flex-direction: column;
 }
 
+/* TODO - REMOVE MARGIN-TOP  --- ONLY FOR DEBUGGING */
 .page-wrapper {                 /* the wrapper around navbar + page content */
   flex: 1 0 auto;               /* take remaining height */
+  margin-top: 10rem;
 }
 
 footer.footer {

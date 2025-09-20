@@ -19,6 +19,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 ## AUTH
 - user deactivated logic to be written in local_routes
 - mfa not set yet
+- cron to revoke expired tokens
 - On register (fe), create checks on frontend too so backend does little work (like pw checks, both pw same, etc)
 - refresh token not working 
 - refresh tokens are not revoking, revoke at 1. when it expired we got to know 2. cron job revoking regularly
@@ -29,7 +30,6 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - email queueing so it's not blocked by smtp
 - throttle resend verify
 - login event is in db, make it work so we know the active users per day per month more easily rather than calculating every time...
-
 ## FOOTER
 - Add social links
 ## LANDING PAGE
@@ -96,24 +96,19 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
             - $90 - 500 credits
 ## MAILS
 - check both mails (functioning good?)
-
-
-
-# TODO CURRENT
-
-## AUTH
-- cron to revoke expired tokens
 ## NAVBAR
 - link user dashboard
-- link account settings
 - link billing and plan
 - link help
-## ACCOUNT SETTINGS PAGE
-- complete set up
+- remove margin-top from page-wrapper class in navbar.css (line 816) - css file has -> ("/* TODO - REMOVE MARGIN-TOP  --- ONLY FOR DEBUGGING */")
+## ACCOUNT SETTINGS PAGE    
+- redesigning of the page (page design available)
 ## BILLING AND PLAN PAGE
 - complete set up
 ## HELP PAGE
 - complete set up
+
+
 
 
 
@@ -133,6 +128,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Dropdown needs user dashboard
 - Dropdown from User needs design update
 - Dropdown needs complete restyling like this image - ![complete restyle](md/image.png)
+- link account settings
 ## MAILS
 - Confirm mail design update required
 - Reset Password mail design update required

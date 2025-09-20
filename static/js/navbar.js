@@ -89,133 +89,6 @@ function togglePassword(fieldId) {
   }
 }
 
-// function getCookie(name) {
-//   return document.cookie
-//     .split("; ")
-//     .find((row) => row.startsWith(name + "="))
-//     ?.split("=")[1];
-// }
-
-
-// old show user - before when i updated the navbar to have user logo and multiple options in dropdown
-// function showUser(user) {
-//   document.getElementById("loginButton").style.display = "none";
-//   const navMenu = document.getElementById("navMenu");
-//   const username = user.username;
-
-//   // const initial = user.name ? user.name.charAt(0).toUpperCase() : user.username.charAt(0).toUpperCase();
-//   const userElem = document.createElement("div");
-//   userElem.id = "userMenu";
-//   userElem.className = "user-menu";
-//   userElem.innerHTML = `
-//     <button id="userBtn" class="cyber-button">${username}</button>
-//     <div id="userDropdown" class="dropdown-content">
-//     <a href="#" id="user-dashboard-btn">User Dashboard</a>
-//       <a href="#" id="logoutBtn">Logout</a>
-//     </div>
-//   `;
-//   navMenu.appendChild(userElem);
-
-//   // document.getElementById("logoutBtn").onclick = async () => {
-//   //   await postJSON("/auth/logout", null, { csrf: "refresh" });
-//   //   location.reload();
-//   // };
-
-//   document.getElementById("logoutBtn").onclick = async (e) => {
-//     e.preventDefault();
-
-//     try {
-//       // must include cookies + refresh CSRF header
-//       const { ok, status } = await postJSON(
-//         "/auth/logout",
-//         {},
-//         { csrf: "refresh", refresh: false, credentials: "include" }
-//       );
-//       // Treat "already logged out" as success too
-//       if (!(ok || [401, 422].includes(status))) {
-//         console.warn("Logout response:", status);
-//       }
-//     } catch (_) {
-//       // Network hiccup? We’ll still force a logged-out UX.
-//     } finally {
-//       // Make the UI consistent immediately
-//       document.getElementById("userMenu")?.remove();
-//       const btn = document.getElementById("loginButton");
-//       if (btn) btn.style.display = "inline-flex";
-//       // Hard navigate to a safe page to clear any protected state
-//       window.location.href = "/";
-//     }
-//   };
-//   document.getElementById("user-dashboard-btn").onclick = async (e) => {
-//     window.location.href = "/";
-//   };
-// }
-
-// function showUser(user) {
-//   // hide "Sign In" and mount the user menu
-//   const loginBtn = document.getElementById("loginButton");
-//   if (loginBtn) loginBtn.style.display = "none";
-
-//   const navMenu = document.getElementById("navMenu");
-//   const name  = (user?.name || user?.username || "User").trim();
-//   const email = (user?.email || "").trim();
-//   const initial = (name || email || "?").charAt(0).toUpperCase();
-
-//   const wrap = document.createElement("div");
-//   wrap.id = "userMenu";
-//   wrap.className = "user-menu";
-//   wrap.innerHTML = `
-//     <button id="userMenuBtn" class="user-chip glass" aria-haspopup="menu" aria-expanded="false">
-//       <span class="avatar">${initial}</span>
-//       <span class="caret">▾</span>
-//     </button>
-
-//     <ul id="userMenuList" class="menu glass card-hover" role="menu" aria-labelledby="userMenuBtn" hidden>
-//       <li class="menu-hd">
-//         <div class="name">${name}</div>
-//         <div class="muted">${email}</div>
-//       </li>
-
-//       <li><a role="menuitem" href="/">User Dashboard</a></li>
-//       <li><a role="menuitem" href="/">Account Settings</a></li>
-//       <li><a role="menuitem" href="/">Billing &amp; Plan</a></li>
-//       <li><a role="menuitem" href="/">Help</a></li>
-
-//       <li class="sep" role="separator"></li>
-//       <li><button role="menuitem" data-logout>Logout</button></li>
-//     </ul>
-//   `;
-//   navMenu.appendChild(wrap);
-
-//   // interactions
-//   const btn  = wrap.querySelector("#userMenuBtn");
-//   const menu = wrap.querySelector("#userMenuList");
-
-//   function openMenu(open) {
-//     if (!menu) return;
-//     menu.hidden = !open;
-//     btn.setAttribute("aria-expanded", String(open));
-//   }
-
-//   btn.addEventListener("click", (e) => { e.stopPropagation(); openMenu(menu.hidden); });
-//   document.addEventListener("click", () => openMenu(false));
-//   document.addEventListener("keydown", (e) => { if (e.key === "Escape") openMenu(false); });
-
-//   // close when clicking any item
-//   menu.addEventListener("click", (e) => {
-//     const item = e.target.closest("a,button");
-//     if (!item) return;
-//     openMenu(false);
-//   });
-
-//   // TEMP logout → home (replace with real /auth/logout later)
-//   wrap.querySelector("[data-logout]")?.addEventListener("click", (e) => {
-//     e.preventDefault();
-//     // TODO: call /auth/logout then redirect
-//     window.location.href = "/";
-//   });
-// }
-
 function showUser(user) {
   // hide "Sign In"
   const loginBtn = document.getElementById("loginButton");
@@ -239,7 +112,7 @@ function showUser(user) {
       </div>
 
       <a href="/" id="user-dashboard-btn">User Dashboard</a>
-      <a href="/" id="account-settings-btn">Account Settings</a>
+      <a href="/account/" id="account-settings-btn">Account Settings</a>
       <a href="/" id="billing-plan-btn">Billing &amp; Plan</a>
       <a href="/" id="help-btn">Help</a>
 
@@ -355,95 +228,6 @@ function updateAuthMode(mode) {
   updateAuthModal();
 }
 
-// async function handleAuthSubmit(event) {
-//   event.preventDefault();
-
-//   const submitButton = document.getElementById("authSubmit");
-//   const buttonText = document.getElementById("authButtonText");
-//   const buttonIcon = document.getElementById("authButtonIcon");
-//   const spinner = document.getElementById("authSpinner");
-
-//   buttonText.style.display = "none";
-//   buttonIcon.style.display = "none";
-//   spinner.style.display = "block";
-//   submitButton.disabled = true;
-
-//   const urlMap = {
-//     login: "/auth/signin",
-//     signup: "/auth/signup",
-//     forgot: "/auth/forgot-password",
-//   };
-//   const url = urlMap[currentAuthMode];
-
-//   const form = document.getElementById("authForm");
-//   const formData = new FormData(form);
-//   const payload = {};
-//   formData.forEach((v, k) => {
-//     payload[k] = v;
-//   });
-
-//   if (currentAuthMode === "signup" || currentAuthMode === "forgot") {
-//     const token = turnstileWidgetId ? turnstile.getResponse(turnstileWidgetId) : null;
-//     payload.turnstile_token = token;
-//   }
-
-//   try {
-//     const res = await fetch(url, {
-//       method: currentAuthMode === "login" ? "POST" : "POST",
-//       headers: { "Content-Type": "application/json" },
-//       body: JSON.stringify(payload),
-//       // body: formData
-//     });
-//     const data = await res.json();
-//     if (!res.ok) throw new Error(data.msg || data.message);
-
-//     if (currentAuthMode === "login") {
-//       // localStorage.setItem('access_token', data.access_token);
-//       // localStorage.setItem('refresh_token', data.refresh_token);
-//       // // fetch user profile
-//       // const meRes = await fetch('/auth/me', {
-//       //   headers: { 'Authorization': `Bearer ${data.access_token}` }
-//       // });
-//       // const me = await meRes.json();
-//       // localStorage.setItem('user', JSON.stringify(me));
-//       // showUser(me);
-
-//       // the cookies are now set by the server,
-//       // so just hit /auth/me with credentials to get the user profile:
-//       const meRes = await fetch("/auth/me", {
-//         method: "GET",
-//         credentials: "include",
-//         headers: { "X-CSRF-TOKEN": getCookie("csrf_access_token") },
-//       });
-//       if (!meRes.ok) throw new Error("Failed to load user");
-//       const me = await meRes.json();
-//       showUser(me);
-//     }
-
-//     closeAuth();
-//     // alert(currentAuthMode === 'signup'
-//     //   ? 'Account created! Check your email to confirm.'
-//     //   : 'Success!'
-//     // );
-//   } catch (err) {
-//     alert(err.message);
-//   }
-
-//   // Simulate API call
-//   setTimeout(() => {
-//     // Reset button state
-//     buttonText.style.display = "inline";
-//     buttonIcon.style.display = "inline";
-//     spinner.style.display = "none";
-//     submitButton.disabled = false;
-
-//     // Close modal
-//     closeAuth();
-//   }, 2000);
-// }
-
-// --- Simple inline error helpers ---
-
 function setFieldError(inputId, message) {
   const input = document.getElementById(inputId);
   if (!input) return;
@@ -534,7 +318,6 @@ function validatePassword(pw, { name, username, email }) {
   return null;
 }
 
-// Validate current modal mode; returns {ok, payloadErrors}
 function validateAuthForm(mode) {
   let ok = true;
 
@@ -596,28 +379,6 @@ function validateAuthForm(mode) {
 
   return { ok };
 }
-
-// function csrfFetch(url, options = {}) {
-//   const opts = { credentials: "include", ...options };
-//   const method = (opts.method || "GET").toUpperCase();
-
-//   const headers = new Headers(opts.headers || {});
-//   if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-//     // const csrf = getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
-//     // if (csrf) headers.set("X-CSRF-TOKEN", csrf);
-//     const jwtCsrf =
-//       getCookie("csrf_access_token") || getCookie("csrf_refresh_token");
-//     const metaCsrf = getMetaCSRF();
-//     // Flask-JWT-Extended expects X-CSRF-TOKEN, Flask-WTF accepts X-CSRFToken/X-CSRF-Token.
-//     const token = jwtCsrf || metaCsrf;
-//     if (token) {
-//       headers.set("X-CSRF-TOKEN", token); // for JWT double-submit
-//       headers.set("X-CSRFToken", token); // for Flask-WTF CSRFProtect
-//     }
-//   }
-//   opts.headers = headers;
-//   return fetch(url, opts);
-// }
 
 async function handleAuthSubmit(event) {
   event.preventDefault();
@@ -852,31 +613,6 @@ function renderOAuthButtons(providers) {
   };
 }
 
-// --- GOOGLE ONE TAP ---
-
-// function initGoogleOneTap(clientId) {
-//   // only when not already logged in (we’ll rely on your initAuth to set UI if logged in)
-//   if (!clientId) return;
-//   if (!window.google || !window.google.accounts || !window.google.accounts.id) {
-//     // GIS script might not be loaded yet; retry shortly
-//     setTimeout(() => initGoogleOneTap(clientId), 300);
-//     return;
-//   }
-
-//   // Initialize One Tap
-//   window.google.accounts.id.initialize({
-//     client_id: clientId,
-//     callback: handleOneTapCredential,
-//     auto_select: false, // show chooser if multiple accounts
-//     context: "signin",
-//     ux_mode: "popup", // stays on page; you can try "redirect" too
-//     itp_support: true,
-//   });
-
-//   // Show the One Tap prompt (non-blocking)
-//   window.google.accounts.id.prompt();
-// }
-
 function initGoogleOneTap(clientId) {
   if (!clientId) return;
 
@@ -927,24 +663,6 @@ function initGoogleOneTap(clientId) {
   });
 }
 
-// async function initAuth() {
-//   try {
-//     const { ok, data: user } = await getJSON("/auth/me", {
-//       refresh: false,
-//       silent: true,
-//     });
-//     if (ok && user) { showUser(user); return; }
-//   } catch (err) {
-//     console.error("Auth check failed", err);
-//   }
-
-//     // fallback for now (so you can see the menu immediately)
-//   try {
-//     const stub = await getCurrentUserStub();
-//     if (stub) showUser(stub);
-//   } catch (_) {}
-// }
-
 async function initAuth() {
   try {
     // Do not auto-refresh; we only want current state
@@ -962,8 +680,6 @@ async function initAuth() {
     showLoggedOut();
   }
 }
-
-
 
 document.addEventListener("DOMContentLoaded", () => {
   initAuth();
