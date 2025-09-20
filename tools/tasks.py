@@ -79,6 +79,76 @@ def advance_run(self, run_id: int):
     db.session.commit()
     return {'status': 'dispatched', 'task_id': res.id}
 
+BUCKET_KEYS = ("domains", "hosts", "ips", "ports", "urls", "endpoints", "findings")
+
+def _ensure_run_manifest(run):
+    """
+    Ensure a consistent dict structure on run.run_manifest.
+    """
+    base = {
+        "buckets": {k: {"count": 0, "items": []} for k in BUCKET_KEYS},
+        "provenance": {k: {} for k in BUCKET_KEYS},   # item -> [ {step, tool} ]
+        "steps": {},                                   # step_index -> summary
+        "last_updated": None,
+    }
+    return run.run_manifest or base
+
+def _merge_items(dst_list, new_items):
+    out = list(dst_list) if dst_list else []
+    seen = set(out)
+    for v in (new_items or []):
+        v = (v or "").strip()
+        if not v or v in seen:
+            continue
+        out.append(v)
+        seen.add(v)
+    return out
+
+def _aggregate_run_manifest(db, run, step_index, tool_slug, step_manifest):
+    """
+    Merge a step's typed buckets (domains/hosts/ips/ports/urls/endpoints/findings)
+    into the run-level summary with provenance.
+    """
+    manifest = _ensure_run_manifest(run)
+    step_counts = {}
+
+    for key in BUCKET_KEYS:
+        vals = step_manifest.get(key)
+        if not vals:
+            # also accept *_count, but don't need to recalc
+            continue
+
+        # Merge items
+        bucket = manifest["buckets"].get(key, {"count": 0, "items": []})
+        merged = _merge_items(bucket.get("items", []), vals)
+        bucket["items"] = merged
+        bucket["count"] = len(merged)
+        manifest["buckets"][key] = bucket
+        step_counts[key] = len(vals)
+
+        # Provenance: item -> [{step, tool}]
+        prov_map = manifest["provenance"].setdefault(key, {})
+        for v in vals:
+            arr = prov_map.get(v, [])
+            arr.append({"step": int(step_index), "tool": tool_slug})
+            prov_map[v] = arr
+
+    # Record per-step summary
+    manifest["steps"][str(step_index)] = {
+        "tool": tool_slug,
+        "counts": step_counts,
+        "execution_ms": step_manifest.get("execution_ms"),
+        "status": step_manifest.get("status", "success"),
+    }
+    manifest["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+    # Persist on the run row
+    run.run_manifest = manifest
+    db.session.add(run)
+    db.session.commit()
+    return manifest
+
+
 @celery.task(name='tools.tasks.run_step', bind=True)
 def run_step(self, run_id: int, step_index: int):
     run = db.session.get(WorkflowRun, run_id)
@@ -137,6 +207,7 @@ def run_step(self, run_id: int, step_index: int):
         base = current_app.config.get("TOOLS_WORK_DIR", "/tmp/hackr_runs")
         step_dir = Path(base) / f"run_{run.id}" / f"step_{step_index:02d}_{tool.slug}"
         step_dir.mkdir(parents=True, exist_ok=True)
+        
         options["work_dir"] = str(step_dir)
 
         # Execute tool
