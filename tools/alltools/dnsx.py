@@ -1,10 +1,9 @@
-
-
 import shutil
 import time
 import subprocess
 import os
 
+from tools.alltools._manifest_utils import split_typed, finalize_manifest
 from tools.utils.domain_classification import classify_lines
 
 
@@ -14,10 +13,8 @@ def run_scan(data):
 
     total_domain_count = valid_domain_count = invalid_domain_count = duplicate_domain_count = 0
     file_size_b = None
-    tmp = None
-    
-    method = data.get('input_method', 'manual')
 
+    method = data.get('input_method', 'manual')
     command = [DNSX_BIN]
 
     # Acquire and validate targets
@@ -37,189 +34,176 @@ def run_scan(data):
                 "error_detail": "Missing or inaccessible file",
                 "value_entered": None
             }
-        file_size_b = os.path.getsize(filepath)
 
+        file_size_b = os.path.getsize(filepath)
         if file_size_b > 100_000:
             return {
-                "status":               "error",
-                "message":              f"Uploaded file too large ({file_size_b} bytes)",
-                "total_domain_count":   None,
-                "valid_domain_count":   None,
+                "status": "error",
+                "message": f"Uploaded file too large ({file_size_b} bytes)",
+                "total_domain_count": None,
+                "valid_domain_count": None,
                 "invalid_domain_count": None,
-                "duplicate_domain_count" : None,
-                "file_size_b":          file_size_b,
-                "execution_ms":         0,
-                "error_reason":         "FILE_TOO_LARGE",
-                "error_detail":         f"{file_size_b} > 100000 bytes limit",
-                "value_entered":        file_size_b
+                "duplicate_domain_count": None,
+                "file_size_b": file_size_b,
+                "execution_ms": 0,
+                "error_reason": "FILE_TOO_LARGE",
+                "error_detail": f"{file_size_b} > 100000 bytes limit",
+                "value_entered": file_size_b
             }
+
         with open(filepath) as f:
             lines = [l.strip() for l in f if l.strip()]
 
-        total_domain_count   = len(lines)
+        total_domain_count = len(lines)
         valid, invalid, duplicate_domain_count = classify_lines(lines)
-        valid_domain_count   = len(valid)
+        valid_domain_count = len(valid)
         invalid_domain_count = len(invalid)
 
         if invalid_domain_count > 0:
             return {
-                "status":               "error",
-                "message":              f"{invalid_domain_count} invalid domains in file",
-                "total_domain_count":   total_domain_count,
-                "valid_domain_count":   valid_domain_count,
+                "status": "error",
+                "message": f"{invalid_domain_count} invalid domains in file",
+                "total_domain_count": total_domain_count,
+                "valid_domain_count": valid_domain_count,
                 "invalid_domain_count": invalid_domain_count,
-                "duplicate_domain_count" : duplicate_domain_count,
-                "file_size_b":          file_size_b,
-                "execution_ms":         0,
-                "error_reason":         "INVALID_PARAMS",
-                "error_detail":         ", ".join(invalid[:10]),
-                "value_entered":        invalid_domain_count
+                "duplicate_domain_count": duplicate_domain_count,
+                "file_size_b": file_size_b,
+                "execution_ms": 0,
+                "error_reason": "INVALID_PARAMS",
+                "error_detail": ", ".join(invalid[:10]),
+                "value_entered": invalid_domain_count
             }
 
-        # 5) reject if too many
         if valid_domain_count > 50:
             return {
-                "status":               "error",
-                "message":              f"{valid_domain_count} domains in file (max 50)",
-                "total_domain_count":   total_domain_count,
-                "valid_domain_count":   valid_domain_count,
+                "status": "error",
+                "message": f"{valid_domain_count} domains in file (max 50)",
+                "total_domain_count": total_domain_count,
+                "valid_domain_count": valid_domain_count,
                 "invalid_domain_count": invalid_domain_count,
-                "duplicate_domain_count" : duplicate_domain_count,
-                "file_size_b":          file_size_b,
-                "execution_ms":         0,
-                "error_reason":         "TOO_MANY_DOMAINS",
-                "error_detail":         f"{valid_domain_count} > 50 limit",
-                "value_entered":        valid_domain_count
+                "duplicate_domain_count": duplicate_domain_count,
+                "file_size_b": file_size_b,
+                "execution_ms": 0,
+                "error_reason": "TOO_MANY_DOMAINS",
+                "error_detail": f"{valid_domain_count} > 50 limit",
+                "value_entered": valid_domain_count
             }
+
+        stdin_data = "\n".join(valid)
 
     else:
         raw = data.get("dnsx-manual", "")
         lines = [l.strip() for l in raw.splitlines() if l.strip()]
-        total_domain_count  = len(lines)
+        total_domain_count = len(lines)
         if total_domain_count == 0:
             return {
-                "status":               "error",
-                "message":              "At least one domain is required.",
-                "total_domain_count":   total_domain_count,
-                "valid_domain_count":   valid_domain_count,
+                "status": "error",
+                "message": "At least one domain is required.",
+                "total_domain_count": total_domain_count,
+                "valid_domain_count": valid_domain_count,
                 "invalid_domain_count": invalid_domain_count,
                 "duplicate_domain_count": duplicate_domain_count,
-                "file_size_b":          file_size_b,
-                "execution_ms":         0,
-                "error_reason":         "INVALID_PARAMS",
-                "error_detail":         "No domains submitted",
-                "value_entered":        None
+                "file_size_b": file_size_b,
+                "execution_ms": 0,
+                "error_reason": "INVALID_PARAMS",
+                "error_detail": "No domains submitted",
+                "value_entered": None
             }
+
         valid, invalid, duplicate_domain_count = classify_lines(lines)
-        valid_domain_count   = len(valid)
+        valid_domain_count = len(valid)
         invalid_domain_count = len(invalid)
 
-        # 3) reject if any invalid domains
         if invalid_domain_count > 0:
             return {
-                "status":               "error",
-                "message":              f"{invalid_domain_count} invalid domains found",
-                "total_domain_count":   total_domain_count ,
-                "valid_domain_count":   valid_domain_count,
+                "status": "error",
+                "message": f"{invalid_domain_count} invalid domains found",
+                "total_domain_count": total_domain_count,
+                "valid_domain_count": valid_domain_count,
                 "invalid_domain_count": invalid_domain_count,
-                "duplicate_domain_count" : duplicate_domain_count,
-                "file_size_b":          None,
-                "execution_ms":         0,
-                "error_reason":         "INVALID_PARAMS",
-                "error_detail":         ", ".join(invalid[:10]),
-                "value_entered":        invalid_domain_count
+                "duplicate_domain_count": duplicate_domain_count,
+                "file_size_b": None,
+                "execution_ms": 0,
+                "error_reason": "INVALID_PARAMS",
+                "error_detail": ", ".join(invalid[:10]),
+                "value_entered": invalid_domain_count
             }
-        
-        # 4) reject if too many valid domains
+
         if valid_domain_count > 50:
             return {
-                "status":"error",
-                "message":f"Too many domains: {valid_domain_count} (max 50)",
-                "total_domain_count":   total_domain_count ,
-                "valid_domain_count":   valid_domain_count,
+                "status": "error",
+                "message": f"Too many domains: {valid_domain_count} (max 50)",
+                "total_domain_count": total_domain_count,
+                "valid_domain_count": valid_domain_count,
                 "invalid_domain_count": invalid_domain_count,
-                "duplicate_domain_count" : duplicate_domain_count,
-                "file_size_b":  None,
+                "duplicate_domain_count": duplicate_domain_count,
+                "file_size_b": None,
                 "execution_ms": 0,
                 "error_reason": "TOO_MANY_DOMAINS",
                 "error_detail": f"{valid_domain_count} domains > 50 limit",
                 "value_entered": valid_domain_count
             }
-        
-        file_size_b  = None
 
+        file_size_b = None
+        stdin_data = "\n".join(valid)
 
-
-
-
+    # Flags
     threads = (data.get("dnsx-threads") or "").strip() or "50"
     retry = (data.get("dnsx-retry") or "").strip() or "2"
-
-    # threads limit
     try:
         t = int(threads)
         if not (2 <= t <= 50):
             raise ValueError
     except ValueError:
         return {
-            "status":"error",
-            "message":"Threads must be between 2-50",
-            "total_domain_count":   total_domain_count ,
-            "valid_domain_count":   valid_domain_count,
+            "status": "error",
+            "message": "Threads must be between 2-50",
+            "total_domain_count": total_domain_count,
+            "valid_domain_count": valid_domain_count,
             "invalid_domain_count": invalid_domain_count,
-            "duplicate_domain_count" : duplicate_domain_count,
-            "file_size_b":  file_size_b,
+            "duplicate_domain_count": duplicate_domain_count,
+            "file_size_b": file_size_b,
             "execution_ms": 0,
             "error_reason": "INVALID_PARAMS",
-            "error_detail": f"Threads must be between 2-50",
-            "value_entered": t
+            "error_detail": "Threads must be between 2-50",
+            "value_entered": threads
         }
-    
-    # retry limit
     try:
         t2 = int(retry)
         if not (1 <= t2 <= 20):
             raise ValueError
     except ValueError:
         return {
-            "status":"error",
-            "message":"Retry must be between 1-20",
-            "total_domain_count":   total_domain_count ,
-            "valid_domain_count":   valid_domain_count,
+            "status": "error",
+            "message": "Retry must be between 1-20",
+            "total_domain_count": total_domain_count,
+            "valid_domain_count": valid_domain_count,
             "invalid_domain_count": invalid_domain_count,
-            "duplicate_domain_count" : duplicate_domain_count,
-            "file_size_b":  file_size_b,
+            "duplicate_domain_count": duplicate_domain_count,
+            "file_size_b": file_size_b,
             "execution_ms": 0,
             "error_reason": "INVALID_PARAMS",
-            "error_detail": f"Threads must be between 1-20",
-            "value_entered": t2
+            "error_detail": "Retry must be between 1-20",
+            "value_entered": retry
         }
 
-
-    command.append("-resp")
-    command.append("-nc")
-
+    command += ["-resp", "-nc"]
     rtypes = data.get('dnsx-record-types', [])
     if isinstance(rtypes, str):
         rtypes = [rtypes]
-
     seen_rtype = set()
     for r in rtypes:
         r = r.lower()
         if r in ('a', 'aaaa', 'cname', 'mx', 'ns', 'txt') and r not in seen_rtype:
             command.append(f"-{r}")
             seen_rtype.add(r)
-    
-    silent_flag = data.get("dnsx-silent", "").strip().lower() == "yes"
-    if silent_flag:
+
+    if (data.get("dnsx-silent", "").strip().lower() == "yes"):
         command.append("-silent")
 
     command.extend(["-t", threads, "-retry", retry])
     command_str = " ".join(command)
 
-    stdin_data = "\n".join(valid)
-
-    print(f"DEBUG: dnsx command → {command_str}")
     start = time.time()
     try:
         result = subprocess.run(
@@ -228,23 +212,14 @@ def run_scan(data):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            # timeout=60
         )
         execution_ms = int((time.time() - start) * 1000)
-        print()
-        print("→ cmd:", command)
-        print("→ returncode:", result.returncode)
-        print("→ stdout repr:", repr(result.stdout))
-        print("→ stderr repr:", repr(result.stderr))
-        print()
-        print()
-
-        output = result.stdout.strip() or "No output captured."
+        stdout = result.stdout.strip() or "No output captured."
 
         if result.returncode != 0:
             return {
                 "status": "error",
-                "message": f"dnsx error:\n{output}",
+                "message": f"dnsx error:\n{stdout}",
                 "total_domain_count": total_domain_count,
                 "valid_domain_count": valid_domain_count,
                 "invalid_domain_count": invalid_domain_count,
@@ -252,13 +227,25 @@ def run_scan(data):
                 "file_size_b": file_size_b,
                 "execution_ms": execution_ms,
                 "error_reason": "OTHER",
-                "error_detail": output,
+                "error_detail": stdout,
                 "value_entered": None
             }
-        return {
-            "status": "success",
-            "output": output,
-            "message": "Scan completed successfully.",
+
+        tokens = []
+        for ln in stdout.splitlines():
+            ln = ln.strip()
+            if not ln:
+                continue
+            tokens.extend(ln.split())
+
+        typed = split_typed(tokens)
+        parsed = {
+            "hosts":   typed["hosts"],
+            "ips":     typed["ips"],
+            "domains": typed["domains"],
+        }
+
+        extra = {
             "total_domain_count": total_domain_count,
             "valid_domain_count": valid_domain_count,
             "invalid_domain_count": invalid_domain_count,
@@ -267,8 +254,20 @@ def run_scan(data):
             "execution_ms": execution_ms,
             "error_reason": None,
             "error_detail": None,
-            "value_entered": None
+            "value_entered": None,
         }
+
+        return finalize_manifest(
+            slug="dnsx",
+            options=data,
+            command_str=command_str,
+            started_at=start,
+            stdout=stdout,
+            parsed=parsed,
+            primary="hosts",
+            extra=extra,
+        )
+
     except subprocess.TimeoutExpired:
         execution_ms = int((time.time() - start) * 1000)
         return {
@@ -281,7 +280,7 @@ def run_scan(data):
             "file_size_b": file_size_b,
             "execution_ms": execution_ms,
             "error_reason": "TIMEOUT",
-            "error_detail": str(subprocess.TimeoutExpired),
+            "error_detail": "Subprocess timed out",
             "value_entered": None
         }
     except FileNotFoundError:
@@ -295,7 +294,7 @@ def run_scan(data):
             "file_size_b": file_size_b,
             "execution_ms": 0,
             "error_reason": "INVALID_PARAMS",
-            "error_detail": str(FileNotFoundError),
+            "error_detail": "dnsx binary not found",
             "value_entered": None
         }
     except Exception as e:
@@ -308,14 +307,7 @@ def run_scan(data):
             "duplicate_domain_count": duplicate_domain_count,
             "file_size_b": file_size_b,
             "execution_ms": int((time.time() - start) * 1000),
-            "error_reason": "INVALID_PARAMS",
+            "error_reason": "OTHER",
             "error_detail": str(e),
             "value_entered": None
         }
-    finally:
-        # Cleanup temporary file
-        try:
-            if tmp and os.path.exists(tmp):
-                os.remove(tmp)
-        except Exception:
-            pass

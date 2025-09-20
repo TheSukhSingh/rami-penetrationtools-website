@@ -9,6 +9,7 @@ from .models import (
     WorkflowRunStep, WorkflowStepStatus,
     ToolScanHistory,  # existing audit trail for each tool exec
 )
+from pathlib import Path
 from datetime import datetime, timezone
 from .runner import create_run_from_definition
 from flask import current_app
@@ -16,6 +17,8 @@ from .events import publish_run_event
 
 utcnow = lambda: datetime.now(timezone.utc)
 log = get_task_logger(__name__)
+
+
 
 @celery.task(name='tools.tasks.ping')
 def ping(msg='ok'):
@@ -130,6 +133,11 @@ def run_step(self, run_id: int, step_index: int):
         mod_name = slug.replace('-', '_')
         adapter = import_module(f".alltools.{mod_name}", package="tools")
         options = _prep_options_for_tool(step, prev_output, run.user_id, current_app.config)
+
+        base = current_app.config.get("TOOLS_WORK_DIR", "/tmp/hackr_runs")
+        step_dir = Path(base) / f"run_{run.id}" / f"step_{step_index:02d}_{tool.slug}"
+        step_dir.mkdir(parents=True, exist_ok=True)
+        options["work_dir"] = str(step_dir)
 
         # Execute tool
         result = adapter.run_scan(options) or {}

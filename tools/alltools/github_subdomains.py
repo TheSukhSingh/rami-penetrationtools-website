@@ -3,6 +3,7 @@ import subprocess
 import os
 import time
 import dotenv
+from tools.alltools._manifest_utils import split_typed, finalize_manifest
 
 dotenv.load_dotenv()
 
@@ -14,136 +15,46 @@ def run_scan(data):
 
     target = data.get("github-url", "").strip()
     if not target:
-        return {
-            "status":"error",
-            "message":"Github url not entered",
-            "total_domain_count":   None ,
-            "valid_domain_count":   None,
-            "invalid_domain_count": None,
-            "duplicate_domain_count" : None,
-            "file_size_b":  None,
-            "execution_ms": 0,
-            "error_reason": "INVALID_PARAMS",
-            "error_detail": f"Github url not entered",
-            "value_entered": None
-        }
+        return {"status":"error","message":"Missing repo URL (github-url)","execution_ms":0,"error_reason":"INVALID_PARAMS","error_detail":"Provide a GitHub repository URL"}
 
-    command.extend(["-d", target])
-    
-    extended = data.get("github-extended", "").strip().lower() == "yes"
-    if extended:
-        command.append("-e")
-    
-    exit = data.get("github-exit-disabled", "").strip().lower() == "yes"
-    if exit:
-        command.append("-k")
-
-    raw = data.get("github-raw", "").strip().lower() == "yes"
-    if raw:
+    if data.get("github-raw","").strip().lower() == "yes":
         command.append("--raw")
-    
-    token = os.getenv('GITHUB_SUBDOMAIN_TOKEN')
+    if data.get("github-extended","").strip().lower() == "yes":
+        command.append("--extended")
+    if data.get("github-exit-disabled","").strip().lower() == "yes":
+        command.append("--exit-on-ratelimit")
 
-    command.extend(["-t", token])
-
+    command.extend([target])
     command_str = " ".join(command)
-
-    print(f"DEBUG: Github subdomain command → {command_str}")
 
     start = time.time()
     try:
-        result = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            # timeout=60
-        )
-
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         execution_ms = int((time.time() - start) * 1000)
 
-        print()
-        print("→ cmd:", command)
-        print("→ returncode:", result.returncode)
-        print("→ stdout repr:", repr(result.stdout))
-        print("→ stderr repr:", repr(result.stderr))
-        print()
-        print()
-
-        output = result.stdout.strip() or "No output captured."
-
+        stdout = result.stdout.strip() or "No output captured."
         if result.returncode != 0:
-            return {
-                "status": "error",
-                "message": f"Github subdomain error:\n{output}",
-                "total_domain_count":   None ,
-                "valid_domain_count":   None,
-                "invalid_domain_count": None,
-                "duplicate_domain_count" : None,
-                "file_size_b":  None,
-                "execution_ms": execution_ms,
-                "error_reason": "OTHER",
-                "error_detail": output,
-                "value_entered": None
-            }
+            return {"status":"error","message":f"Github subdomain error:\n{stdout}","execution_ms":execution_ms,"error_reason":"OTHER","error_detail":stdout}
 
-        return {
-            "status": "success",
-            "output": output,
-            "message": "Scan completed successfully.",
-            "total_domain_count":   None ,
-            "valid_domain_count":   None,
+        lines = [ln.strip() for ln in stdout.splitlines() if ln.strip()]
+        typed = split_typed(lines)
+        parsed = {"domains": typed["domains"]}
+        extra = {
+            "total_domain_count": None,
+            "valid_domain_count": None,
             "invalid_domain_count": None,
-            "duplicate_domain_count" : None,
-            "file_size_b":  None,
+            "duplicate_domain_count": None,
+            "file_size_b": None,
             "execution_ms": execution_ms,
             "error_reason": None,
             "error_detail": None,
-            "value_entered": None
+            "value_entered": None,
         }
-
+        return finalize_manifest(slug="github_subdomains", options=data, command_str=command_str, started_at=start, stdout=stdout, parsed=parsed, primary="domains", extra=extra)
     except FileNotFoundError:
-        return {
-            "status": "error",
-            "message": "Github subdomain is not installed or not found in PATH.",
-            "total_domain_count":   None ,
-            "valid_domain_count":   None,
-            "invalid_domain_count": None,
-            "duplicate_domain_count" : None,
-            "file_size_b":  None,
-            "execution_ms": 0,
-            "error_reason": "INVALID_PARAMS",
-            "error_detail": str(FileNotFoundError),
-            "value_entered": None
-        }
+        return {"status":"error","message":"github-subdomains not found.","execution_ms":0,"error_reason":"INVALID_PARAMS","error_detail":"binary not found"}
     except subprocess.TimeoutExpired:
         execution_ms = int((time.time() - start) * 1000)
-        return {
-            "status": "error",
-            "message": "Github subdomain timed out.",
-            "total_domain_count":   None ,
-            "valid_domain_count":   None,
-            "invalid_domain_count": None,
-            "duplicate_domain_count" : None,
-            "file_size_b":  None,
-            "execution_ms": execution_ms,
-            "error_reason": "TIMEOUT",
-            "error_detail": str(subprocess.TimeoutExpired),
-            "value_entered": None
-        }
+        return {"status":"error","message":"Github subdomain timed out.","execution_ms":execution_ms,"error_reason":"TIMEOUT","error_detail":"Subprocess timed out"}
     except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Unexpected error: {str(e)}",
-            "total_domain_count":   None ,
-            "valid_domain_count":   None,
-            "invalid_domain_count": None,
-            "duplicate_domain_count" : None,
-            "file_size_b":  None,
-            "execution_ms": int((time.time() - start) * 1000),
-            "error_reason": "INVALID_PARAMS",
-            "error_detail": str(e),
-            "value_entered": None
-        }
-
-
+        return {"status":"error","message":f"Unexpected error: {e}","execution_ms":int((time.time() - start) * 1000),"error_reason":"OTHER","error_detail":str(e)}
