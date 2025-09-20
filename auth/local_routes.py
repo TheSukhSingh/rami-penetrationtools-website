@@ -117,7 +117,7 @@ def signup():
     # Send email confirmation link
     token       = generate_confirmation_token(user.email)
     confirm_url = url_for('auth.confirm_email', token=token, _external=True)
-    html        = render_template('auth/activate.html', confirm_url=confirm_url)
+    html        = render_template('emails/activate.html', confirm_url=confirm_url)
     send_email(user.email, 'Please confirm your email', html)
 
     return jsonify(message="Signup successful! Check your email to confirm your account."), 201

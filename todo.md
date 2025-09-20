@@ -26,21 +26,12 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Auth when pressed login button, it becomes dark and not visible
 - csrf on cookie flows (since jwt is in cookies, enable csrf protection on all required endpoints)
 - rate limits set up for all endpoints (signin, verify mfa, forgot, reset pw, refresh)
-- cron to revoke expired tokens
 - email queueing so it's not blocked by smtp
 - throttle resend verify
 - login event is in db, make it work so we know the active users per day per month more easily rather than calculating every time...
-## NAVBAR
-- link user dashboard
-- link account settings
-- link billing and plan
-- link help
-- Dropdown also needs admin dashboard for admins only
+
 ## FOOTER
 - Add social links
-## MAILS
-- Confirm mail design update required
-- Reset Password mail design update required
 ## LANDING PAGE
 - hero section touching navbar in laptop screen
 - Why hunters love us --> that heart does not look interesting
@@ -82,7 +73,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Check and confirm all the roles
 - Enforce all the roles
 ## FINAL UPDATES
-- Change db from sqlite to postgresql
+- Change db from sqlite to postgresql and update the models to use postgre 
 - Using the in-memory storage for tracking rate limits as no storage was explicitly specified. -- solve this warning we receive in terminal when we run the server
 ## CREDENTIAL UPDATES REQUIRED
 - Github oauth id/secret
@@ -103,8 +94,26 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
             - $25 - 100 credits
             - $40 - 200 credits
             - $90 - 500 credits
+## MAILS
+- check both mails (functioning good?)
 
 
+
+# TODO CURRENT
+
+## AUTH
+- cron to revoke expired tokens
+## NAVBAR
+- link user dashboard
+- link account settings
+- link billing and plan
+- link help
+## ACCOUNT SETTINGS PAGE
+- complete set up
+## BILLING AND PLAN PAGE
+- complete set up
+## HELP PAGE
+- complete set up
 
 
 
@@ -124,5 +133,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Dropdown needs user dashboard
 - Dropdown from User needs design update
 - Dropdown needs complete restyling like this image - ![complete restyle](md/image.png)
-
+## MAILS
+- Confirm mail design update required
+- Reset Password mail design update required
 
