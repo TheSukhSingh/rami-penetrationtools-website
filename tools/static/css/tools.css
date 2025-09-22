@@ -483,3 +483,17 @@ body {
     width: 160px;
   }
 }
+.tools-list { position: relative; overflow: auto; }
+.tools-category {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 8px;
+  font-weight: 600;
+  background: var(--background, #111);
+  border-bottom: 1px solid var(--border, #222);
+}
+.tool-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; cursor: grab; }
+.tool-item:focus-within, .tool-item:focus, .tool-item:hover { outline: 1px solid var(--border); background: var(--secondary); }
+.tool-item .tool-add { margin-left: auto; visibility: hidden; }
+.tool-item:hover .tool-add, .tool-item:focus-within .tool-add { visibility: visible; }
