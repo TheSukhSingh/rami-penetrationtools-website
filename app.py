@@ -64,7 +64,7 @@ def create_app():
         "JWT_REFRESH_CSRF_COOKIE_PATH": "/",      # old /
         "WTF_CSRF_TIME_LIMIT":3600,
         "WTF_CSRF_METHODS":['POST','PUT','PATCH','DELETE'],
-        "WTF_CSRF_HEADERS": ["X-CSRFToken", "X-CSRF-Token"],
+        "WTF_CSRF_HEADERS": ["X-CSRFToken"],
     })
     from tempfile import gettempdir
 
@@ -75,22 +75,7 @@ def create_app():
     app.config['UPLOAD_OUTPUT_FOLDER'] = os.path.join(RECON_ROOT, "results")
     os.makedirs(app.config['UPLOAD_INPUT_FOLDER'],  exist_ok=True)
     os.makedirs(app.config['UPLOAD_OUTPUT_FOLDER'], exist_ok=True)
-
-
-    # app.config.update({
-            # --- HIBP k-anonymity password check ---
-    # "HIBP_ENABLE": True,                 # master switch
-    # "HIBP_BLOCK_COUNT": 100,             # block if seen ≥ this many times
-    # "HIBP_ADMIN_BLOCK_ANY": True,        # admins blocked if seen ≥ 1
-    # "HIBP_CACHE_TTL_SECONDS": 7*24*3600, # per-prefix cache TTL (7d)
-    # "HIBP_API_TIMEOUT": 2.0,             # seconds
-    # "HIBP_USER_AGENT": "hibp-check/1.0 (contact@example.com)",
-
-    # Optional: point to a dir containing per-prefix files like 'ABCDE.txt'
-    # each file line: SUFFIX:COUNT  (SUFFIX is 35 uppercase hex chars)
-    # "HIBP_OFFLINE_PREFIX_DIR": None,     # e.g. "/var/hibp_prefix"
-    # })
-    
+  
     app.config.update({
         "HIBP_ENABLE": True,               # master switch
         "HIBP_BLOCK_ANY": True,            # block if seen in HIBP at all (>0)

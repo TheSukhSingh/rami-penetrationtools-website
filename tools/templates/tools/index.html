@@ -80,7 +80,7 @@
 
   <!-- Config Modal -->
   <div id="configModal" class="modal hidden">
-    <div class="modal">
+    <div class="modal-card">
       <div class="modal-header">
         <h2 class="modal-title" id="modalTitle">Tool Configuration</h2>
         <button class="modal-close" id="modalClose">&times;</button>
@@ -93,5 +93,5 @@
 {% endblock %}
 
 {% block scripts %}
-  <script defer src="{{ url_for('tools.static', filename='js/index.js') }}"></script>
+  <script defer type="module" src="{{ url_for('tools.static', filename='js/index.js') }}"></script>
 {% endblock %}

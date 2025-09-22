@@ -1,11 +1,4 @@
 (function (global) {
-  // --- Utils ----------------------------------------------------
-  // function getCookie(name) {
-  //   // use existing global getCookie if you already defined one elsewhere
-  //   if (typeof global.getCookie === "function") return global.getCookie(name);
-  //   const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
-  //   return m ? decodeURIComponent(m[2]) : null;
-  // }
   function getMetaCSRF() {
     const t = document.querySelector('meta[name="csrf-token"]');
     return t ? t.getAttribute("content") : "";
@@ -80,12 +73,8 @@
       // Flask-WTF token rendered in <meta name="csrf-token" ...>
       const wtfCsrf = getMetaCSRF() || "";
 
-      // Send both families; each layer picks what it understands
-      if (jwtCsrf) headers.set("X-CSRF-TOKEN", jwtCsrf); // JWT-Extended only
-      if (wtfCsrf) {
-        headers.set("X-CSRFToken", wtfCsrf); // Flask-WTF
-        headers.set("X-CSRF-Token", wtfCsrf); // Flask-WTF alt
-      }
+      if (jwtCsrf) headers.set("X-CSRF-TOKEN", jwtCsrf); // JWT cookie CSRF (primary)
+      if (wtfCsrf) headers.set("X-CSRFToken", wtfCsrf); // Flask-WTF only
     }
 
     // If JSON body (not FormData), set header + stringify
@@ -105,27 +94,6 @@
     } catch (error) {
       console.log(`first fetch error - ${error}`);
     }
-
-    // If unauthorized, try a single refresh then retry
-    // if (res.status === 401) {
-    //   try {
-    //     await refreshTokens();
-    //     if (needCsrf(method)) {
-    //       const which =
-    //         options?.csrf === "refresh"
-    //           ? "csrf_refresh_token"
-    //           : "csrf_access_token";
-    //       const csrf = getCookie(which) || getMetaCSRF();
-    //       if (csrf) headers.set("X-CSRF-TOKEN", csrf);
-    //     }
-
-    //     res = await fetch(url, opts);
-    //   } catch {
-    //     // refresh failed → surface 401, notify listeners
-    //     window.dispatchEvent(new CustomEvent("auth:required"));
-    //     return res;
-    //   }
-    // }
 
     if (!res) {
       // return a Response-like object so callers don’t explode
@@ -173,11 +141,8 @@
         // Flask-WTF CSRF (meta)
         const wtfCsrf = getMetaCSRF() || "";
 
-        if (jwtCsrf) headers.set("X-CSRF-TOKEN", jwtCsrf); // JWT-Extended
-        if (wtfCsrf) {
-          headers.set("X-CSRFToken", wtfCsrf); // Flask-WTF
-          headers.set("X-CSRF-Token", wtfCsrf);
-        }
+        if (jwtCsrf) headers.set("X-CSRF-TOKEN", jwtCsrf); // JWT cookie CSRF (primary)
+        if (wtfCsrf) headers.set("X-CSRFToken", wtfCsrf); // Flask-WTF only
         opts.headers = headers;
       }
 
@@ -186,11 +151,24 @@
 
     // 403/422 could indicate CSRF mismatch—optional hook
     if (res.status === 403 || res.status === 422) {
-      window.dispatchEvent(
-        new CustomEvent("auth:csrf_error", {
-          detail: { url, status: res.status },
-        })
-      );
+      const ct = res.headers.get("Content-Type") || "";
+      let body = null;
+      if (ct.includes("application/json")) {
+        try {
+          body = await res.clone().json();
+        } catch {}
+      }
+      if (
+        body &&
+        (body.msg?.toString().includes("csrf") ||
+          body.error?.toString().includes("csrf"))
+      ) {
+        window.dispatchEvent(
+          new CustomEvent("auth:csrf_error", {
+            detail: { url, status: res.status },
+          })
+        );
+      }
     }
 
     return res;

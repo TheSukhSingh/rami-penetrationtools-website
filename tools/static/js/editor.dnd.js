@@ -214,13 +214,6 @@ export function attachDnD(editor) {
     // start OFF
     setEdgeDeleteMode(false);
 
-    // keyboard toggle: press "E"
-    document.addEventListener("keydown", (e) => {
-      if (e.key.toLowerCase() === "e" && !e.repeat) {
-        setEdgeDeleteMode(!this.edgeDeleteMode);
-      }
-    });
-
     // any canvas interaction disables edge-delete mode
     canvas.addEventListener("mousedown", () => setEdgeDeleteMode(false));
 
@@ -301,6 +294,10 @@ export function attachDnD(editor) {
         this.updateConnections();
         this.validateWorkflow?.();
         this.selectedNode = null;
+      }
+      const key = e && typeof e.key === "string" ? e.key.toLowerCase() : "";
+      if (key === "e" && !e.repeat) {
+        setEdgeDeleteMode(!this.edgeDeleteMode);
       }
     });
   };

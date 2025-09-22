@@ -35,6 +35,19 @@ from celery_app import celery
 
 utcnow = lambda: datetime.now(timezone.utc)
 
+def _current_user_id():
+    """Return the JWT identity; cast to int when possible, else keep as string."""
+    ident = get_jwt_identity()
+    try:
+        return int(ident)
+    except (TypeError, ValueError):
+        return ident
+
+def _same_user(a, b):
+    """True if a and b represent the same id, tolerant to str/int."""
+    return (a is not None) and (b is not None) and (str(a) == str(b))
+
+
 @tools_bp.get("/")
 def tools_index():
     return render_template("tools/index.html")
@@ -73,7 +86,7 @@ def api_tools():
 @tools_bp.route('/api/scan', methods=['POST'])
 @jwt_required()
 def api_scan():
-    user_id = get_jwt_identity()    
+    user_id = _current_user_id()    
     tool    = request.form.get('tool')
     cmd     = request.form.get('cmd')  
     
@@ -191,8 +204,8 @@ def _serialize_workflow(wf: WorkflowDefinition):
         "updated_at": wf.updated_at.isoformat() if wf.updated_at else None,
     }
 
-def _require_owner(wf: WorkflowDefinition, user_id: int):
-    if (wf.owner_id is not None) and (wf.owner_id != user_id):
+def _require_owner(wf: WorkflowDefinition, user_id):
+    if (wf.owner_id is not None) and (not _same_user(wf.owner_id, user_id)):
         return jsonify({"error": "forbidden"}), 403
 
 def _validate_graph(graph: dict):
@@ -209,40 +222,40 @@ def _validate_graph(graph: dict):
         if not isinstance(e, dict) or "from" not in e or "to" not in e:
             return jsonify({"error":"each edge must include from/to"}), 400
 
-# @tools_bp.post("/api/workflows")
-# @jwt_required()
-# # @limiter.limit("15/minute")
-# def create_workflow():
-#     user_id = get_jwt_identity()
-#     data = request.get_json(silent=True) or {}
-#     title = (data.get("title") or "").strip()
-#     description = (data.get("description") or "").strip()
-#     graph = data.get("graph") or {}
-#     is_shared = bool(data.get("is_shared") or False)
+@tools_bp.post("/api/workflows")
+@jwt_required()
+# @limiter.limit("15/minute")
+def create_workflow():
+    user_id = _current_user_id()
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    description = (data.get("description") or "").strip()
+    graph = data.get("graph") or {}
+    is_shared = bool(data.get("is_shared") or False)
 
-#     if not title:
-#         return jsonify({"error": "title is required"}), 400
-#     err = _validate_graph(graph)
-#     if err:
-#         return err
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+    err = _validate_graph(graph)
+    if err:
+        return err
 
-#     wf = WorkflowDefinition(
-#         owner_id=user_id,
-#         title=title,
-#         description=description or None,
-#         version=1,
-#         is_shared=is_shared,
-#         is_archived=False,
-#         graph_json=graph,
-#     )
-#     db.session.add(wf)
-#     db.session.commit()
-#     return jsonify({"workflow": _serialize_workflow(wf)}), 201
+    wf = WorkflowDefinition(
+        owner_id=user_id,
+        title=title,
+        description=description or None,
+        version=1,
+        is_shared=is_shared,
+        is_archived=False,
+        graph_json=graph,
+    )
+    db.session.add(wf)
+    db.session.commit()
+    return jsonify({"workflow": _serialize_workflow(wf)}), 201
 
-@tools_bp.route("/api/workflows", methods=['GET', 'POST'])
+@tools_bp.get("/api/workflows")
 @jwt_required()
 def list_workflows():
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     q = (request.args.get("q") or "").strip()
     mine = request.args.get("mine", "true").lower() in ("1", "true", "yes")
     shared = request.args.get("shared", "false").lower() in ("1", "true", "yes")
@@ -281,11 +294,11 @@ def list_workflows():
 @tools_bp.get("/api/workflows/<int:wf_id>")
 @jwt_required()
 def get_workflow(wf_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     wf = db.session.get(WorkflowDefinition, wf_id)
     if not wf:
         return jsonify({"error": "not found"}), 404
-    if (wf.owner_id != user_id) and not wf.is_shared:
+    if (not _same_user(wf.owner_id, user_id)) and not wf.is_shared:
         return jsonify({"error":"forbidden"}), 403
     return jsonify({"workflow": _serialize_workflow(wf)})
 
@@ -293,7 +306,7 @@ def get_workflow(wf_id: int):
 @jwt_required()
 @limiter.limit("20/minute")
 def update_workflow(wf_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     wf = db.session.get(WorkflowDefinition, wf_id)
     if not wf:
         return jsonify({"error": "not found"}), 404
@@ -301,6 +314,7 @@ def update_workflow(wf_id: int):
     if err: return err
 
     data = request.get_json(silent=True) or {}
+
     if "title" in data:
         title = (data.get("title") or "").strip()
         if not title:
@@ -314,8 +328,9 @@ def update_workflow(wf_id: int):
         graph = data.get("graph") or {}
         err = _validate_graph(graph)
         if err: return err
-        wf.graph_json = graph
-        wf.version = (wf.version or 1) + 1
+        if (wf.graph_json or {}) != graph:
+            wf.graph_json = graph
+            wf.version = (wf.version or 1) + 1
 
     db.session.commit()
     return jsonify({"workflow": _serialize_workflow(wf)})
@@ -324,11 +339,11 @@ def update_workflow(wf_id: int):
 @jwt_required()
 @limiter.limit("10/minute")
 def clone_workflow(wf_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     src = db.session.get(WorkflowDefinition, wf_id)
     if not src:
         return jsonify({"error": "not found"}), 404
-    if (src.owner_id != user_id) and not src.is_shared:
+    if (not _same_user(src.owner_id, user_id)) and not src.is_shared:
         return jsonify({"error":"forbidden"}), 403
 
     data = request.get_json(silent=True) or {}
@@ -351,7 +366,7 @@ def clone_workflow(wf_id: int):
 @jwt_required()
 @limiter.limit("10/minute")
 def delete_workflow(wf_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     wf = db.session.get(WorkflowDefinition, wf_id)
     if not wf:
         return jsonify({"error": "not found"}), 404
@@ -393,11 +408,11 @@ def _serialize_run(run: WorkflowRun):
 @tools_bp.get("/api/runs/<int:run_id>/events")
 @jwt_required()
 def run_events(run_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     run = db.session.get(WorkflowRun, run_id)
     if not run:
         return jsonify({"error":"not found"}), 404
-    if (run.user_id is not None) and (run.user_id != user_id):
+    if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
         return jsonify({"error":"forbidden"}), 403
 
     def gen():
@@ -435,13 +450,13 @@ def run_events(run_id: int):
 @jwt_required()
 @limiter.limit("10/minute")
 def start_run_api(wf_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
 
     # permission: owner or shared (reuse your workflow get)
     wf = db.session.get(WorkflowDefinition, wf_id)
     if not wf:
         return jsonify({"error": "not found"}), 404
-    if (wf.owner_id != user_id) and not wf.is_shared:
+    if (not _same_user(wf.owner_id, user_id)) and not wf.is_shared:
         return jsonify({"error":"forbidden"}), 403
 
     run = create_run_from_definition(wf_id, user_id)
@@ -458,10 +473,10 @@ def start_run_api(wf_id: int):
 @tools_bp.get("/api/runs/<int:run_id>")
 @jwt_required()
 def get_run_api(run_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     run = db.session.get(WorkflowRun, run_id)
     if not run: return jsonify({"error":"not found"}), 404
-    if (run.user_id is not None) and (run.user_id != user_id):
+    if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
         return jsonify({"error":"forbidden"}), 403
     return jsonify({"run": _serialize_run(run)})
 
@@ -469,7 +484,7 @@ def get_run_api(run_id: int):
 @tools_bp.get("/api/runs")
 @jwt_required()
 def list_runs_api():
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     mine = request.args.get("mine", "true").lower() in ("1","true","yes")
     status = (request.args.get("status") or "").upper().strip()
     wf_id = request.args.get("workflow_id", type=int)
@@ -496,10 +511,10 @@ def list_runs_api():
 @tools_bp.get("/api/runs/<int:run_id>/steps/<int:step_index>")
 @jwt_required()
 def get_run_step_api(run_id: int, step_index: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     run = db.session.get(WorkflowRun, run_id)
     if not run: return jsonify({"error":"not found"}), 404
-    if (run.user_id is not None) and (run.user_id != user_id):
+    if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
         return jsonify({"error":"forbidden"}), 403
     step = next((s for s in run.steps if s.step_index == step_index), None)
     if not step: return jsonify({"error":"step not found"}), 404
@@ -514,10 +529,10 @@ def get_run_step_api(run_id: int, step_index: int):
 @jwt_required()
 @limiter.limit("15/minute")
 def pause_run_api(run_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     run = db.session.get(WorkflowRun, run_id)
     if not run: return jsonify({"error":"not found"}), 404
-    if (run.user_id is not None) and (run.user_id != user_id):
+    if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
         return jsonify({"error":"forbidden"}), 403
 
     if run.status in (WorkflowRunStatus.COMPLETED, WorkflowRunStatus.CANCELED, WorkflowRunStatus.FAILED):
@@ -537,10 +552,10 @@ def pause_run_api(run_id: int):
 @jwt_required()
 @limiter.limit("15/minute")
 def resume_run_api(run_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     run = db.session.get(WorkflowRun, run_id)
     if not run: return jsonify({"error":"not found"}), 404
-    if (run.user_id is not None) and (run.user_id != user_id):
+    if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
         return jsonify({"error":"forbidden"}), 403
 
     if run.status not in (WorkflowRunStatus.PAUSED, WorkflowRunStatus.QUEUED):
@@ -561,10 +576,10 @@ def resume_run_api(run_id: int):
 @jwt_required()
 @limiter.limit("15/minute")
 def cancel_run_api(run_id: int):
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     run = db.session.get(WorkflowRun, run_id)
     if not run: return jsonify({"error":"not found"}), 404
-    if (run.user_id is not None) and (run.user_id != user_id):
+    if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
         return jsonify({"error":"forbidden"}), 403
 
     if run.status in (WorkflowRunStatus.COMPLETED, WorkflowRunStatus.CANCELED):
@@ -604,10 +619,10 @@ def retry_run_api(run_id: int):
     Reset a failed/canceled step (and all later steps) to QUEUED, then resume.
     Body: {"step_index": <int>}
     """
-    user_id = get_jwt_identity()
+    user_id = _current_user_id()
     run = db.session.get(WorkflowRun, run_id)
     if not run: return jsonify({"error":"not found"}), 404
-    if (run.user_id is not None) and (run.user_id != user_id):
+    if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
         return jsonify({"error":"forbidden"}), 403
 
     data = request.get_json(silent=True) or {}
@@ -652,8 +667,14 @@ def retry_run_api(run_id: int):
 
 
 @tools_bp.route("/api/runs/<int:run_id>/summary", methods=["GET"])
+@jwt_required()
 def get_run_summary(run_id: int):
-    run = WorkflowRun.query.get_or_404(run_id)
+    user_id = _current_user_id()
+    run = db.session.get(WorkflowRun, run_id)
+    if not run:
+        return jsonify({"error":"not found"}), 404
+    if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
+        return jsonify({"error":"forbidden"}), 403
     # Ensure structure even if empty
     manifest = run.run_manifest or {
         "buckets": {k: {"count": 0, "items": []} for k in ("domains","hosts","ips","ports","urls","endpoints","findings")},

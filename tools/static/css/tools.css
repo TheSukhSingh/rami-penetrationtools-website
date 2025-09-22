@@ -497,3 +497,37 @@ body {
 .tool-item:focus-within, .tool-item:focus, .tool-item:hover { outline: 1px solid var(--border); background: var(--secondary); }
 .tool-item .tool-add { margin-left: auto; visibility: hidden; }
 .tool-item:hover .tool-add, .tool-item:focus-within .tool-add { visibility: visible; }
+/* overlay */
+#configModal.modal {
+  position: fixed;
+  inset: 0;
+  display: none;           /* default hidden; JS removes .hidden */
+  place-items: center;
+  background: rgba(0,0,0,.5);
+  z-index: 1000;
+}
+#configModal.modal:not(.hidden) { display: grid; }
+
+/* inner card */
+#configModal .modal-card {
+  background: #151515;
+  color: #e9e9e9;
+  width: min(780px, 92vw);
+  max-height: 80vh;
+  overflow: auto;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  padding: 14px 16px;
+}
+
+/* header + rows */
+#configModal .modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 10px;
+}
+#configModal .modal-title { font-size: 18px; font-weight: 600; }
+#configModal .preset-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 8px 0; border-bottom: 1px solid #262626;
+}
+#configModal .btn.xs { font-size: 12px; padding: 4px 8px; }

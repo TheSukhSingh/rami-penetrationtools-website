@@ -9,6 +9,12 @@ export const API = {
     run:    (id) => postJSON(`/tools/api/workflows/${id}/run`, {}),
   },
   runs: {
-    get: (id) => getJSON(`/tools/api/runs/${id}`),
+    get:     (id) => getJSON(`/tools/api/runs/${id}`),
+    summary: (id) => getJSON(`/tools/api/runs/${id}/summary`),
+    pause:   (id) => postJSON(`/tools/api/runs/${id}/pause`, {}),
+    resume:  (id) => postJSON(`/tools/api/runs/${id}/resume`, {}),
+    cancel:  (id) => postJSON(`/tools/api/runs/${id}/cancel`, {}),
+    retry:   (id, step_index) =>
+                postJSON(`/tools/api/runs/${id}/retry`, { step_index }),
   },
 };
