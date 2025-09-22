@@ -1,3 +1,74 @@
+// Reconnecting SSE with one silent refresh attempt via requesting.js
+function connectRunSSE(runId, { onEvent, onError } = {}) {
+  let es = null;
+  let triedRefresh = false;
+
+  const open = () => {
+    es = new EventSource(`/tools/api/runs/${runId}/events`);
+    // backend emits named events: "snapshot" and "update"
+    es.addEventListener("snapshot", (e) => {
+      try {
+        onEvent && onEvent("snapshot", JSON.parse(e.data));
+      } catch {}
+    });
+    es.addEventListener("update", (e) => {
+      try {
+        onEvent && onEvent("update", JSON.parse(e.data));
+      } catch {}
+    });
+    es.onerror = async (e) => {
+      try {
+        es.close();
+      } catch {}
+      if (!triedRefresh) {
+        triedRefresh = true;
+        try {
+          const r = await refreshTokens?.({ silent: true });
+          if (r && r.ok) return open();
+        } catch {}
+      }
+      onError && onError(e);
+      // bubble a login-needed signal if your app listens for it
+      window.dispatchEvent(
+        new CustomEvent("auth:required", { detail: { url: location.pathname } })
+      );
+    };
+  };
+
+  open();
+  return () => {
+    try {
+      es && es.close();
+    } catch {}
+  };
+}
+
+// --- Response shape normalizers ---------------------------------
+function pickWorkflow(obj) {
+  // Try common nests first
+  if (obj?.workflow?.id) return obj.workflow;
+  if (obj?.data?.workflow?.id) return obj.data.workflow;
+
+  // Flat object with id is likely the workflow itself
+  if (obj?.id) return obj;
+
+  // Other common wrappers
+  if (obj?.data?.id) return obj.data;
+  if (obj?.item?.id) return obj.item;
+
+  return null; // unknown shape
+}
+
+function pickWorkflowList(obj) {
+  // Try typical lists
+  if (Array.isArray(obj?.items)) return obj.items;
+  if (Array.isArray(obj?.workflows)) return obj.workflows;
+  if (Array.isArray(obj?.data)) return obj.data;
+
+  // Sometimes APIs return {items:{data:[...]}} etc. Add more if needed
+  return Array.isArray(obj) ? obj : [];
+}
+
 class WorkflowEditor {
   constructor() {
     this.tools = [];
@@ -9,10 +80,25 @@ class WorkflowEditor {
     this.draggedNode = null;
     this.connectionStart = null;
     this.nodeCounter = 0;
+    this.API = {
+      tools: () => getJSON("/tools/api/tools"),
+      workflows: {
+        list: () => getJSON("/tools/api/workflows"),
+        get: (id) => getJSON(`/tools/api/workflows/${id}`),
+        create: (payload) => postJSON("/tools/api/workflows", payload),
+        update: (id, payload) => putJSON(`/tools/api/workflows/${id}`, payload),
+        remove: (id) => delJSON(`/tools/api/workflows/${id}`),
+        run: (id) => postJSON(`/tools/api/workflows/${id}/run`, {}), // body optional
+      },
+      scan: (payload) => postJSON("/tools/api/scan", payload),
+    };
+    this.globals = {};
 
     this.currentWorkflow = null; // { id, title, ... } after save/load
     this.currentRunId = null; // numeric id
     this.stopRunStream = null; // fn to close SSE
+
+    window.addEventListener("resize", () => this.updateConnections());
 
     this.init();
   }
@@ -40,8 +126,10 @@ class WorkflowEditor {
   buildGraph() {
     const nodes = this.nodes.map((n) => ({
       id: n.id,
-      tool_slug: n.tool_slug || n.toolId, // we stored tool_slug when creating nodes
+      tool_slug: n.tool_slug || n.toolId,
       config: n.config || {},
+      x: n.x,
+      y: n.y,
     }));
     const edges = this.connections.map((c) => ({ from: c.from, to: c.to }));
     return { nodes, edges, globals: this.globals || {} };
@@ -55,23 +143,9 @@ class WorkflowEditor {
     document.body.classList.toggle("is-busy", !!on);
   }
 
-  // Log to the right container
-  addLog(message) {
-    const wrap = document.getElementById("outputLogs");
-    if (!wrap) return;
-    const row = document.createElement("div");
-    row.className = "output-item";
-    row.innerHTML = `
-    <span class="status-indicator idle"></span>
-    ${new Date().toLocaleTimeString()}: ${message}
-  `;
-    wrap.appendChild(row);
-    wrap.scrollTop = wrap.scrollHeight;
-  }
-
   async loadCatalog() {
     try {
-      const { ok, data } = await ToolsAPI.get("/tools"); // GET /tools/api/tools
+      const { ok, data } = await this.API.tools(); // GET /tools/api/tools
       if (!ok) throw new Error("catalog request not ok");
       this.catalog = data?.categories || {};
 
@@ -131,6 +205,8 @@ class WorkflowEditor {
     // Canvas drag and drop
     canvasArea.addEventListener("dragover", (e) => {
       e.preventDefault();
+      e.dataTransfer && (e.dataTransfer.dropEffect = "copy");
+
       canvasArea.classList.add("drag-over");
     });
 
@@ -149,9 +225,6 @@ class WorkflowEditor {
         this.createNode(this.draggedTool, x, y);
       }
     });
-    ToolsAPI.get("/tools")
-      .then(({ ok, data }) => console.log("catalog ✓", ok, data))
-      .catch((e) => console.error("catalog ✗", e));
 
     // Button event listeners
     document
@@ -175,6 +248,20 @@ class WorkflowEditor {
       if (e.target === canvasArea) {
         this.deselectNode();
       }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && this.selectedNode) {
+        this.addLog(`Deleted ${this.selectedNode.name}`);
+        this.deleteNode(this.selectedNode.id);
+        this.selectedNode = null;
+      }
+    });
+
+    window.addEventListener("beforeunload", () => {
+      try {
+        this.stopRunStream?.();
+      } catch {}
     });
   }
 
@@ -255,19 +342,28 @@ class WorkflowEditor {
   }
 
   getNodeDescription(node) {
-    const config = node.config;
-    switch (node.toolId) {
-      case "input":
-        return `Source: ${config.source}`;
-      case "filter":
-        return `Filter by: ${config.field || "field"}`;
-      case "transform":
-        return `Operation: ${config.operation}`;
-      case "output":
-        return `Destination: ${config.destination}`;
-      default:
-        return "Click gear to configure";
-    }
+    const all = Object.values(this.catalog || {}).flat();
+    const meta = all.find((m) => m.slug === node.tool_slug);
+    const desc = meta?.desc || "Click gear to configure";
+    // show a hint if the tool has a 'value'
+    const v =
+      node.config && node.config.value
+        ? ` • value: ${String(node.config.value).slice(0, 60)}`
+        : "";
+    return desc + v;
+  }
+
+  deleteNode(nodeId) {
+    // remove edges touching the node
+    this.connections = this.connections.filter(
+      (c) => c.from !== nodeId && c.to !== nodeId
+    );
+    // remove node
+    this.nodes = this.nodes.filter((n) => n.id !== nodeId);
+    // remove DOM
+    document.getElementById(nodeId)?.remove();
+    this.updateConnections();
+    this.validateWorkflow();
   }
 
   selectNode(node) {
@@ -284,29 +380,36 @@ class WorkflowEditor {
     }
   }
 
+  clampToCanvas(node) {
+    const canvas = document.getElementById("canvasArea");
+    const { width, height, left, top } = canvas.getBoundingClientRect();
+    const maxX = width - 220; // ~node width
+    const maxY = height - 80; // ~node height
+    node.x = Math.max(0, Math.min(node.x, maxX));
+    node.y = Math.max(0, Math.min(node.y, maxY));
+  }
+
   startNodeDrag(e, node) {
     this.draggedNode = node;
     const nodeElement = document.getElementById(node.id);
     nodeElement.classList.add("dragging");
-
     const startX = e.clientX - node.x;
     const startY = e.clientY - node.y;
 
     const handleMouseMove = (e) => {
       node.x = e.clientX - startX;
       node.y = e.clientY - startY;
+      this.clampToCanvas(node);
       nodeElement.style.left = `${node.x}px`;
       nodeElement.style.top = `${node.y}px`;
       this.updateConnections();
     };
-
     const handleMouseUp = () => {
       nodeElement.classList.remove("dragging");
       this.draggedNode = null;
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
   }
@@ -331,6 +434,15 @@ class WorkflowEditor {
 
   createConnection(fromNode, toNode) {
     // Check if connection already exists
+    if (fromNode.id === toNode.id) {
+      this.addLog("Can't connect a node to itself");
+      return;
+    }
+    if (this.pathWouldCreateCycle(fromNode.id, toNode.id)) {
+      this.addLog("That would create a cycle; linear chains only");
+      return;
+    }
+
     const existingConnection = this.connections.find(
       (conn) => conn.from === fromNode.id && conn.to === toNode.id
     );
@@ -370,6 +482,27 @@ class WorkflowEditor {
     this.addLog(`Connected ${fromNode.name} to ${toNode.name}`);
   }
 
+  hasPath(startId, goalId) {
+    const adj = {};
+    this.connections.forEach((c) => (adj[c.from] ||= []).push(c.to));
+    const seen = new Set([startId]);
+    const q = [startId];
+    while (q.length) {
+      const v = q.shift();
+      if (v === goalId) return true;
+      (adj[v] || []).forEach((n) => {
+        if (!seen.has(n)) {
+          seen.add(n);
+          q.push(n);
+        }
+      });
+    }
+    return false;
+  }
+  pathWouldCreateCycle(srcId, dstId) {
+    return this.hasPath(dstId, srcId);
+  }
+
   updateConnections() {
     const svg = document.getElementById("connectionsSvg");
     svg.innerHTML = "";
@@ -399,36 +532,50 @@ class WorkflowEditor {
 
   validateWorkflow() {
     const warnings = [];
-
-    // Check for multiple start nodes
-    const startNodes = this.nodes.filter((node) => node.type === "start");
-    if (startNodes.length > 1) {
-      warnings.push(
-        "Multiple starting tools detected. Only one start tool is allowed."
-      );
-    }
-
-    // Check for multiple end nodes
-    const endNodes = this.nodes.filter((node) => node.type === "end");
-    if (endNodes.length > 1) {
-      warnings.push(
-        "Multiple output tools detected. Only one output tool is allowed."
-      );
-    }
-
-    // Update node styles based on validation
-    this.nodes.forEach((node) => {
-      const element = document.getElementById(node.id);
-      if (element) {
-        element.classList.remove("error");
-        if (
-          (node.type === "start" && startNodes.length > 1) ||
-          (node.type === "end" && endNodes.length > 1)
-        ) {
-          element.classList.add("error");
-        }
+    const ids = new Set(this.nodes.map((n) => n.id));
+    const inDeg = {},
+      outDeg = {};
+    this.nodes.forEach((n) => ((inDeg[n.id] = 0), (outDeg[n.id] = 0)));
+    this.connections.forEach((c) => {
+      if (ids.has(c.from) && ids.has(c.to)) {
+        outDeg[c.from]++;
+        inDeg[c.to]++;
       }
     });
+
+    const starts = this.nodes.filter((n) => inDeg[n.id] === 0);
+    const ends = this.nodes.filter((n) => outDeg[n.id] === 0);
+    if (starts.length !== 1)
+      warnings.push("Workflow must have exactly one start (no incoming).");
+    if (ends.length !== 1)
+      warnings.push("Workflow must have exactly one end (no outgoing).");
+
+    // middle nodes must have exactly 1 in / 1 out
+    this.nodes.forEach((n) => {
+      const indeg = inDeg[n.id],
+        outdeg = outDeg[n.id];
+      const ok =
+        (indeg === 0 && outdeg === 1) ||
+        (indeg === 1 && outdeg === 1) ||
+        (indeg === 1 && outdeg === 0);
+      if (!ok) warnings.push(`${n.name}: invalid degree (needs linear chain).`);
+    });
+
+    // reachability: from the start, visit all nodes
+    if (starts[0]) {
+      const adj = {};
+      this.connections.forEach((c) => (adj[c.from] ||= []).push(c.to));
+      const seen = new Set();
+      const q = [starts[0].id];
+      while (q.length) {
+        const v = q.shift();
+        if (seen.has(v)) continue;
+        seen.add(v);
+        (adj[v] || []).forEach((n) => q.push(n));
+      }
+      if (seen.size !== this.nodes.length)
+        warnings.push("All nodes must form a single chain (no islands).");
+    }
 
     // Show/hide warning banner
     const warningBanner = document.getElementById("warningBanner");
@@ -580,17 +727,18 @@ class WorkflowEditor {
       }
 
       this.setBusy(true);
-      // Start run
-      const res = await ToolsAPI.post(
-        `/workflows/${this.currentWorkflow.id}/run`,
-        {}
-      );
-      if (!res.ok) throw new Error(res.error?.message || "Failed to start run");
-      const run = res.data?.run;
-      this.currentRunId = run?.id;
-      this.addLog(`Run started (#${this.currentRunId})`);
 
-      // Attach SSE
+      // Start run
+      const res = await this.API.workflows.run(this.currentWorkflow.id);
+      if (!res.ok) throw new Error(res.error?.message || "Failed to start run");
+
+      // Handle either {run: {...}} or {run_id: N} or {id: N}
+      const runObj = res.data?.run || {};
+      const runId = runObj.id ?? res.data?.run_id ?? res.data?.id;
+      if (!runId) throw new Error("Run id missing from response");
+      this.currentRunId = runId;
+
+      this.addLog(`Run started (#${this.currentRunId})`);
       this.attachRunStream(this.currentRunId);
     } catch (e) {
       console.error(e);
@@ -599,24 +747,25 @@ class WorkflowEditor {
       this.setBusy(false);
     }
   }
+
   attachRunStream(runId) {
     // close previous stream
-    if (this.stopRunStream)
+    if (this.stopRunStream) {
       try {
         this.stopRunStream();
       } catch (_) {}
-    const stop = sse(`/tools/api/runs/${runId}/events`, {
+    }
+    this.stopRunStream = connectRunSSE(runId, {
       onEvent: (type, payload) => {
         if (type === "snapshot") {
           const run = payload.run;
-          this.addLog(`Status: ${run.status} (${run.progress_pct}%)`);
+          if (run) this.addLog(`Status: ${run.status} (${run.progress_pct}%)`);
         }
         if (type === "update") {
           if (payload.type === "step") {
             this.addLog(`Step ${payload.step_index}: ${payload.status}`);
           } else if (payload.type === "run") {
             this.addLog(`Run: ${payload.status} (${payload.progress_pct}%)`);
-            // when finished, fetch summary
             if (["COMPLETED", "FAILED", "CANCELED"].includes(payload.status)) {
               this.renderRunSummary(runId);
             }
@@ -630,35 +779,50 @@ class WorkflowEditor {
         );
       },
     });
-    this.stopRunStream = stop;
   }
 
   async renderRunSummary(runId) {
     try {
-      const res = await ToolsAPI.get(`/runs/${runId}/summary`);
-      if (!res.ok)
-        throw new Error(res.error?.message || "Failed to fetch summary");
-      const { counters, manifest } = res.data || {};
+      const res = await getJSON(`/tools/api/runs/${runId}`);
+      if (!res.ok) throw new Error(res.error?.message || "Failed to fetch run");
+
+      const d = res.data || {};
+      const run = d.run || d; // some APIs nest it
+      const manifest = run.run_manifest || run.manifest || {};
+      const counters = run.counters || manifest.counters || {};
+
       const out = document.getElementById("outputResults");
       if (!out) return;
-      out.innerHTML = ""; // clear
+      out.innerHTML = "";
 
-      // Top counters
       const header = document.createElement("div");
       header.className = "output-item";
-      header.textContent = `Summary — domains:${counters.domains} hosts:${counters.hosts} urls:${counters.urls} findings:${counters.findings}`;
+      const countText = [
+        ["domains", counters.domains],
+        ["hosts", counters.hosts],
+        ["ips", counters.ips],
+        ["ports", counters.ports],
+        ["urls", counters.urls],
+        ["endpoints", counters.endpoints],
+        ["findings", counters.findings],
+      ]
+        .filter(([, v]) => Number.isFinite(v))
+        .map(([k, v]) => `${k}:${v}`)
+        .join(" ");
+      header.textContent = `Summary — ${countText || "no counters"}`;
       out.appendChild(header);
 
-      // Bucket lists (limit 50 to keep UI snappy)
-      Object.entries(manifest.buckets || {}).forEach(([k, v]) => {
-        if (!v?.items?.length) return;
+      const buckets = manifest.buckets || {};
+      Object.entries(buckets).forEach(([k, v]) => {
+        const items = v?.items || [];
+        if (!items.length) return;
         const sec = document.createElement("div");
         sec.className = "output-item";
-        const list = v.items
+        const list = items
           .slice(0, 50)
           .map((x) => (typeof x === "string" ? x : JSON.stringify(x)));
         sec.innerHTML = `<strong>${k}</strong><br>${list.join("<br>")}${
-          v.items.length > 50 ? "<br>…" : ""
+          items.length > 50 ? "<br>…" : ""
         }`;
         out.appendChild(sec);
       });
@@ -766,26 +930,30 @@ class WorkflowEditor {
           this.addLog("Save cancelled");
           return;
         }
-        const { ok, data, error } = await ToolsAPI.post("/workflows", {
+        const { ok, data, error } = await this.API.workflows.create({
           title,
           description: "",
           is_shared: false,
           graph,
         });
         if (!ok) throw new Error(error?.message || "Failed to create workflow");
-        this.currentWorkflow = data?.workflow || null;
+        const wfCreated = pickWorkflow(data);
+        if (!wfCreated?.id)
+          throw new Error("Create workflow: missing id in response");
+        this.currentWorkflow = wfCreated;
+
         this.addLog(
           `Preset created: ${this.currentWorkflow?.title} (#${this.currentWorkflow?.id})`
         );
       } else {
-        const { ok, data, error } = await ToolsAPI.put(
-          `/workflows/${this.currentWorkflow.id}`,
-          {
-            graph,
-          }
+        const { ok, data, error } = await this.API.workflows.update(
+          this.currentWorkflow.id,
+          { graph }
         );
         if (!ok) throw new Error(error?.message || "Failed to update workflow");
-        this.currentWorkflow = data?.workflow || this.currentWorkflow;
+        const wfUpdated = pickWorkflow(data);
+        this.currentWorkflow = wfUpdated || this.currentWorkflow;
+
         this.addLog(`Preset updated: #${this.currentWorkflow?.id}`);
       }
     } catch (e) {
@@ -800,11 +968,10 @@ class WorkflowEditor {
     try {
       this.setBusy(true);
       // list mine + shared
-      const { ok, data, error } = await ToolsAPI.get(
-        "/workflows?mine=true&shared=true&page=1&per_page=50"
-      );
+      const { ok, data, error } = await this.API.workflows.list();
       if (!ok) throw new Error(error?.message || "Failed to list presets");
-      const items = data?.items || [];
+      const items = pickWorkflowList(data);
+
       if (!items.length) {
         this.addLog("No presets found");
         return;
@@ -823,10 +990,11 @@ class WorkflowEditor {
         return;
       }
 
-      const res = await ToolsAPI.get(`/workflows/${id}`);
+      const res = await this.API.workflows.get(id);
       if (!res.ok)
         throw new Error(res.error?.message || "Failed to load preset");
-      const wf = res.data?.workflow;
+      const wf = pickWorkflow(res.data);
+
       const graph = wf?.graph_json || wf?.graph || {};
 
       // reset canvas
@@ -846,8 +1014,8 @@ class WorkflowEditor {
           icon: "T",
           config: {},
         };
-        const x = 100 + idx * 180,
-          y = 100;
+        const x = Number.isFinite(n.x) ? n.x : 100 + idx * 180;
+        const y = Number.isFinite(n.y) ? n.y : 100;
         this.createNode(tool, x, y);
         // sync config/id to created node
         const created = this.nodes[this.nodes.length - 1];
