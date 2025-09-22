@@ -158,30 +158,82 @@ export function attachView(editor) {
     return desc + v;
   };
 
+  // editor.view.js
   editor.showNodeConfig = function (node) {
     const modal = document.getElementById("configModal");
     const modalTitle = document.getElementById("modalTitle");
     const modalBody = document.getElementById("modalBody");
+
     modalTitle.textContent = `Configure ${node.name}`;
 
-    let formHTML = "";
-    Object.keys(node.config).forEach((key) => {
-      const value = node.config[key];
-      const inputType = typeof value === "boolean" ? "checkbox" : "text";
-      formHTML += `<div class="form-group"><label class="form-label" for="${key}">${this.formatLabel(
-        key
-      )}</label>${
-        inputType === "checkbox"
-          ? `<input type="checkbox" id="${key}" ${value ? "checked" : ""}>`
-          : `<input type="text" class="form-input" id="${key}" value="${value}">`
-      }</div>`;
+    // Build a <form> instead of injecting inline onclick handlers
+    const form = document.createElement("form");
+    form.className = "config-form";
+
+    // Create inputs for each config field
+    Object.entries(node.config || {}).forEach(([key, value]) => {
+      const group = document.createElement("div");
+      group.className = "form-group";
+
+      const label = document.createElement("label");
+      label.className = "form-label";
+      label.setAttribute("for", key);
+      label.textContent = this.formatLabel(key);
+
+      let input;
+      if (typeof value === "boolean") {
+        input = document.createElement("input");
+        input.type = "checkbox";
+        input.id = key;
+        input.checked = !!value;
+      } else {
+        input = document.createElement("input");
+        input.type = "text";
+        input.className = "form-input";
+        input.id = key;
+        input.value = value ?? "";
+      }
+
+      group.appendChild(label);
+      group.appendChild(input);
+      form.appendChild(group);
     });
-    formHTML += `<div class="form-group" style="margin-top:24px;">
-      <button class="btn primary" onclick="workflowEditor.saveNodeConfig('${node.id}')">Save Configuration</button>
-      <button class="btn" onclick="workflowEditor.closeModal()" style="margin-left:8px;">Cancel</button>
-    </div>`;
-    modalBody.innerHTML = formHTML;
+
+    // Actions row
+    const actions = document.createElement("div");
+    actions.className = "form-group";
+    actions.style.marginTop = "24px";
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "submit";
+    saveBtn.className = "btn primary";
+    saveBtn.textContent = "Save Configuration";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn";
+    cancelBtn.style.marginLeft = "8px";
+    cancelBtn.textContent = "Cancel";
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    // Mount into modal
+    modalBody.innerHTML = "";
+    modalBody.appendChild(form);
     modal.classList.remove("hidden");
+
+    // Wire up behavior (no inline JS!)
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      // Uses editor.saveNodeConfig implemented in editor.presets.js
+      this.saveNodeConfig?.(node.id);
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      this.closeModal?.();
+    });
   };
 
   editor.closeModal = function () {

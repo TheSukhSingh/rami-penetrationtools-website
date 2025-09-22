@@ -302,19 +302,54 @@ export function attachDnD(editor) {
     });
   };
 
-  // Run + SSE glue (uses API + connectRunSSE)
+  // Run + SSE glue (uses API + connectRunSSE) — REPLACE existing definition
   editor.attachRunStream = function (runId) {
+    // stop any previous stream/poller
     if (this.stopRunStream) {
       try {
         this.stopRunStream();
       } catch {}
     }
+    if (this._pollTimer) {
+      try {
+        clearInterval(this._pollTimer);
+      } catch {}
+      this._pollTimer = null;
+    }
+
+    const startPolling = () => {
+      if (this._pollTimer) return;
+      this.addLog("SSE disconnected — switching to polling.");
+      this._pollTimer = setInterval(async () => {
+        try {
+          const r = await this.API.runs.get(runId);
+          if (!r?.ok) return;
+          const d = r.data || r;
+          const run = d.run || d;
+          const status = run.status || "UNKNOWN";
+          const pct = Number.isFinite(run.progress_pct) ? run.progress_pct : 0;
+          this.addLog(`Run: ${status} (${pct}%)`);
+
+          if (["COMPLETED", "FAILED", "CANCELED"].includes(status)) {
+            try {
+              clearInterval(this._pollTimer);
+            } catch {}
+            this._pollTimer = null;
+            await this.renderRunSummary?.(runId);
+            this.setBusy?.(false);
+          }
+        } catch {}
+      }, 2000);
+    };
+
     this.stopRunStream = this.connectRunSSE(runId, {
       onEvent: (type, payload) => {
-        if (type === "snapshot" && payload.run)
-          this.addLog(
-            `Status: ${payload.run.status} (${payload.run.progress_pct}%)`
-          );
+        if (type === "snapshot" && payload.run) {
+          const pct = Number.isFinite(payload.run.progress_pct)
+            ? payload.run.progress_pct
+            : 0;
+          this.addLog(`Status: ${payload.run.status} (${pct}%)`);
+        }
         if (type === "update") {
           if (payload.type === "step")
             this.addLog(`Step ${payload.step_index}: ${payload.status}`);
@@ -325,6 +360,7 @@ export function attachDnD(editor) {
               try {
                 this.stopRunStream?.();
               } catch {}
+              this.setBusy?.(false);
             }
           }
         }
@@ -334,6 +370,8 @@ export function attachDnD(editor) {
         this.addLog(
           "Live updates disconnected; will continue with polling if needed."
         );
+        // Kick off fallback polling
+        startPolling();
       },
     });
   };

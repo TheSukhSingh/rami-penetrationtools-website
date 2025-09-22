@@ -1,72 +1,40 @@
-import shutil
+# tools/alltools/tools/hakrawler.py
+from __future__ import annotations
 import subprocess
-import os
-import time
-from tools.utils.domain_classification import classify_lines
-from tools.alltools._manifest_utils import split_typed, finalize_manifest
+from ._common import (
+    resolve_bin, read_targets_from_options, ensure_work_dir,
+    write_output_file, finalize, now_ms, URL_RE
+)
 
+DEFAULT_TIMEOUT = 60
 
-def run_scan(data):
-    print("→ Using hakrawler at:", shutil.which("hakrawler"))
+def run_scan(options: dict) -> dict:
+    t0 = now_ms()
+    work_dir = ensure_work_dir(options)
+    seeds, _ = read_targets_from_options(options)
 
-    HAKRAWLER_BIN = r"/usr/local/bin/hakrawler"
-    total_domain_count = valid_domain_count = invalid_domain_count = duplicate_domain_count = 0
-    file_size_b = None
-    method = data.get('input_method', 'manual')
+    bin_path = resolve_bin("hakrawler")
+    print("→ Using hakrawler at:", bin_path)
 
-    if method == 'file':
-        filepath = data.get('file_path', '')
-        if not filepath or not os.path.exists(filepath):
-            return {"status":"error","message":"Upload file not found.","execution_ms":0,"error_reason":"INVALID_PARAMS","error_detail":"Missing or inaccessible file"}
-        file_size_b = os.path.getsize(filepath)
-        with open(filepath) as f:
-            lines = [l.strip() for l in f if l.strip()]
-        total_domain_count = len(lines)
-        valid, invalid, duplicate_domain_count = classify_lines(lines)
-        targets = "\n".join(valid or lines)
-        valid_domain_count, invalid_domain_count = len(valid or lines), len(invalid or [])
-    else:
-        raw = data.get("hakrawler-manual", "")
-        lines = [l.strip() for l in raw.splitlines() if l.strip()]
-        total_domain_count = len(lines)
-        valid, invalid, duplicate_domain_count = classify_lines(lines)
-        targets = "\n".join(valid or lines)
-        valid_domain_count, invalid_domain_count = len(valid or lines), len(invalid or [])
+    if not bin_path:
+        return finalize("error", "hakrawler not found in PATH", options, "hakrawler -plain", t0, "", error_reason="INVALID_PARAMS")
+    if not seeds:
+        return finalize("error", "no seeds", options, "hakrawler", t0, "", error_reason="INVALID_PARAMS")
 
-    command = [HAKRAWLER_BIN]
-    if data.get("hakrawler-unique","").strip().lower() == "yes": command.append("-unique")
-    if data.get("hakrawler-subs","").strip().lower() == "yes": command.append("-subs")
-    if data.get("hakrawler-d","").strip(): command += ["-d", data.get("hakrawler-d").strip()]
-    if data.get("hakrawler-threads","").strip(): command += ["-t", data.get("hakrawler-threads").strip()]
-    if data.get("hakrawler-timeout","").strip(): command += ["-timeout", data.get("hakrawler-timeout").strip()]
-    command_str = " ".join(command)
-
-    start = time.time()
+    cmd = [bin_path, "-plain"]
     try:
-        result = subprocess.run(command, input=targets, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        execution_ms = int((time.time() - start) * 1000)
-        stdout = result.stdout.strip() or "No output captured."
-        if result.returncode != 0:
-            return {"status":"error","message":f"hakrawler error:\n{stdout}","execution_ms":execution_ms,"error_reason":"OTHER","error_detail":stdout}
-
-        typed = split_typed(stdout.splitlines())
-        parsed = {"urls": typed["urls"], "endpoints": typed["endpoints"]}
-        extra = {
-            "total_domain_count": total_domain_count,
-            "valid_domain_count": valid_domain_count,
-            "invalid_domain_count": invalid_domain_count,
-            "duplicate_domain_count": duplicate_domain_count,
-            "file_size_b": file_size_b,
-            "execution_ms": execution_ms,
-            "error_reason": None,
-            "error_detail": None,
-            "value_entered": None,
-        }
-        return finalize_manifest(slug="hakrawler", options=data, command_str=command_str, started_at=start, stdout=stdout, parsed=parsed, primary="urls" if parsed["urls"] else "endpoints", extra=extra)
-    except FileNotFoundError:
-        return {"status":"error","message":"hakrawler not found.","execution_ms":0,"error_reason":"INVALID_PARAMS","error_detail":"binary not found"}
+        proc = subprocess.run(
+            cmd, input="\n".join(seeds), text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=int(options.get("timeout_s", DEFAULT_TIMEOUT))
+        )
+        raw = proc.stdout
+        ofile = write_output_file(work_dir, "hakrawler_out.txt", raw)
+        urls = [ln.strip() for ln in raw.splitlines() if URL_RE.search(ln)]
+        status = "success" if proc.returncode == 0 else "error"
+        msg = "ok" if status == "success" else (proc.stderr.strip() or "hakrawler exited non-zero")
+        return finalize(status, msg, options, " ".join(cmd), t0, raw, ofile, urls=urls)
     except subprocess.TimeoutExpired:
-        execution_ms = int((time.time() - start) * 1000)
-        return {"status":"error","message":"hakrawler timed out.","execution_ms":execution_ms,"error_reason":"TIMEOUT","error_detail":"Subprocess timed out"}
+        return finalize("error", "hakrawler timed out", options, " ".join(cmd), t0, "", error_reason="TIMEOUT")
     except Exception as e:
-        return {"status":"error","message":f"Unexpected error: {e}","execution_ms":int((time.time() - start) * 1000),"error_reason":"OTHER","error_detail":str(e)}
+        return finalize("error", f"hakrawler failed: {e}", options, " ".join(cmd), t0, "", error_reason="EXECUTION_ERROR")

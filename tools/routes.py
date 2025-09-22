@@ -9,29 +9,21 @@ from tools.models import (
     ScanStatus, 
     ErrorReason, 
     Tool,
-    ToolCategoryLink,
+    ToolCategoryLink, ToolConfigField, ToolConfigFieldType, ToolUsageDaily,
+    UserToolConfig,
     WorkflowDefinition, WorkflowRun, WorkflowRunStep,
     WorkflowRunStatus, WorkflowStepStatus,
 )
 from extensions import db, limiter
 from . import tools_bp, debug_echo
-from .alltools.tools import (
-    dnsx, 
-    gau,
-    github_subdomains, 
-    gospider, 
-    hakrawler, 
-    httpx, 
-    katana, 
-    linkfinder, 
-    naabu, 
-    subfinder
-)
+from importlib import import_module
+
 import json, time
 from .events import _redis, _chan, publish_run_event
 from .tasks import advance_run
 from .runner import create_run_from_definition
 from celery_app import celery
+from sqlalchemy.exc import IntegrityError
 
 utcnow = lambda: datetime.now(timezone.utc)
 
@@ -120,30 +112,20 @@ def api_scan():
 
     start_req = time.time()
     try:
-        if   tool == 'dnsx':              result = dnsx.run_scan(options)
-        elif tool == 'gau':               result = gau.run_scan(options)
-        elif tool == 'github-subdomains': result = github_subdomains.run_scan(options)
-        elif tool == 'gospider':          result = gospider.run_scan(options)
-        elif tool == 'hakrawler':         result = hakrawler.run_scan(options)
-        elif tool == 'httpx':             result = httpx.run_scan(options)
-        elif tool == 'katana':            result = katana.run_scan(options)
-        elif tool == 'linkfinder':        result = linkfinder.run_scan(options)
-        elif tool == 'naabu':             result = naabu.run_scan(options)
-        elif tool == 'subfinder':         result = subfinder.run_scan(options)
-        elif tool == 'debug-echo':        result = debug_echo.run_scan(options)
+        if tool == 'debug-echo':
+            adapter = debug_echo
         else:
-            return jsonify({
-                'status': 'error',
-                'message': f'Unknown tool: {tool}'
-            }), 400
-        success = True
+            mod_name = tool.replace('-', '_')
+            try:
+                adapter = import_module(f".alltools.tools.{mod_name}", package="tools")
+            except ModuleNotFoundError:
+                return jsonify({"status": "error", "message": f"Unknown tool: {tool}"}), 400
+
+        result = adapter.run_scan(options) or {}
+        success = (result.get("status") in ("success", "ok"))
     except Exception as e:
-        result = {
-            'status': 'error',
-            'message': str(e),
-            'output': ''
-        }
-        success = (result.get('status') != 'error')
+        result = {"status": "error", "message": str(e), "output": ""}
+        success = False
 
     if success:
         result.setdefault('status', 'success')
@@ -461,7 +443,8 @@ def start_run_api(wf_id: int):
 
     run = create_run_from_definition(wf_id, user_id)
     # kick the coordinator
-    advance_run.delay(run.id)
+    queue_name = current_app.config.get("CELERY_QUEUE", "tools_default")
+    advance_run.apply_async(args=[run.id], queue=queue_name)
     publish_run_event(run.id, "run", {
         "status": run.status.name,
         "progress_pct": run.progress_pct,
@@ -689,3 +672,117 @@ def get_run_summary(run_id: int):
         "counters": counters,
         "manifest": manifest,
     })
+
+
+
+def _tool_to_dict_with_schema(t: Tool):
+    return {
+        "id": t.id,
+        "slug": t.slug,
+        "name": t.name,
+        "category": t.category,
+        "description": t.description,
+        "enabled": t.enabled,
+        "schema": [f.to_dict() for f in t.config_fields],
+    }
+
+@tools_bp.get("/api/tools-flat")
+def list_tools():
+    tools = Tool.query.order_by(Tool.category, Tool.name).all()
+    return jsonify([_tool_to_dict_with_schema(t) for t in tools])
+
+
+@tools_bp.get("/api/tools/<slug>/schema")
+@jwt_required()
+def get_tool_schema(slug):
+    tool = Tool.query.filter_by(slug=slug).first_or_404()
+    return jsonify({
+        "tool": {"id": tool.id, "slug": tool.slug, "name": tool.name},
+        "fields": [f.to_dict() for f in tool.config_fields],
+    })
+
+
+@tools_bp.post("/api/tools/<slug>/schema")
+@jwt_required()
+@limiter.limit("10/minute")
+def set_tool_schema(slug):
+    """
+    Replaces the schema for a tool with the provided list of fields.
+    Body:
+    {
+      "fields": [
+         {"name":"input_method","label":"Input","type":"select","choices":[...],"default":"manual","order_index":0},
+         ...
+      ]
+    }
+    """
+    tool = Tool.query.filter_by(slug=slug).first_or_404()
+    payload = request.get_json(silent=True) or {}
+    fields = payload.get("fields", [])
+    if not isinstance(fields, list):
+        abort(400, "fields must be a list")
+
+    # clear then re-create fields (simple first implementation)
+    ToolConfigField.query.filter_by(tool_id=tool.id).delete()
+
+    created = []
+    for idx, f in enumerate(fields):
+        try:
+            t = f.get("type", "string")
+            field = ToolConfigField(
+                tool_id=tool.id,
+                name=f["name"],
+                label=f.get("label") or f["name"].replace("_", " ").title(),
+                type=ToolConfigFieldType(t),
+                required=bool(f.get("required", False)),
+                help_text=f.get("help_text"),
+                placeholder=f.get("placeholder"),
+                default=f.get("default"),
+                choices=f.get("choices") if f.get("choices") else None,
+                group=f.get("group"),
+                order_index=int(f.get("order_index", idx)),
+                advanced=bool(f.get("advanced", False)),
+                visible=bool(f.get("visible", True)),
+            )
+            db.session.add(field); created.append(field)
+        except Exception as e:
+            db.session.rollback()
+            abort(400, f"invalid field #{idx}: {e}")
+
+    try:
+        db.session.commit()
+    except IntegrityError as e:
+        db.session.rollback()
+        abort(400, f"unique/constraint error: {e.orig}")
+
+    return jsonify({"ok": True, "fields": [f.to_dict() for f in created]}), 201
+
+
+# (Optional) per-user default overrides
+@tools_bp.get("/api/tools/<slug>/user-defaults")
+@jwt_required()
+def get_user_tool_defaults(slug):
+    # get current_user.id if you have auth; here just stub user_id from request context/session
+    user_id = _current_user_id()
+    tool = Tool.query.filter_by(slug=slug).first_or_404()
+    row = UserToolConfig.query.filter_by(user_id=user_id, tool_id=tool.id).first()
+    return jsonify({"values": (row.values if row else {})})
+
+
+@tools_bp.post("/api/tools/<slug>/user-defaults")
+@jwt_required()
+@limiter.limit("20/minute")
+def set_user_tool_defaults(slug):
+    user_id = _current_user_id()
+    tool = Tool.query.filter_by(slug=slug).first_or_404()
+    payload = request.get_json(silent=True) or {}
+    values = payload.get("values") or {}
+
+    row = UserToolConfig.query.filter_by(user_id=user_id, tool_id=tool.id).first()
+    if not row:
+        row = UserToolConfig(user_id=user_id, tool_id=tool.id, values=values)
+        db.session.add(row)
+    else:
+        row.values = values
+    db.session.commit()
+    return jsonify({"ok": True, "values": row.values})

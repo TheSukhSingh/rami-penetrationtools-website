@@ -1,60 +1,45 @@
-import shutil
-import subprocess
-import os
-import time
-import dotenv
-from tools.alltools._manifest_utils import split_typed, finalize_manifest
+# tools/alltools/tools/github_subdomains.py
+from __future__ import annotations
+import subprocess, os
+from ._common import (
+    resolve_bin, read_targets_from_options, ensure_work_dir,
+    write_output_file, finalize, now_ms
+)
 
-dotenv.load_dotenv()
+DEFAULT_TIMEOUT = 60
 
-def run_scan(data):
-    print("→ Using github-subdomains at:", shutil.which("github-subdomains"))
+def run_scan(options: dict) -> dict:
+    """
+    Uses a CLI named `github-subdomains` if present. If you use another tool,
+    change the binary name and args below accordingly.
+    """
+    t0 = now_ms()
+    work_dir = ensure_work_dir(options)
+    targets, _ = read_targets_from_options(options)  # orgs or root domains depending on your tool
 
-    GSD_BIN = r"/usr/local/bin/github-subdomains"
-    command = [GSD_BIN]
+    bin_path = resolve_bin("github-subdomains", "github_subdomains")
+    print("→ Using github_subdomains at:", bin_path)
 
-    target = data.get("github-url", "").strip()
-    if not target:
-        return {"status":"error","message":"Missing repo URL (github-url)","execution_ms":0,"error_reason":"INVALID_PARAMS","error_detail":"Provide a GitHub repository URL"}
+    if not bin_path:
+        return finalize("error", "github-subdomains not found in PATH", options, "github-subdomains", t0, "", error_reason="INVALID_PARAMS")
+    if not targets:
+        return finalize("error", "no input", options, "github-subdomains", t0, "", error_reason="INVALID_PARAMS")
 
-    if data.get("github-raw","").strip().lower() == "yes":
-        command.append("--raw")
-    if data.get("github-extended","").strip().lower() == "yes":
-        command.append("--extended")
-    if data.get("github-exit-disabled","").strip().lower() == "yes":
-        command.append("--exit-on-ratelimit")
-
-    command.extend([target])
-    command_str = " ".join(command)
-
-    start = time.time()
+    # Most CLI variants read targets from stdin and output subdomains
+    cmd = [bin_path]
     try:
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        execution_ms = int((time.time() - start) * 1000)
-
-        stdout = result.stdout.strip() or "No output captured."
-        if result.returncode != 0:
-            return {"status":"error","message":f"Github subdomain error:\n{stdout}","execution_ms":execution_ms,"error_reason":"OTHER","error_detail":stdout}
-
-        lines = [ln.strip() for ln in stdout.splitlines() if ln.strip()]
-        typed = split_typed(lines)
-        parsed = {"domains": typed["domains"]}
-        extra = {
-            "total_domain_count": None,
-            "valid_domain_count": None,
-            "invalid_domain_count": None,
-            "duplicate_domain_count": None,
-            "file_size_b": None,
-            "execution_ms": execution_ms,
-            "error_reason": None,
-            "error_detail": None,
-            "value_entered": None,
-        }
-        return finalize_manifest(slug="github_subdomains", options=data, command_str=command_str, started_at=start, stdout=stdout, parsed=parsed, primary="domains", extra=extra)
-    except FileNotFoundError:
-        return {"status":"error","message":"github-subdomains not found.","execution_ms":0,"error_reason":"INVALID_PARAMS","error_detail":"binary not found"}
+        proc = subprocess.run(
+            cmd, input="\n".join(targets), text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=int(options.get("timeout_s", DEFAULT_TIMEOUT))
+        )
+        raw = proc.stdout.strip()
+        ofile = write_output_file(work_dir, "github_subdomains_out.txt", raw + ("\n" if raw else ""))
+        domains = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        status = "success" if proc.returncode == 0 else "error"
+        msg = "ok" if status == "success" else (proc.stderr.strip() or "github-subdomains exited non-zero")
+        return finalize(status, msg, options, " ".join(cmd), t0, raw, ofile, domains=domains)
     except subprocess.TimeoutExpired:
-        execution_ms = int((time.time() - start) * 1000)
-        return {"status":"error","message":"Github subdomain timed out.","execution_ms":execution_ms,"error_reason":"TIMEOUT","error_detail":"Subprocess timed out"}
+        return finalize("error", "github-subdomains timed out", options, " ".join(cmd), t0, "", error_reason="TIMEOUT")
     except Exception as e:
-        return {"status":"error","message":f"Unexpected error: {e}","execution_ms":int((time.time() - start) * 1000),"error_reason":"OTHER","error_detail":str(e)}
+        return finalize("error", f"github-subdomains failed: {e}", options, " ".join(cmd), t0, "", error_reason="EXECUTION_ERROR")

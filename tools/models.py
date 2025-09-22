@@ -223,6 +223,89 @@ class ToolUsageDaily(db.Model):
     def __repr__(self):
         return f"<ToolUsageDaily tool={self.tool_id} day={self.day} runs={self.runs}>"
 
+class ToolConfigFieldType(enum.Enum):
+    STRING = "string"        # single-line text
+    TEXT = "text"            # multi-line text
+    INTEGER = "integer"
+    FLOAT = "float"
+    BOOLEAN = "boolean"
+    SELECT = "select"        # single choice (choices: [{value,label}])
+    MULTISELECT = "multiselect"  # multiple choices (list of values)
+    FILE = "file"            # file path picked server-side
+    PATH = "path"            # directory / binary path
+    TAGS = "tags"            # list[str]
+
+class ToolConfigField(db.Model):
+    __tablename__ = "tool_config_fields"
+    __table_args__ = (
+        db.UniqueConstraint("tool_id", "name", name="uq_tool_field_name"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tool_id = db.Column(db.Integer, db.ForeignKey("tools.id", ondelete="CASCADE"), nullable=False)
+
+    # key your adapters expect in options, e.g. "input_method", "value", "threads"
+    name = db.Column(db.String(64), nullable=False)
+    label = db.Column(db.String(128), nullable=False)
+
+    type = db.Column(db.Enum(ToolConfigFieldType), nullable=False, default=ToolConfigFieldType.STRING)
+    required = db.Column(db.Boolean, default=False)
+    help_text = db.Column(db.String(512))
+    placeholder = db.Column(db.String(256))
+
+    # default and choices are JSON so you can store anything (int/str/bool/list)
+    default = db.Column(db.JSON, nullable=True)
+    choices = db.Column(db.JSON, nullable=True)  # e.g. [{"value":"manual","label":"Manual"},{"value":"file","label":"From file"}]
+
+    group = db.Column(db.String(64))        # for UI grouping/sections, optional
+    order_index = db.Column(db.Integer, default=0)
+    advanced = db.Column(db.Boolean, default=False)
+    visible = db.Column(db.Boolean, default=True)
+
+    tool = db.relationship(
+        "Tool",
+        backref=db.backref(
+            "config_fields",
+            cascade="all, delete-orphan",
+            order_by="ToolConfigField.order_index",
+            lazy="selectin",
+        ),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "label": self.label,
+            "type": self.type.value,
+            "required": self.required,
+            "help_text": self.help_text,
+            "placeholder": self.placeholder,
+            "default": self.default,
+            "choices": self.choices or [],
+            "group": self.group,
+            "order_index": self.order_index,
+            "advanced": self.advanced,
+            "visible": self.visible,
+        }
+
+class UserToolConfig(db.Model):
+    """
+    Optional: user-level default overrides per tool.
+    If you don’t need per-user defaults yet, you can skip this.
+    """
+    __tablename__ = "user_tool_configs"
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "tool_id", name="uq_user_tool_config"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False)  # FK optional: db.ForeignKey("users.id")
+    tool_id = db.Column(db.Integer, db.ForeignKey("tools.id", ondelete="CASCADE"), nullable=False)
+    values = db.Column(db.JSON, default=dict)
+
+    tool = db.relationship("Tool", lazy="joined")
+
 class WorkflowDefinition(db.Model, TimestampMixin, PrettyIdMixin):
     """
     A reusable workflow ("preset") that captures the canvas graph and per-node config.

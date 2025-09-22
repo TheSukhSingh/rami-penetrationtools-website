@@ -51,6 +51,9 @@ def create_app():
 
         FEATURE_BILLING=os.getenv("FEATURE_BILLING", "0") == "1",
         FEATURE_HELP=os.getenv("FEATURE_HELP", "0") == "1",
+
+        CELERY_QUEUE="tools_default",
+
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({

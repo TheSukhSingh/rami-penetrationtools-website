@@ -69,12 +69,24 @@ def create_run_from_definition(workflow_id: int, user_id: Optional[int]) -> Work
 
     for idx, node in enumerate(ordered_nodes):
         tool = tools_by_slug.get(node.get("tool_slug"))
+
+        # DB defaults from schema
+        defaults = {}
+        if tool:
+            for f in tool.config_fields:
+                if f.default is not None:
+                    defaults[f.name] = f.default
+
+        # Node's explicit config wins over defaults
+        node_cfg = (node.get("config") or {})
+        merged_cfg = {**defaults, **node_cfg}
+
         step = WorkflowRunStep(
             run_id=run.id,
             step_index=idx,
             tool_id=(tool.id if tool else None),
             status=WorkflowStepStatus.QUEUED,
-            input_manifest=(node.get("config") or {}),  # seed with per-node config
+            input_manifest=merged_cfg,
         )
         db.session.add(step)
 

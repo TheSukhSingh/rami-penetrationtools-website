@@ -73,7 +73,8 @@ def advance_run(self, run_id: int):
         return {'status': 'completed'}
 
     publish_run_event(run.id, "dispatch", {"step_index": next_step.step_index})
-    res = run_step.delay(run_id, next_step.step_index)
+    queue_name = current_app.config.get("CELERY_QUEUE", "tools_default")
+    res = run_step.apply_async(args=[run_id, next_step.step_index], queue=queue_name)
     # record Celery task id for cancel/revoke
     next_step.celery_task_id = res.id
     db.session.commit()
@@ -201,7 +202,7 @@ def run_step(self, run_id: int, step_index: int):
 
         # load adapter + prepare options
         mod_name = slug.replace('-', '_')
-        adapter = import_module(f".alltools.{mod_name}", package="tools")
+        adapter = import_module(f".alltools.tools.{mod_name}", package="tools")
         options = _prep_options_for_tool(step, prev_output, run.user_id, current_app.config)
 
         base = current_app.config.get("TOOLS_WORK_DIR", "/tmp/hackr_runs")

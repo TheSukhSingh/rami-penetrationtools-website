@@ -1,65 +1,48 @@
-import shutil
-import subprocess
-import time
-from tools.utils.domain_classification import classify_lines
-from tools.alltools._manifest_utils import split_typed, finalize_manifest
+# tools/alltools/tools/linkfinder.py
+from __future__ import annotations
+import subprocess, shlex
+from ._common import (
+    resolve_bin, read_targets_from_options, ensure_work_dir,
+    write_output_file, finalize, now_ms
+)
 
-def run_scan(data):
-    print("→ Using linkfinder at:", shutil.which("linkfinder"))
-    command = ["linkfinder"]
+DEFAULT_TIMEOUT = 60
 
-    domain = data.get("linkfinder-domain", "").strip()
-    if not domain:
-        return {"status":"error","message":"At least one domain is required.","execution_ms":0,"error_reason":"INVALID_PARAMS","error_detail":"Missing linkfinder-domain"}
+def run_scan(options: dict) -> dict:
+    t0 = now_ms()
+    work_dir = ensure_work_dir(options)
+    urls, _ = read_targets_from_options(options)
 
-    command.extend(["-i", domain])
+    # LinkFinder is a Python CLI; commonly "linkfinder"
+    bin_path = resolve_bin("linkfinder")
+    print("→ Using linkfinder at:", bin_path)
 
-    regex = data.get("linkfinder-regex", "").strip()
-    if regex:
-        command.extend(["-r", regex])
+    if not bin_path:
+        return finalize("error", "linkfinder not found in PATH", options, "linkfinder -i <url> -o cli", t0, "", error_reason="INVALID_PARAMS")
+    if not urls:
+        return finalize("error", "no input urls", options, "linkfinder", t0, "", error_reason="INVALID_PARAMS")
 
-    cookies = data.get("linkfinder-cookies", "").strip()
-    if cookies:
-        command.extend(["-c", cookies])
+    endpoints = []
+    raw_agg = []
+    # Run per-URL to keep output clean (it’s usually fast)
+    for u in urls:
+        cmd = [bin_path, "-i", u, "-o", "cli"]
+        try:
+            proc = subprocess.run(
+                cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=int(options.get("timeout_s", DEFAULT_TIMEOUT))
+            )
+            raw_agg.append(proc.stdout)
+            # linkfinder CLI outputs one path per line
+            for ln in proc.stdout.splitlines():
+                ln = ln.strip()
+                if ln:
+                    endpoints.append(ln)
+        except subprocess.TimeoutExpired:
+            raw_agg.append(f"[timeout] {u}")
+        except Exception as e:
+            raw_agg.append(f"[error:{e}] {u}")
 
-    timeout = data.get("linkfinder-timeout", "").strip() or "10"
-    try:
-        t = int(timeout)
-        if not (2 <= t <= 60):
-            raise ValueError
-    except ValueError:
-        return {"status":"error","message":"Timeout must be between 2-60 seconds","execution_ms":0,"error_reason":"INVALID_PARAMS","error_detail":"Timeout must be 2-60"}
-    command.extend(["-t", str(timeout)])
-
-    command_str = " ".join(command)
-    start = time.time()
-    try:
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        execution_ms = int((time.time() - start) * 1000)
-
-        stdout = result.stdout.strip() or "No output captured."
-        if result.returncode != 0:
-            return {"status":"error","message":f"linkfinder error:\n{stdout}","execution_ms":execution_ms,"error_reason":"OTHER","error_detail":stdout}
-
-        lines = [ln.strip() for ln in stdout.splitlines() if ln.strip()]
-        typed = split_typed(lines)
-        parsed = {"endpoints": typed["endpoints"]}
-        extra = {
-            "total_domain_count": None,
-            "valid_domain_count": None,
-            "invalid_domain_count": None,
-            "duplicate_domain_count": None,
-            "file_size_b": None,
-            "execution_ms": execution_ms,
-            "error_reason": None,
-            "error_detail": None,
-            "value_entered": None,
-        }
-        return finalize_manifest(slug="linkfinder", options=data, command_str=command_str, started_at=start, stdout=stdout, parsed=parsed, primary="endpoints", extra=extra)
-    except FileNotFoundError:
-        return {"status":"error","message":"linkfinder not found.","execution_ms":0,"error_reason":"INVALID_PARAMS","error_detail":"binary not found"}
-    except subprocess.TimeoutExpired:
-        execution_ms = int((time.time() - start) * 1000)
-        return {"status":"error","message":"linkfinder timed out.","execution_ms":execution_ms,"error_reason":"TIMEOUT","error_detail":"Subprocess timed out"}
-    except Exception as e:
-        return {"status":"error","message":f"Unexpected error: {e}","execution_ms":int((time.time() - start) * 1000),"error_reason":"OTHER","error_detail":str(e)}
+    raw = "\n".join(raw_agg)
+    ofile = write_output_file(work_dir, "linkfinder_out.txt", raw + ("\n" if raw else ""))
+    return finalize("success", "ok", options, "linkfinder -i <url> -o cli", t0, raw, ofile, endpoints=endpoints)

@@ -1,109 +1,73 @@
-import os
-from tools.utils.domain_classification import classify_lines
-import subprocess
-import shutil
-import time
-from tools.alltools._manifest_utils import split_typed, finalize_manifest
+# tools/alltools/tools/subfinder.py
+from __future__ import annotations
+import subprocess, os
+from pathlib import Path
+from ._common import (
+    resolve_bin, read_targets_from_options, ensure_work_dir,
+    write_output_file, finalize, now_ms
+)
 
+DEFAULT_TIMEOUT = 60
 
-def run_scan(data):
-    print("→ Using subfinder at:", shutil.which("subfinder"))
+def run_scan(options: dict) -> dict:
+    """
+    subfinder expects -d (single domain) or -dL (file of domains).
+    We support both:
+      - Manual input -> one domain => -d <domain>
+      - Manual input -> many domains => write file + -dL <file>
+      - File input -> use that file with -dL
+    """
+    t0 = now_ms()
+    work_dir = ensure_work_dir(options)
+    bin_path = resolve_bin("subfinder")
+    print("→ Using subfinder at:", bin_path)
 
-    SUBFINDER_BIN = r"/usr/local/bin/subfinder"
-    total_domain_count = valid_domain_count = invalid_domain_count = duplicate_domain_count = 0
-    file_size_b = None
-    method = data.get('input_method', 'manual')
+    if not bin_path:
+        return finalize(
+            "error", "subfinder not found in PATH",
+            options, "subfinder -silent", t0, "",
+            error_reason="INVALID_PARAMS"
+        )
 
-    if method == 'file':
-        filepath = data.get('file_path', '')
-        if not filepath or not os.path.exists(filepath):
-            return {
-                "status": "error",
-                "message": "Upload file not found.",
-                "total_domain_count": None,
-                "valid_domain_count": None,
-                "invalid_domain_count": None,
-                "duplicate_domain_count": None,
-                "file_size_b": file_size_b,
-                "execution_ms": 0,
-                "error_reason": "INVALID_PARAMS",
-                "error_detail": "Missing or inaccessible file",
-                "value_entered": None
-            }
-        file_size_b = os.path.getsize(filepath)
-        if file_size_b > 100_000:
-            return {
-                "status": "error",
-                "message": f"Uploaded file too large ({file_size_b} bytes)",
-                "total_domain_count": None,
-                "valid_domain_count": None,
-                "invalid_domain_count": None,
-                "duplicate_domain_count": None,
-                "file_size_b": file_size_b,
-                "execution_ms": 0,
-                "error_reason": "FILE_TOO_LARGE",
-                "error_detail": f"{file_size_b} > 100000 bytes limit",
-                "value_entered": file_size_b
-            }
-        with open(filepath) as f:
-            lines = [l.strip() for l in f if l.strip()]
-        total_domain_count = len(lines)
-        valid, invalid, duplicate_domain_count = classify_lines(lines)
-        if invalid:
-            return {"status": "error", "message": f"{len(invalid)} invalid domains", "execution_ms": 0, "error_reason": "INVALID_PARAMS", "error_detail": ", ".join(invalid[:10])}
-        if len(valid) > 50:
-            return {"status": "error", "message": f"Too many domains: {len(valid)} (max 50)", "execution_ms": 0, "error_reason": "TOO_MANY_DOMAINS", "error_detail": f"{len(valid)} > 50"}
-        targets = "\n".join(valid)
-        valid_domain_count, invalid_domain_count = len(valid), len(invalid) if invalid else 0
+    # Load targets from options (manual or file)
+    targets, src = read_targets_from_options(options)
+    if not targets and not (options.get("input_method") == "file" and options.get("file_path")):
+        return finalize("error", "no input root domains", options, "subfinder", t0, "", error_reason="INVALID_PARAMS")
+
+    cmd = [bin_path, "-silent"]
+
+    # If user gave a file explicitly, prefer that
+    if options.get("input_method") == "file" and options.get("file_path") and os.path.exists(options["file_path"]):
+        cmd += ["-dL", options["file_path"]]
     else:
-        raw = data.get("subfinder-manual", "")
-        lines = [l.strip() for l in raw.splitlines() if l.strip()]
-        total_domain_count = len(lines)
-        valid, invalid, duplicate_domain_count = classify_lines(lines)
-        if not valid:
-            return {"status": "error", "message": "At least one valid domain is required.", "execution_ms": 0, "error_reason": "INVALID_PARAMS", "error_detail": "No valid domains"}
-        if len(valid) > 50:
-            return {"status": "error", "message": f"Too many domains: {len(valid)} (max 50)", "execution_ms": 0, "error_reason": "TOO_MANY_DOMAINS", "error_detail": f"{len(valid)} > 50"}
-        targets = "\n".join(valid)
-        valid_domain_count, invalid_domain_count = len(valid), len(invalid)
+        # Manual input: 1 domain -> -d; many -> write to file and use -dL
+        if len(targets) == 1:
+            cmd += ["-d", targets[0]]
+        else:
+            list_path = Path(work_dir) / "subfinder_input.txt"
+            list_path.write_text("\n".join(targets), encoding="utf-8", errors="ignore")
+            cmd += ["-dL", str(list_path)]
 
-    command = [SUBFINDER_BIN, "-silent"]
-    if (data.get("subfinder-all","").strip().lower() == "yes"):
-        command.append("-all")
-    if (data.get("subfinder-silent","").strip().lower() == "yes"):
-        command.append("-silent")
-    timeout = (data.get("subfinder-timeout") or "").strip() or "10"
-    threads = (data.get("subfinder-threads") or "").strip() or "20"
-    if timeout: command += ["-timeout", timeout]
-    if threads: command += ["-t", threads]
-    command_str = " ".join(command)
+    # Optional flags
+    if options.get("all_sources"):
+        cmd.append("-all")
+    if options.get("threads"):
+        cmd += ["-t", str(options["threads"])]
+    if options.get("timeout_s"):
+        cmd += ["-timeout", str(int(options["timeout_s"]))]
 
-    start = time.time()
     try:
-        result = subprocess.run(command, input=targets, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        execution_ms = int((time.time() - start) * 1000)
-        stdout = result.stdout.strip() or "No output captured."
-        if result.returncode != 0:
-            return {"status": "error", "message": f"subfinder error:\n{stdout}", "execution_ms": execution_ms, "error_reason": "OTHER", "error_detail": stdout}
-
-        typed = split_typed(stdout.splitlines())
-        parsed = {"domains": typed["domains"]}
-        extra = {
-            "total_domain_count": total_domain_count,
-            "valid_domain_count": valid_domain_count,
-            "invalid_domain_count": invalid_domain_count,
-            "duplicate_domain_count": duplicate_domain_count,
-            "file_size_b": file_size_b,
-            "execution_ms": execution_ms,
-            "error_reason": None,
-            "error_detail": None,
-            "value_entered": None,
-        }
-        return finalize_manifest(slug="subfinder", options=data, command_str=command_str, started_at=start, stdout=stdout, parsed=parsed, primary="domains", extra=extra)
+        proc = subprocess.run(
+            cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=int(options.get("timeout_s", DEFAULT_TIMEOUT))
+        )
+        raw = proc.stdout.strip()
+        ofile = write_output_file(work_dir, "subfinder_out.txt", raw + ("\n" if raw else ""))
+        domains = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        status = "success" if proc.returncode == 0 else "error"
+        msg = "ok" if status == "success" else (proc.stderr.strip() or "subfinder exited non-zero")
+        return finalize(status, msg, options, " ".join(cmd), t0, raw, ofile, domains=domains)
     except subprocess.TimeoutExpired:
-        execution_ms = int((time.time() - start) * 1000)
-        return {"status": "error", "message": "subfinder timed out.", "execution_ms": execution_ms, "error_reason": "TIMEOUT", "error_detail": "Subprocess timed out"}
-    except FileNotFoundError:
-        return {"status": "error", "message": "subfinder is not installed.", "execution_ms": 0, "error_reason": "INVALID_PARAMS", "error_detail": "binary not found"}
+        return finalize("error", "subfinder timed out", options, " ".join(cmd), t0, "", error_reason="TIMEOUT")
     except Exception as e:
-        return {"status": "error", "message": f"Unexpected error: {e}", "execution_ms": int((time.time() - start) * 1000), "error_reason": "OTHER", "error_detail": str(e)}
+        return finalize("error", f"subfinder failed: {e}", options, " ".join(cmd), t0, "", error_reason="EXECUTION_ERROR")
