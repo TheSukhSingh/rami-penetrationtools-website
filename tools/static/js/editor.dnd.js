@@ -302,7 +302,7 @@ export function attachDnD(editor) {
     });
   };
 
-  // Run + SSE glue (uses API + connectRunSSE) — REPLACE existing definition
+  // Run + SSE glue (uses API + connectRunSSE)
   editor.attachRunStream = function (runId) {
     // stop any previous stream/poller
     if (this.stopRunStream) {
@@ -342,18 +342,21 @@ export function attachDnD(editor) {
       }, 2000);
     };
 
+    // normalize both { type: "run"|"step" } and { kind: "run"|"step" }
     this.stopRunStream = this.connectRunSSE(runId, {
-      onEvent: (type, payload) => {
-        if (type === "snapshot" && payload.run) {
+      onEvent: (evtType, payload) => {
+        if (evtType === "snapshot" && payload.run) {
           const pct = Number.isFinite(payload.run.progress_pct)
             ? payload.run.progress_pct
             : 0;
           this.addLog(`Status: ${payload.run.status} (${pct}%)`);
         }
-        if (type === "update") {
-          if (payload.type === "step")
+        if (evtType === "update") {
+          const kind = payload.type || payload.kind;
+          if (kind === "step") {
             this.addLog(`Step ${payload.step_index}: ${payload.status}`);
-          if (payload.type === "run") {
+          }
+          if (kind === "run") {
             this.addLog(`Run: ${payload.status} (${payload.progress_pct}%)`);
             if (["COMPLETED", "FAILED", "CANCELED"].includes(payload.status)) {
               this.renderRunSummary?.(runId);
@@ -370,7 +373,6 @@ export function attachDnD(editor) {
         this.addLog(
           "Live updates disconnected; will continue with polling if needed."
         );
-        // Kick off fallback polling
         startPolling();
       },
     });

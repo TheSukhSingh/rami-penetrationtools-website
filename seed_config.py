@@ -48,6 +48,12 @@ def run():
     db.session.commit()
     print("done.")
 
+def main():
+    # create the Flask app and run seeding inside app context
+    from app import create_app
+    app = create_app()
+    with app.app_context():
+        run()
+
 if __name__ == "__main__":
-    # run with FLASK_APP=app.py python -c "from tools.seed_config import run; run()"
-    run()
+    main()

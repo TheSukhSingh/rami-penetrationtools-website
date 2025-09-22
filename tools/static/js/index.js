@@ -12,5 +12,5 @@ attachDnD(editor);
 attachValidate(editor);
 attachPresets(editor);
 
-window.workflowEditor = editor; // for modal button handlers
+window.workflowEditor = editor; 
 editor.init();

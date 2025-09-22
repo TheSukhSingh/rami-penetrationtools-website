@@ -1,4 +1,23 @@
 // Cycle checks + linear-chain validation + small helpers
+import { state } from "./editor.state.js";
+
+export function validateAllNodes() {
+  const errors = [];
+  state.nodes.forEach(n => {
+    const tool = state.toolsById.get(n.tool_id);
+    (tool.schema || []).forEach(f => {
+      if (f.required && (n.config?.[f.name] === undefined || n.config?.[f.name] === "")) {
+        errors.push(`Node ${tool.name}: "${f.label || f.name}" is required`);
+      }
+    });
+    // Example: if input_method=manual then require value
+    if ((n.config?.input_method || "manual") === "manual" && !n.config?.value) {
+      errors.push(`Node ${tool.name}: value required when input_method=manual`);
+    }
+  });
+  return errors;
+}
+
 export function attachValidate(editor) {
   editor.hasPath = function(startId, goalId) {
     const adj = {};

@@ -134,3 +134,67 @@ export function pickWorkflowList(obj) {
   if (Array.isArray(obj?.data)) return obj.data;
   return Array.isArray(obj) ? obj : [];
 }
+// tools/static/js/editor.state.js
+export const state = {
+  toolsById: new Map(),     // toolId -> tool meta (from tools-flat)
+  toolsBySlug: new Map(),   // slug -> tool meta
+  categories: [],           // [{name, tools:[tool]}]
+  workflow: null,           // full wf JSON from backend
+  nodes: new Map(),         // nodeId -> { id, tool_id, slug, x, y, config: {} }
+  edges: [],                // [{from, to}]
+  run: null                 // { id, status, ... }
+};
+
+export function initTools(flatList) {
+  state.toolsById.clear();
+  state.toolsBySlug.clear();
+  const groups = new Map();
+
+  flatList.forEach(t => {
+    state.toolsById.set(t.id, t);
+    state.toolsBySlug.set(t.slug, t);
+    (t.categories?.length ? t.categories : ["Other"]).forEach(cat => {
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat).push(t);
+    });
+  });
+
+  state.categories = [...groups.keys()].map(name => ({
+    name,
+    tools: groups.get(name).sort((a, b) => a.name.localeCompare(b.name)),
+  }));
+}
+
+export function adoptWorkflow(wf) {
+  state.workflow = wf;
+  state.nodes.clear();
+  state.edges = wf.edges || [];
+  (wf.nodes || []).forEach(n => {
+    state.nodes.set(n.id, {
+      id: n.id,
+      tool_id: n.tool_id,
+      slug: n.slug,
+      x: n.x, y: n.y,
+      config: n.config || {}
+    });
+  });
+}
+
+export function addNode(node) {
+  state.nodes.set(node.id, node);
+}
+
+export function updateNodeConfig(nodeId, config) {
+  const n = state.nodes.get(nodeId);
+  if (!n) return;
+  n.config = { ...(n.config || {}), ...config };
+}
+
+export function nodeSummary(node) {
+  const c = node.config || {};
+  // prioritize showing a single “at-a-glance” value
+  if (c.value) return `value: ${c.value}`;
+  if (c.file_path) return `file: ${c.file_path}`;
+  if (c.input_method) return `input: ${c.input_method}`;
+  return '';
+}

@@ -294,3 +294,154 @@ export function attachView(editor) {
     }
   };
 }
+// tools/static/js/editor.view.js
+import { state, updateNodeConfig, nodeSummary } from "./editor.state.js";
+import { saveNodeConfig } from "./api.js";
+
+const els = {
+  modal:    document.getElementById("configModal"),
+  title:    document.getElementById("modalTitle"),
+  body:     document.getElementById("modalBody"),
+  close:    document.getElementById("modalClose"),
+};
+els.close.addEventListener("click", closeModal);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+function closeModal() {
+  els.modal.classList.add("hidden");
+  els.body.innerHTML = "";
+}
+
+function inputForField(field, value) {
+  const wrap = document.createElement("div");
+  wrap.className = "form-row";
+
+  const label = document.createElement("label");
+  label.textContent = field.label || field.name;
+  label.htmlFor = `f_${field.name}`;
+  label.className = "form-label";
+  wrap.appendChild(label);
+
+  let el;
+  switch (field.type) {
+    case "boolean":
+      el = document.createElement("input");
+      el.type = "checkbox";
+      el.checked = Boolean(value ?? field.default ?? false);
+      break;
+    case "integer":
+      el = document.createElement("input");
+      el.type = "number";
+      el.value = value ?? field.default ?? "";
+      break;
+    case "select":
+      el = document.createElement("select");
+      (field.choices || []).forEach(ch => {
+        const o = document.createElement("option");
+        o.value = ch.value;
+        o.textContent = ch.label ?? ch.value;
+        el.appendChild(o);
+      });
+      el.value = value ?? field.default ?? (field.choices?.[0]?.value ?? "");
+      break;
+    default: // "string" | "path"
+      el = document.createElement("input");
+      el.type = "text";
+      el.value = value ?? field.default ?? "";
+      if (field.placeholder) el.placeholder = field.placeholder;
+  }
+  el.id = `f_${field.name}`;
+  el.name = field.name;
+  el.required = !!field.required;
+
+  const ctl = document.createElement("div");
+  ctl.className = "form-control";
+  ctl.appendChild(el);
+  wrap.appendChild(ctl);
+
+  if (field.help_text) {
+    const help = document.createElement("div");
+    help.className = "form-help";
+    help.textContent = field.help_text;
+    wrap.appendChild(help);
+  }
+  return wrap;
+}
+
+function collectForm(form) {
+  const out = {};
+  [...form.querySelectorAll("input, select, textarea")].forEach(el => {
+    const nm = el.name;
+    if (!nm) return;
+    if (el.type === "checkbox") out[nm] = el.checked;
+    else if (el.type === "number") out[nm] = el.value === "" ? null : Number(el.value);
+    else out[nm] = el.value;
+  });
+  return out;
+}
+
+// Public API used from index.js
+export async function openConfigModalForNode(nodeId) {
+  const node = state.nodes.get(nodeId);
+  if (!node) return;
+
+  const tool = state.toolsById.get(node.tool_id);
+  els.title.textContent = `${tool.name} · Configuration`;
+
+  const form = document.createElement("form");
+  form.className = "config-form";
+
+  tool.schema
+    .slice() // don’t mutate original
+    .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    .filter(f => f.visible !== false)
+    .forEach(field => {
+      const curVal = node.config ? node.config[field.name] : undefined;
+      form.appendChild(inputForField(field, curVal));
+    });
+
+  const actions = document.createElement("div");
+  actions.className = "modal-actions";
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "submit";
+  saveBtn.className = "btn primary";
+  saveBtn.textContent = "Save Configuration";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "btn";
+  cancelBtn.textContent = "Cancel";
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  form.appendChild(actions);
+
+  cancelBtn.addEventListener("click", closeModal);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const config = collectForm(form);
+
+    // Persist to backend
+    const wfId = state.workflow?.id;
+    if (!wfId) { alert("No workflow loaded."); return; }
+
+    try {
+      const saved = await saveNodeConfig(wfId, nodeId, config);
+      updateNodeConfig(nodeId, saved.config || config);
+
+      // Update node subtitle (summary)
+      const nodeEl = document.querySelector(`[data-node-id="${nodeId}"]`);
+      if (nodeEl) {
+        const sub = nodeEl.querySelector(".node-subtitle");
+        if (sub) sub.textContent = nodeSummary(state.nodes.get(nodeId));
+      }
+      closeModal();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save configuration");
+    }
+  });
+
+  els.body.innerHTML = "";
+  els.body.appendChild(form);
+  els.modal.classList.remove("hidden");
+}

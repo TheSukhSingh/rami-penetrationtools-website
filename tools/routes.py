@@ -17,6 +17,7 @@ from tools.models import (
 from extensions import db, limiter
 from . import tools_bp, debug_echo
 from importlib import import_module
+from sqlalchemy.orm import joinedload
 
 import json, time
 from .events import _redis, _chan, publish_run_event
@@ -676,20 +677,35 @@ def get_run_summary(run_id: int):
 
 
 def _tool_to_dict_with_schema(t: Tool):
+    meta = t.meta_info or {}
+    categories = [
+        link.category.name
+        for link in (t.category_links or [])
+        if link.category and link.category.enabled
+    ]
     return {
         "id": t.id,
         "slug": t.slug,
         "name": t.name,
-        "category": t.category,
-        "description": t.description,
+        "categories": categories,  # list of category names
+        "description": (meta.get("desc") or meta.get("description") or ""),
         "enabled": t.enabled,
         "schema": [f.to_dict() for f in t.config_fields],
     }
 
 @tools_bp.get("/api/tools-flat")
 def list_tools():
-    tools = Tool.query.order_by(Tool.category, Tool.name).all()
-    return jsonify([_tool_to_dict_with_schema(t) for t in tools])
+    rows = (
+        db.session.query(Tool)
+        .options(
+            joinedload(Tool.config_fields),
+            joinedload(Tool.category_links).joinedload(ToolCategoryLink.category),
+        )
+        .order_by(Tool.name.asc())
+        .all()
+    )
+    return jsonify([_tool_to_dict_with_schema(t) for t in rows])
+
 
 
 @tools_bp.get("/api/tools/<slug>/schema")
