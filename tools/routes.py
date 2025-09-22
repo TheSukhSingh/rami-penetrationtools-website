@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from flask import render_template, request, jsonify, abort, Response, stream_with_context
+from flask import current_app, render_template, request, jsonify, abort, Response, stream_with_context
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy import or_
 from tools.models import (
@@ -14,8 +14,8 @@ from tools.models import (
     WorkflowRunStatus, WorkflowStepStatus,
 )
 from extensions import db, limiter
-from . import tools_bp
-from .alltools import (
+from . import tools_bp, debug_echo
+from .alltools.tools import (
     dnsx, 
     gau,
     github_subdomains, 
@@ -117,6 +117,7 @@ def api_scan():
         elif tool == 'linkfinder':        result = linkfinder.run_scan(options)
         elif tool == 'naabu':             result = naabu.run_scan(options)
         elif tool == 'subfinder':         result = subfinder.run_scan(options)
+        elif tool == 'debug-echo':        result = debug_echo.run_scan(options)
         else:
             return jsonify({
                 'status': 'error',
@@ -208,37 +209,37 @@ def _validate_graph(graph: dict):
         if not isinstance(e, dict) or "from" not in e or "to" not in e:
             return jsonify({"error":"each edge must include from/to"}), 400
 
-@tools_bp.post("/api/workflows")
-@jwt_required()
-@limiter.limit("15/minute")
-def create_workflow():
-    user_id = get_jwt_identity()
-    data = request.get_json(silent=True) or {}
-    title = (data.get("title") or "").strip()
-    description = (data.get("description") or "").strip()
-    graph = data.get("graph") or {}
-    is_shared = bool(data.get("is_shared") or False)
+# @tools_bp.post("/api/workflows")
+# @jwt_required()
+# # @limiter.limit("15/minute")
+# def create_workflow():
+#     user_id = get_jwt_identity()
+#     data = request.get_json(silent=True) or {}
+#     title = (data.get("title") or "").strip()
+#     description = (data.get("description") or "").strip()
+#     graph = data.get("graph") or {}
+#     is_shared = bool(data.get("is_shared") or False)
 
-    if not title:
-        return jsonify({"error": "title is required"}), 400
-    err = _validate_graph(graph)
-    if err:
-        return err
+#     if not title:
+#         return jsonify({"error": "title is required"}), 400
+#     err = _validate_graph(graph)
+#     if err:
+#         return err
 
-    wf = WorkflowDefinition(
-        owner_id=user_id,
-        title=title,
-        description=description or None,
-        version=1,
-        is_shared=is_shared,
-        is_archived=False,
-        graph_json=graph,
-    )
-    db.session.add(wf)
-    db.session.commit()
-    return jsonify({"workflow": _serialize_workflow(wf)}), 201
+#     wf = WorkflowDefinition(
+#         owner_id=user_id,
+#         title=title,
+#         description=description or None,
+#         version=1,
+#         is_shared=is_shared,
+#         is_archived=False,
+#         graph_json=graph,
+#     )
+#     db.session.add(wf)
+#     db.session.commit()
+#     return jsonify({"workflow": _serialize_workflow(wf)}), 201
 
-@tools_bp.get("/api/workflows")
+@tools_bp.route("/api/workflows", methods=['GET', 'POST'])
 @jwt_required()
 def list_workflows():
     user_id = get_jwt_identity()
@@ -650,7 +651,7 @@ def retry_run_api(run_id: int):
     return jsonify({"run": _serialize_run(run)})
 
 
-@tools_bp.route("/tools/api/runs/<int:run_id>/summary", methods=["GET"])
+@tools_bp.route("/api/runs/<int:run_id>/summary", methods=["GET"])
 def get_run_summary(run_id: int):
     run = WorkflowRun.query.get_or_404(run_id)
     # Ensure structure even if empty

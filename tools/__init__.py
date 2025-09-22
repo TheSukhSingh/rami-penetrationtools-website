@@ -140,5 +140,46 @@ def wf_advance(run_id):
     r = advance_run.delay(run_id)
     click.echo(f"advance_run queued: {r.id}")
 
+@tools_bp.cli.command("add-debug-echo")
+def add_debug_echo():
+    """Create a simple 'Debug Echo' tool and link it under a 'Debug' category."""
+    from extensions import db
+    from .models import Tool, ToolCategory, ToolCategoryLink
+
+    # Ensure category
+    cat = ToolCategory.query.filter_by(slug="debug").first()
+    if not cat:
+        cat = ToolCategory(slug="debug", name="Debug")
+        # your model supports sort_order + enabled
+        setattr(cat, "sort_order", 99)
+        setattr(cat, "enabled", True)
+        db.session.add(cat)
+
+    # Ensure tool (no 'description' column; put info in meta_info)
+    tool = Tool.query.filter_by(slug="debug-echo").first()
+    if not tool:
+        tool = Tool(
+            slug="debug-echo",
+            name="Debug Echo",
+            enabled=True,
+            version="1.0",
+            meta_info={
+                "desc": "Echoes back the text you send (for plumbing tests).",
+                "type": "utility",
+                "time": "instant"
+            },
+        )
+        db.session.add(tool)
+        db.session.flush()
+
+    # Ensure link
+    link = ToolCategoryLink.query.filter_by(category_id=cat.id, tool_id=tool.id).first()
+    if not link:
+        link = ToolCategoryLink(category_id=cat.id, tool_id=tool.id, sort_order=1, is_featured=True)
+        db.session.add(link)
+
+    db.session.commit()
+    click.echo("Added 'debug-echo' under 'Debug'")
+
 
 from . import routes

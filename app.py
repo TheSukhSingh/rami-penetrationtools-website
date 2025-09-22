@@ -55,13 +55,13 @@ def create_app():
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
         "JWT_TOKEN_LOCATION": ["cookies"],            # read/write JWTs from cookies
-        "JWT_COOKIE_SECURE": True,                    # only send over HTTPS
+        "JWT_COOKIE_SECURE": False,                    # only send over HTTPS
         "JWT_COOKIE_SAMESITE": "Lax",                 # CSRF protection level
         "JWT_COOKIE_CSRF_PROTECT": True,              # enable double-submit CSRF
         "JWT_ACCESS_COOKIE_PATH": "/",                # where access cookie is sent
-        "JWT_REFRESH_COOKIE_PATH": "/auth",
+        "JWT_REFRESH_COOKIE_PATH": "/", # old /auth
         "JWT_ACCESS_CSRF_COOKIE_PATH": "/",
-        "JWT_REFRESH_CSRF_COOKIE_PATH": "/",      
+        "JWT_REFRESH_CSRF_COOKIE_PATH": "/",      # old /
         "WTF_CSRF_TIME_LIMIT":3600,
         "WTF_CSRF_METHODS":['POST','PUT','PATCH','DELETE'],
         "WTF_CSRF_HEADERS": ["X-CSRFToken", "X-CSRF-Token"],

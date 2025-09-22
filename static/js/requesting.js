@@ -48,9 +48,6 @@
     refreshPromise = fetch("/auth/refresh", {
       method: "POST",
       credentials: "include",
-      // csrf: "refresh",
-      // refresh: false,
-      // silent,
       headers: {
         Accept: "application/json",
         "X-CSRF-TOKEN": csrf,
@@ -70,16 +67,6 @@
     const opts = { credentials: "include", ...options };
     const method = (opts.method || "GET").toUpperCase();
     const headers = new Headers(opts.headers || {});
-
-    // Attach CSRF only for mutating requests
-    // if (needCsrf(method)) {
-    //   const which =
-    //     options?.csrf === "refresh"
-    //       ? "csrf_refresh_token"
-    //       : "csrf_access_token";
-    //   const csrf = getCookie(which) || getMetaCSRF();
-    //   if (csrf) headers.set("X-CSRF-TOKEN", csrf);
-    // }
 
     // before fetch(url, opts)
     if (needCsrf(method)) {
