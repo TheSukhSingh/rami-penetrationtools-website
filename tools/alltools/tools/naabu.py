@@ -5,16 +5,32 @@ from ._common import (
     resolve_bin, read_targets_from_options, ensure_work_dir,
     write_output_file, finalize, now_ms
 )
+from tools.policies import get_effective_policy, clamp_from_constraints
+from ._common import read_targets
 
 DEFAULT_TIMEOUT = 60
 
 def run_scan(options: dict) -> dict:
     t0 = now_ms()
     work_dir = ensure_work_dir(options)
-    targets, _ = read_targets_from_options(options)
 
-    bin_path = resolve_bin("naabu")
-    print("→ Using naabu at:", bin_path)
+    slug   = options.get("tool_slug", "naabu")
+    policy = options.get("_policy") or get_effective_policy(slug)
+    ipol   = policy.get("input_policy", {})
+    rcons  = policy.get("runtime_constraints", {})
+    bins   = (policy.get("binaries") or {}).get("names") or ["naabu"]
+
+    targets, _ = read_targets(
+        options,
+        accept_keys=tuple(ipol.get("accepts") or ("hosts","ips","domains")),
+        file_max_bytes=ipol.get("file_max_bytes", 200_000),
+        cap=ipol.get("max_targets", 200),
+    )
+    bin_path = None
+    for b in bins:
+        bin_path = resolve_bin(b)
+        if bin_path:
+            break
 
     if not bin_path:
         return finalize("error", "naabu not found in PATH", options, "naabu -silent -top-ports 100", t0, "", error_reason="INVALID_PARAMS")
@@ -32,7 +48,8 @@ def run_scan(options: dict) -> dict:
         proc = subprocess.run(
             cmd, input="\n".join(targets), text=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=int(options.get("timeout_s", DEFAULT_TIMEOUT))
+            timeout=clamp_from_constraints(options, "timeout_s", rcons.get("timeout_s"), default=DEFAULT_TIMEOUT, kind="int")
+
         )
         raw = proc.stdout.strip()
         ofile = write_output_file(work_dir, "naabu_out.txt", raw + ("\n" if raw else ""))

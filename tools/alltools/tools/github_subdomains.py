@@ -1,45 +1,111 @@
 # tools/alltools/tools/github_subdomains.py
 from __future__ import annotations
-import subprocess, os
+import os, shlex
+from pathlib import Path
+from typing import Dict, Any, List, Tuple
+from tools.policies import get_effective_policy, clamp_from_constraints
+
 from ._common import (
-    resolve_bin, read_targets_from_options, ensure_work_dir,
-    write_output_file, finalize, now_ms
+    resolve_bin, ValidationError, now_ms, ensure_work_dir, write_output_file,
+    read_domains_validated, coerce_int_range, run_cmd, finalize
 )
 
-DEFAULT_TIMEOUT = 60
-
-def run_scan(options: dict) -> dict:
-    """
-    Uses a CLI named `github-subdomains` if present. If you use another tool,
-    change the binary name and args below accordingly.
-    """
+def run_scan(options: Dict[str, Any]) -> Dict[str, Any]:
     t0 = now_ms()
-    work_dir = ensure_work_dir(options)
-    targets, _ = read_targets_from_options(options)  # orgs or root domains depending on your tool
-
-    bin_path = resolve_bin("github-subdomains", "github_subdomains")
-    print("→ Using github_subdomains at:", bin_path)
-
-    if not bin_path:
-        return finalize("error", "github-subdomains not found in PATH", options, "github-subdomains", t0, "", error_reason="INVALID_PARAMS")
-    if not targets:
-        return finalize("error", "no input", options, "github-subdomains", t0, "", error_reason="INVALID_PARAMS")
-
-    # Most CLI variants read targets from stdin and output subdomains
-    cmd = [bin_path]
     try:
-        proc = subprocess.run(
-            cmd, input="\n".join(targets), text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=int(options.get("timeout_s", DEFAULT_TIMEOUT))
+        # 0) policy
+        slug   = options.get("tool_slug", "github_subdomains")
+        policy = options.get("_policy") or get_effective_policy(slug)
+        ipol   = policy.get("input_policy", {})
+        rcons  = policy.get("runtime_constraints", {})
+        bins   = (policy.get("binaries") or {}).get("names") or ["github-subdomains"]
+
+        # 1) domains to enumerate org/subdomains for
+        domains, diag = read_domains_validated(
+            options,
+            cap=ipol.get("max_targets", 50),
+            file_max_bytes=ipol.get("file_max_bytes", 100_000),
         )
-        raw = proc.stdout.strip()
-        ofile = write_output_file(work_dir, "github_subdomains_out.txt", raw + ("\n" if raw else ""))
-        domains = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        status = "success" if proc.returncode == 0 else "error"
-        msg = "ok" if status == "success" else (proc.stderr.strip() or "github-subdomains exited non-zero")
-        return finalize(status, msg, options, " ".join(cmd), t0, raw, ofile, domains=domains)
-    except subprocess.TimeoutExpired:
-        return finalize("error", "github-subdomains timed out", options, " ".join(cmd), t0, "", error_reason="TIMEOUT")
+
+        # 2) params
+        timeout_s = clamp_from_constraints(options, "timeout_s", rcons.get("timeout_s"), default=60, kind="int")
+
+        # 3) token + binary
+        token = (options.get("token") or os.getenv("GITHUB_TOKEN") or "").strip()
+        if not token:
+            raise ValidationError("Missing GitHub token", "INVALID_PARAMS", "Provide 'token' or GITHUB_TOKEN env var")
+
+        bin_path = None
+        for b in bins:
+            bin_path = resolve_bin(b)
+            if bin_path:
+                break
+        if not bin_path:
+            raise ValidationError("github-subdomains binary not found in PATH", "BIN_NOT_FOUND", ",".join(bins))
+
+        # 4) working dir
+        work_dir: Path = ensure_work_dir(options)
+
+        # 5) run once per domain (most tools expect a single -d)
+        outs: List[str] = []
+        exit_codes: List[int] = []
+        env = dict(os.environ)
+        env["GITHUB_TOKEN"] = token
+
+        for d in domains:
+            # popular syntax: github-subdomains -d example.com
+            cmd = [bin_path, "-d", d]
+            code, raw, _ms = run_cmd(cmd, timeout_s=timeout_s, cwd=work_dir, env=env)
+            outs.append(raw or "")
+            exit_codes.append(code)
+
+        raw_all = "\n".join(outs)
+        # treat every non-empty token with a dot as a host (very conservative)
+        hosts = []
+        for ln in raw_all.splitlines():
+            ln = ln.strip()
+            if ln and "." in ln and " " not in ln:
+                hosts.append(ln)
+
+        out_file = write_output_file(work_dir, "github_subdomains_output.txt", raw_all)
+
+        any_fail = any(c != 0 for c in exit_codes)
+        status  = "success" if not any_fail else "failed"
+        message = "Enumerated subdomains from GitHub" if not any_fail else f"github-subdomains had {sum(1 for c in exit_codes if c!=0)} failures"
+
+        res = finalize(
+            status=status,
+            message=message,
+            options=options,
+            command=" && ".join(" ".join(shlex.quote(a) for a in [bin_path, "-d", d]) for d in domains) or "github-subdomains",
+            t0_ms=t0,
+            raw_out=raw_all,
+            output_file=out_file,
+            hosts=hosts,
+            domains=hosts,
+        )
+        res.update(diag)
+        return res
+
+    except ValidationError as ve:
+        return finalize(
+            status="failed",
+            message=ve.message,
+            options=options,
+            command="github-subdomains",
+            t0_ms=t0,
+            raw_out="",
+            error_reason=ve.reason,
+            error_detail=ve.detail,
+        )
     except Exception as e:
-        return finalize("error", f"github-subdomains failed: {e}", options, " ".join(cmd), t0, "", error_reason="EXECUTION_ERROR")
+        return finalize(
+            status="failed",
+            message="Unhandled exception in github-subdomains adapter",
+            options=options,
+            command="github-subdomains",
+            t0_ms=t0,
+            raw_out=str(e),
+            error_reason="UNHANDLED",
+            error_detail=repr(e),
+        )

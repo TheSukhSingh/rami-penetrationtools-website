@@ -15,7 +15,7 @@ from tools.models import (
     WorkflowRunStatus, WorkflowStepStatus,
 )
 from extensions import db, limiter
-from . import tools_bp, debug_echo
+from . import tools_bp
 from importlib import import_module
 from sqlalchemy.orm import joinedload
 
@@ -47,34 +47,65 @@ def tools_index():
 
 @tools_bp.get("/api/tools")
 def api_tools():
-    # Fetch enabled categories with their enabled tools, ordered
+    # Prefetch links -> tool -> config_fields to avoid N+1 queries
     cats = (
         db.session.query(ToolCategory)
+        .options(
+            selectinload(ToolCategory.tool_links)
+                .selectinload(ToolCategoryLink.tool)
+                .selectinload(Tool.config_fields)
+        )
         .filter(ToolCategory.enabled.is_(True))
         .order_by(ToolCategory.sort_order.asc(), ToolCategory.name.asc())
         .all()
     )
 
     payload = {"categories": {}}
+
     for c in cats:
         rows = []
-        # sort by link.sort_order then tool.name
+        # sort by per-category order then tool name
         links = sorted(c.tool_links, key=lambda l: ((l.sort_order or 100), (l.tool.name or "")))
         for link in links:
             t = link.tool
             if not t or not t.enabled:
                 continue
+
             meta = t.meta_info or {}
+            pol = get_effective_policy(t.slug)  # <- all from ToolConfigField (visible + hidden)
+
+            schema = pol.get("schema_fields", [])              # fields for the modal
+            runtime_constraints = pol.get("runtime_constraints", {})  # per-field min/max/etc
+            input_policy = pol.get("input_policy", {})        # accepts/max_targets/file_max_bytes
+            io_policy = pol.get("io_policy", {})              # consumes/emits (typed buckets)
+            binaries = pol.get("binaries", {})                # {"names": ["dnsx"]}
+
+            # Build FE-friendly defaults from schema (fallback to legacy meta.defaults if present)
+            defaults = {f["name"]: f.get("default") for f in schema if f.get("default") is not None}
+            legacy_defaults = (meta.get("defaults") or {})
+            defaults.setdefault("input_method", legacy_defaults.get("input_method", "manual"))
+            if "value" in legacy_defaults:
+                defaults.setdefault("value", legacy_defaults["value"])
+
             rows.append({
                 "slug": t.slug,
                 "name": t.name,
-                "desc": meta.get("desc") or meta.get("description") or "",
-                "type": meta.get("type") or meta.get("tool_type") or "",
-                "time": meta.get("time") or meta.get("est_runtime") or "",
+                "desc": meta.get("desc") or "",
+                "type": meta.get("type") or "",     # e.g., "recon", "crawler" (optional)
+                "time": meta.get("time") or "",     # e.g., "fast", "medium" (optional)
+                "defaults": defaults,
+
+                # NEW for Step 4:
+                "schema": schema,
+                "runtime_constraints": runtime_constraints,
+                "input_policy": input_policy,
+                "io_policy": io_policy,
+                "binaries": binaries,
             })
         payload["categories"][c.name] = rows
 
     return jsonify(payload)
+
 
 @tools_bp.route('/api/scan', methods=['POST'])
 @jwt_required()
@@ -114,7 +145,7 @@ def api_scan():
     start_req = time.time()
     try:
         if tool == 'debug-echo':
-            adapter = debug_echo
+            adapter = import_module(f".alltools.tools.debug_echo", package="tools")
         else:
             mod_name = tool.replace('-', '_')
             try:

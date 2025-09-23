@@ -262,6 +262,8 @@ class ToolConfigField(db.Model):
     advanced = db.Column(db.Boolean, default=False)
     visible = db.Column(db.Boolean, default=True)
 
+    constraints = db.Column(db.JSON, nullable=True) # e.g. {"min":2,"max":100,"regex":null,"max_length":null}
+
     tool = db.relationship(
         "Tool",
         backref=db.backref(
@@ -287,6 +289,7 @@ class ToolConfigField(db.Model):
             "order_index": self.order_index,
             "advanced": self.advanced,
             "visible": self.visible,
+            "constraints": self.constraints or {},  
         }
 
 class UserToolConfig(db.Model):

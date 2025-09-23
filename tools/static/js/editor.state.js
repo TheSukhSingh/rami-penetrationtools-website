@@ -40,9 +40,11 @@ export class WorkflowEditor {
     if (t === "end" || t === "output" || t === "sink") return "end";
     return "process";
   }
-  defaultConfigFor(meta) {
-    return { input_method: "manual", value: "" };
-  }
+defaultConfigFor(meta) {
+  const d = meta && (meta.defaults || meta.config || {});
+  return { input_method: "manual", value: "", ...(d || {}) };
+}
+
 
   buildGraph() {
     const nodes = this.nodes.map((n) => ({

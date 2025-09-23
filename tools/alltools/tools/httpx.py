@@ -5,16 +5,36 @@ from ._common import (
     resolve_bin, read_targets_from_options, ensure_work_dir,
     write_output_file, finalize, now_ms, URL_RE
 )
+from tools.policies import get_effective_policy, clamp_from_constraints
+from ._common import read_targets  # we’ll use the file cap from policy
 
 DEFAULT_TIMEOUT = 45  # seconds
 
 def run_scan(options: dict) -> dict:
     t0 = now_ms()
     work_dir = ensure_work_dir(options)
-    targets, src = read_targets_from_options(options)
 
-    bin_path = resolve_bin("httpx")
-    print("→ Using httpx at:", bin_path)
+    # policy
+    slug   = options.get("tool_slug", "httpx")
+    policy = options.get("_policy") or get_effective_policy(slug)
+    ipol   = policy.get("input_policy", {})
+    rcons  = policy.get("runtime_constraints", {})
+    bins   = (policy.get("binaries") or {}).get("names") or ["httpx"]
+
+    # inputs (prefer urls, allow hosts/domains fallback)
+    targets, src = read_targets(
+        options,
+        accept_keys=tuple(ipol.get("accepts") or ("urls","hosts","domains")),
+        file_max_bytes=ipol.get("file_max_bytes", 200_000),
+        cap=ipol.get("max_targets", 200),
+    )
+
+
+    bin_path = None
+    for b in bins:
+        bin_path = resolve_bin(b)
+        if bin_path:
+            break
 
     if not bin_path:
         return finalize(
@@ -25,13 +45,14 @@ def run_scan(options: dict) -> dict:
 
     if not targets:
         return finalize("error", "no input targets", options, "httpx", t0, "", error_reason="INVALID_PARAMS")
-
+    
+    timeout_s = clamp_from_constraints(options, "timeout_s", rcons.get("timeout_s"), default=DEFAULT_TIMEOUT, kind="int")
     cmd = [bin_path, "-silent", "-nc"]  # -nc = no color
     try:
         proc = subprocess.run(
             cmd, input="\n".join(targets), text=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=int(options.get("timeout_s", DEFAULT_TIMEOUT))
+            timeout = timeout_s
         )
         raw = proc.stdout.strip()
         ofile = write_output_file(work_dir, "httpx_out.txt", raw + ("\n" if raw else ""))

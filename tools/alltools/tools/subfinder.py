@@ -1,73 +1,120 @@
 # tools/alltools/tools/subfinder.py
 from __future__ import annotations
-import subprocess, os
+import os
 from pathlib import Path
 from ._common import (
-    resolve_bin, read_targets_from_options, ensure_work_dir,
-    write_output_file, finalize, now_ms
+    resolve_bin, ensure_work_dir, read_targets, classify_domains,
+    coerce_int_range, run_cmd, write_output_file, finalize, ValidationError
 )
+from tools.policies import get_effective_policy, clamp_from_constraints
 
-DEFAULT_TIMEOUT = 60
+HARD_TIMEOUT = 300  # absolute ceiling regardless of user input
 
 def run_scan(options: dict) -> dict:
     """
-    subfinder expects -d (single domain) or -dL (file of domains).
-    We support both:
-      - Manual input -> one domain => -d <domain>
-      - Manual input -> many domains => write file + -dL <file>
-      - File input -> use that file with -dL
+    subfinder adapter
+    Accepts domains from injected lists, file, or manual input.
+    Returns typed 'domains' and an artifact file with raw output.
     """
-    t0 = now_ms()
+    t0 = int(os.times().elapsed * 1000) if hasattr(os, "times") else 0
     work_dir = ensure_work_dir(options)
-    bin_path = resolve_bin("subfinder")
-    print("→ Using subfinder at:", bin_path)
 
-    if not bin_path:
-        return finalize(
-            "error", "subfinder not found in PATH",
-            options, "subfinder -silent", t0, "",
-            error_reason="INVALID_PARAMS"
-        )
+    exe = None
+    for b in bins:
+        exe = resolve_bin(b)
+        if exe:
+            break
+    if not exe:
+        return finalize("error", "Subfinder is not installed or not found in PATH.",
+                        options, command="subfinder", t0_ms=t0, raw_out="",
+                        error_reason="INVALID_PARAMS", error_detail="which(subfinder)=None")
 
-    # Load targets from options (manual or file)
-    targets, src = read_targets_from_options(options)
-    if not targets and not (options.get("input_method") == "file" and options.get("file_path")):
-        return finalize("error", "no input root domains", options, "subfinder", t0, "", error_reason="INVALID_PARAMS")
-
-    cmd = [bin_path, "-silent"]
-
-    # If user gave a file explicitly, prefer that
-    if options.get("input_method") == "file" and options.get("file_path") and os.path.exists(options["file_path"]):
-        cmd += ["-dL", options["file_path"]]
-    else:
-        # Manual input: 1 domain -> -d; many -> write to file and use -dL
-        if len(targets) == 1:
-            cmd += ["-d", targets[0]]
-        else:
-            list_path = Path(work_dir) / "subfinder_input.txt"
-            list_path.write_text("\n".join(targets), encoding="utf-8", errors="ignore")
-            cmd += ["-dL", str(list_path)]
-
-    # Optional flags
-    if options.get("all_sources"):
-        cmd.append("-all")
-    if options.get("threads"):
-        cmd += ["-t", str(options["threads"])]
-    if options.get("timeout_s"):
-        cmd += ["-timeout", str(int(options["timeout_s"]))]
 
     try:
-        proc = subprocess.run(
-            cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=int(options.get("timeout_s", DEFAULT_TIMEOUT))
+        slug   = options.get("tool_slug", "subfinder")
+        policy = options.get("_policy") or get_effective_policy(slug)
+        ipol   = policy.get("input_policy", {})
+        rcons  = policy.get("runtime_constraints", {})
+        bins   = (policy.get("binaries") or {}).get("names") or ["subfinder"]
+
+        raw_targets, source = read_targets(
+            options,
+            accept_keys=tuple(ipol.get("accepts") or ("domains",)),
+            file_max_bytes=ipol.get("file_max_bytes", 200_000),
+            cap=ipol.get("max_targets", 50),
         )
-        raw = proc.stdout.strip()
-        ofile = write_output_file(work_dir, "subfinder_out.txt", raw + ("\n" if raw else ""))
-        domains = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        status = "success" if proc.returncode == 0 else "error"
-        msg = "ok" if status == "success" else (proc.stderr.strip() or "subfinder exited non-zero")
-        return finalize(status, msg, options, " ".join(cmd), t0, raw, ofile, domains=domains)
-    except subprocess.TimeoutExpired:
-        return finalize("error", "subfinder timed out", options, " ".join(cmd), t0, "", error_reason="TIMEOUT")
+
+        if not raw_targets:
+            raise ValidationError("At least one domain is required.", "INVALID_PARAMS", "no input")
+
+        # 3) Validate/normalize domains
+        valid, invalid, dup_count = classify_domains(raw_targets)
+        if invalid:
+            # policy: hard-reject if any invalid in the input
+            raise ValidationError(
+                f"{len(invalid)} invalid domains found",
+                "INVALID_PARAMS",
+                ", ".join(invalid[:10])
+            )
+        max_dom = ipol.get("max_targets", 50)
+        if len(valid) > max_dom:
+            raise ValidationError(
+                f"Too many domains: {len(valid)} (max {max_dom})",
+                "TOO_MANY_DOMAINS",
+                f"{len(valid)}>{max_dom}"
+            )
+
+
+        timeout_s = clamp_from_constraints(options, "timeout_s", rcons.get("timeout_s"), default=60, kind="int")
+        threads   = clamp_from_constraints(options, "threads",   rcons.get("threads"),   default=10, kind="int")
+        timeout_s = min(timeout_s, HARD_TIMEOUT)  # hard ceiling remains
+
+        all_src   = bool(options.get("all_sources", False))
+        silent    = bool(options.get("silent", True))
+
+        # 5) Build command
+        args = [exe]
+        if silent:   args.append("-silent")
+        if all_src:  args.append("-all")
+        args += ["-t", str(threads), "-timeout", str(timeout_s), "-nc"]
+
+        # decide whether to pass as -d (many times) or via temp file (-dL)
+        if len(valid) <= 5:
+            for d in valid:
+                args += ["-d", d]
+        else:
+            targets_txt = Path(work_dir) / "subfinder_targets.txt"
+            targets_txt.write_text("\n".join(valid), encoding="utf-8", errors="ignore")
+            args += ["-dL", str(targets_txt)]
+
+        # 6) Execute
+        rc, out, ms = run_cmd(args, timeout_s=min(timeout_s, HARD_TIMEOUT), cwd=work_dir)
+
+        # 7) Parse output (one domain per line)
+        lines = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
+        got_valid, _, _ = classify_domains(lines)
+
+        # 8) Persist artifact and finalize
+        outfile = write_output_file(work_dir, "subfinder_output.txt", out or "")
+        if rc != 0:
+            return finalize(
+                "error", f"Subfinder error (exit={rc})",
+                options, " ".join(args), t0, out, output_file=outfile,
+                error_reason="OTHER", error_detail=(lines[:5] and "\n".join(lines[:5])) or None
+            )
+        msg = f"Found {len(got_valid)} subdomains (dup:{max(0, len(lines)-len(got_valid))}, invalid dropped:{0})"
+        return finalize(
+            "ok", msg, options, " ".join(args), t0, out, output_file=outfile,
+            domains=got_valid
+        )
+
+    except ValidationError as ve:
+        return finalize(
+            "error", ve.message, options, "subfinder", t0, raw_out="",
+            error_reason=ve.reason, error_detail=ve.detail
+        )
     except Exception as e:
-        return finalize("error", f"subfinder failed: {e}", options, " ".join(cmd), t0, "", error_reason="EXECUTION_ERROR")
+        return finalize(
+            "error", "Unexpected error while running subfinder",
+            options, "subfinder", t0, raw_out=str(e), error_reason="OTHER", error_detail=repr(e)
+        )

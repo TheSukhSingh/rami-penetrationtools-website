@@ -1,41 +1,83 @@
 # tools/alltools/tools/_common.py
 from __future__ import annotations
-import os, sys, shutil, time, re
+import os, sys, shutil, time, re, subprocess
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Iterable, Dict, Any, Optional
 
-BUCKET_KEYS = ("domains", "hosts", "ips", "ports", "urls", "endpoints", "findings")
+# ---- What buckets every adapter may emit (typed chaining relies on these) ----
+BUCKET_KEYS = ("domains", "hosts", "ips", "ports", "services", "urls", "endpoints", "findings")
 
-def resolve_bin(*names: str) -> str | None:
+# ---- Regex helpers ----
+URL_RE  = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+IPV4_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\b")
+IPV6_RE = re.compile(r"\b(?:[A-F0-9]{1,4}:){1,7}[A-F0-9]{1,4}\b", re.IGNORECASE)
+
+# Optional domain classifier: use your existing helper if available
+try:
+    # adjust path if your module lives elsewhere
+    from tools.utils.domain_classification import classify_lines as classify_domains
+except Exception:
+    def classify_domains(lines: List[str]) -> Tuple[List[str], List[str], int]:
+        """Fallback: very simple 'looks like a domain' filter; returns (valid, invalid, dup_count)."""
+        seen, dups, valid, invalid = set(), 0, [], []
+        dom_re = re.compile(r"^(?=.{1,253}$)(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$", re.IGNORECASE)
+        for s in lines:
+            if s in seen: dups += 1; continue
+            seen.add(s)
+            (valid if dom_re.match(s) else invalid).append(s)
+        return valid, invalid, dups
+
+# Optional bridge: services -> urls
+def services_to_urls(services: Iterable[str]) -> List[str]:
+    try:
+        from tools.alltools.services_to_urls import services_to_urls as _impl  # if you have it
+        return _impl(services)
+    except Exception:
+        out = []
+        for s in services or []:
+            s = str(s).strip()
+            if not s: continue
+            # accepted formats: host:port or host:port/proto
+            host, _, rest = s.partition(":")
+            port = rest.split("/", 1)[0] if rest else ""
+            try:
+                p = int(port)
+            except ValueError:
+                continue
+            if p == 443:
+                out.append(f"https://{host}:{p}")
+            elif p == 80:
+                out.append(f"http://{host}:{p}")
+            else:
+                # conservative default -> http
+                out.append(f"http://{host}:{p}")
+        # dedupe preserve order
+        seen, uniq = set(), []
+        for u in out:
+            if u not in seen: uniq.append(u); seen.add(u)
+        return uniq
+
+# ---- Small error class for parameter issues ----
+class ValidationError(Exception):
+    def __init__(self, message: str, reason: str = "INVALID_PARAMS", detail: Optional[str] = None):
+        super().__init__(message)
+        self.message = message
+        self.reason = reason
+        self.detail = detail
+
+# ---- Common utilities ----
+def resolve_bin(*names: str) -> Optional[str]:
     """Return first resolvable binary from names; try .exe on Windows too."""
     for name in names:
         p = shutil.which(name)
-        if p:
-            return p
+        if p: return p
         if sys.platform.startswith("win") and not name.lower().endswith(".exe"):
             p = shutil.which(name + ".exe")
-            if p:
-                return p
+            if p: return p
     return None
 
-def read_targets_from_options(options: dict) -> Tuple[List[str], str]:
-    """
-    Returns (targets, source_desc). Supports:
-      - options["file_path"] when input_method == "file"
-      - options["value"] when input_method == "manual"
-    """
-    im = (options or {}).get("input_method", "").lower()
-    if im == "file" and options.get("file_path") and os.path.exists(options["file_path"]):
-        with open(options["file_path"], "r", encoding="utf-8", errors="ignore") as fh:
-            lines = [ln.strip() for ln in fh if ln.strip()]
-        return lines, f"file:{options['file_path']}"
-    val = (options or {}).get("value", "")
-    if isinstance(val, str) and val.strip():
-        # split by newline/comma/whitespace
-        parts = re.split(r"[\s,]+", val.strip())
-        parts = [p for p in parts if p]
-        return parts, "value"
-    return [], "empty"
+def now_ms() -> int:
+    return int(time.time() * 1000)
 
 def ensure_work_dir(options: dict) -> Path:
     wd = Path(options.get("work_dir") or Path(os.getenv("TEMP", "/tmp")) / "hackr_runs").resolve()
@@ -47,38 +89,160 @@ def write_output_file(work_dir: Path, name: str, content: str) -> str:
     out_path.write_text(content, encoding="utf-8", errors="ignore")
     return str(out_path)
 
-def now_ms() -> int:
-    return int(time.time() * 1000)
+def merge_dedupe(items: Iterable[str], max_items: Optional[int] = None) -> List[str]:
+    seen, out = set(), []
+    for it in items or []:
+        it = str(it).strip()
+        if not it: continue
+        if it in seen: continue
+        seen.add(it); out.append(it)
+        if max_items and len(out) >= max_items:
+            break
+    return out
 
-def finalize(status: str, message: str, options: dict, command: str, t0: int, raw_out: str,
-             output_file: str | None = None, **buckets) -> dict:
+def ensure_file_limits(path: str, max_bytes: int) -> None:
+    if not path or not os.path.exists(path):
+        raise ValidationError("Upload file not found.", "INVALID_PARAMS", "Missing or inaccessible file")
+    try:
+        size = os.path.getsize(path)
+    except Exception:
+        raise ValidationError("Unable to read uploaded file.", "INVALID_PARAMS", "stat() failed")
+    if size > max_bytes:
+        raise ValidationError(f"Uploaded file too large ({size} bytes)", "FILE_TOO_LARGE", f"{size} > {max_bytes}")
+
+def coerce_int_range(options: dict, key: str, default: int, min_v: int, max_v: int) -> int:
+    raw = options.get(key, default)
+    try:
+        val = int(raw)
+    except Exception:
+        raise ValidationError(f"{key} must be an integer", "INVALID_PARAMS", f"got {raw!r}")
+    if not (min_v <= val <= max_v):
+        raise ValidationError(f"{key} must be between {min_v}-{max_v}", "INVALID_PARAMS", f"got {val}")
+    return val
+
+def read_injected(options: dict, accept_keys: Iterable[str]) -> List[str]:
+    buf: List[str] = []
+    for key in accept_keys:
+        v = options.get(key)
+        if isinstance(v, list) and v:
+            buf.extend(str(x).strip() for x in v if str(x).strip())
+    return merge_dedupe(buf)
+
+def read_targets(options: dict,
+                 accept_keys: Iterable[str],
+                 file_max_bytes: int = 200_000,
+                 manual_split_re: str = r"[\s,]+",
+                 cap: Optional[int] = None) -> Tuple[List[str], str]:
+    """
+    Prefer injected typed lists; else file (validated); else manual 'value'.
+    Returns (targets, source) where source is 'injected' | 'file:<path>' | 'value' | 'empty'
+    """
+    # 1) injected lists from previous steps
+    inj = read_injected(options, accept_keys)
+    if inj:
+        return (merge_dedupe(inj, cap), "injected")
+    # 2) file method
+    im = (options or {}).get("input_method", "").lower()
+    if im == "file" and options.get("file_path"):
+        ensure_file_limits(options["file_path"], file_max_bytes)
+        with open(options["file_path"], "r", encoding="utf-8", errors="ignore") as fh:
+            lines = [ln.strip() for ln in fh if ln.strip()]
+        return (merge_dedupe(lines, cap), f"file:{options['file_path']}")
+    # 3) manual value
+    val = (options or {}).get("value", "")
+    if isinstance(val, str) and val.strip():
+        parts = re.split(manual_split_re, val.strip())
+        return (merge_dedupe(parts, cap), "value")
+    return ([], "empty")
+
+def run_cmd(args: List[str], timeout_s: int, cwd: Optional[Path] = None, env: Optional[Dict[str, str]] = None) -> Tuple[int, str, int]:
+    t0 = now_ms()
+    try:
+        res = subprocess.run(
+            args, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            timeout=timeout_s, cwd=str(cwd) if cwd else None, env=env
+        )
+        return res.returncode, (res.stdout or ""), now_ms() - t0
+    except subprocess.TimeoutExpired as e:
+        raise ValidationError("Timed out while running the tool", "TIMEOUT", str(e))
+
+def finalize(status: str,
+             message: str,
+             options: dict,
+             command: str,
+             t0_ms: int,
+             raw_out: str,
+             output_file: Optional[str] = None,
+             error_reason: Optional[str] = None,
+             error_detail: Optional[str] = None,
+             **buckets) -> dict:
     """
     Standardize manifest shape. Buckets are lists keyed by BUCKET_KEYS.
+    Adds counts{} and optional error_reason/error_detail.
     """
-    out = {
+    out: Dict[str, Any] = {
         "status": status,
         "message": message,
         "parameters": {k: options.get(k) for k in sorted(options.keys())},
         "command": command,
-        "execution_ms": max(0, now_ms() - t0),
+        "execution_ms": max(0, now_ms() - t0_ms),
         "output": raw_out or "",
     }
     if output_file:
         out["output_file"] = output_file
+    if error_reason:
+        out["error_reason"] = error_reason
+    if error_detail:
+        out["error_detail"] = error_detail
 
+    counts: Dict[str, int] = {}
     for k in BUCKET_KEYS:
         v = buckets.get(k)
         if v:
-            # dedupe preserving order
-            seen = set()
-            uniq = []
-            for it in v:
-                if it not in seen:
-                    uniq.append(it); seen.add(it)
+            uniq = merge_dedupe(v)
             out[k] = uniq
+            counts[k] = len(uniq)
+    if counts:
+        out["counts"] = counts
     return out
 
-# Simple regex helpers
-URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
-IP_RE  = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}"
-                    r"(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\b")
+
+IP_RE = re.compile(rf"(?:{IPV4_RE.pattern})|(?:{IPV6_RE.pattern})")
+
+def read_targets_from_options(options: dict, *, cap: Optional[int] = None):
+    # default acceptable keys; adapters can still call read_targets(...) directly if they need custom sets
+    return read_targets(options, accept_keys=("domains","hosts","urls"), cap=cap)
+# in _common.py
+def read_domains_validated(options: dict, *, cap:int=50, file_max_bytes:int=100_000):
+    """
+    Returns (domains, diag) or raises ValidationError with error_reason set.
+    diag includes the same counters old adapters used to return.
+    """
+    targets, src = read_targets(options, accept_keys=("domains","hosts"), file_max_bytes=file_max_bytes, cap=None)
+
+    # old behavior: require something
+    if not targets:
+        raise ValidationError("At least one domain is required.", "INVALID_PARAMS", "No domains submitted")
+
+    # classify + dedupe
+    try:
+        from tools.utils.domain_classification import classify_lines
+        valid, invalid, dup_count = classify_lines(targets)
+    except Exception:
+        # fallback: accept everything & no dup count
+        valid, invalid, dup_count = (list(dict.fromkeys(targets)), [], 0)
+
+    if invalid:
+        raise ValidationError(f"{len(invalid)} invalid domains found", "INVALID_PARAMS", ", ".join(invalid[:10]))
+    if len(valid) > cap:
+        raise ValidationError(f"Too many domains: {len(valid)} (max {cap})", "TOO_MANY_DOMAINS", f"{len(valid)} > {cap} limit")
+
+    diag = {
+        "total_domain_count": len(targets),
+        "valid_domain_count": len(valid),
+        "invalid_domain_count": len(invalid),
+        "duplicate_domain_count": dup_count,
+        "file_size_b": (os.path.getsize(options["file_path"]) if (options.get("input_method")=="file" and options.get("file_path") and os.path.exists(options["file_path"])) else None),
+    }
+    return (valid, diag)

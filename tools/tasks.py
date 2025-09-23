@@ -189,6 +189,17 @@ def run_step(self, run_id: int, step_index: int):
         "step_index": step_index, "status": "RUNNING"
     })
 
+    if run.status == WorkflowRunStatus.QUEUED:
+        run.status = WorkflowRunStatus.RUNNING
+        if not run.started_at:
+            run.started_at = utcnow()
+        db.session.commit()
+        publish_run_event(run.id, "run", {
+            "status": run.status.name,
+            "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index
+        })
+
     prev_output = {}
     if step_index > 0:
         prev = next((ps for ps in run.steps if ps.step_index == step_index - 1), None)
@@ -204,6 +215,22 @@ def run_step(self, run_id: int, step_index: int):
         mod_name = slug.replace('-', '_')
         adapter = import_module(f".alltools.tools.{mod_name}", package="tools")
         options = _prep_options_for_tool(step, prev_output, run.user_id, current_app.config)
+        
+        # Inject the per-step policy snapshot captured by the runner
+        base_opts = ((step.input_manifest or {}).get("options") or {})
+        snap = base_opts.get("_policy")
+        if snap:
+            options["_policy"] = snap
+        else:
+            # Fallback to live policy if snapshot missing (should be rare)
+            try:
+                from tools.policies import get_effective_policy
+                options["_policy"] = get_effective_policy(slug)
+            except Exception:
+                pass
+
+        # Always provide tool_slug for adapters that rely on it
+        options.setdefault("tool_slug", slug)
 
         base = current_app.config.get("TOOLS_WORK_DIR", "/tmp/hackr_runs")
         step_dir = Path(base) / f"run_{run.id}" / f"step_{step_index:02d}_{tool.slug}"

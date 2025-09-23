@@ -5,17 +5,33 @@ from ._common import (
     resolve_bin, read_targets_from_options, ensure_work_dir,
     write_output_file, finalize, now_ms
 )
+from tools.policies import get_effective_policy, clamp_from_constraints
+from ._common import read_targets
 
 DEFAULT_TIMEOUT = 60
 
 def run_scan(options: dict) -> dict:
     t0 = now_ms()
     work_dir = ensure_work_dir(options)
-    urls, _ = read_targets_from_options(options)
+    slug   = options.get("tool_slug", "linkfinder")
+    policy = options.get("_policy") or get_effective_policy(slug)
+    ipol   = policy.get("input_policy", {})
+    rcons  = policy.get("runtime_constraints", {})
+    bins   = (policy.get("binaries") or {}).get("names") or ["linkfinder"]
 
-    # LinkFinder is a Python CLI; commonly "linkfinder"
-    bin_path = resolve_bin("linkfinder")
-    print("→ Using linkfinder at:", bin_path)
+    urls, _ = read_targets(
+        options,
+        accept_keys=tuple(ipol.get("accepts") or ("urls",)),
+        file_max_bytes=ipol.get("file_max_bytes", 200_000),
+        cap=ipol.get("max_targets", 200),
+    )
+
+
+    bin_path = None
+    for b in bins:
+        bin_path = resolve_bin(b)
+        if bin_path:
+            break
 
     if not bin_path:
         return finalize("error", "linkfinder not found in PATH", options, "linkfinder -i <url> -o cli", t0, "", error_reason="INVALID_PARAMS")
@@ -30,7 +46,8 @@ def run_scan(options: dict) -> dict:
         try:
             proc = subprocess.run(
                 cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                timeout=int(options.get("timeout_s", DEFAULT_TIMEOUT))
+            timeout=clamp_from_constraints(options, "timeout_s", rcons.get("timeout_s"), default=DEFAULT_TIMEOUT, kind="int")
+
             )
             raw_agg.append(proc.stdout)
             # linkfinder CLI outputs one path per line
