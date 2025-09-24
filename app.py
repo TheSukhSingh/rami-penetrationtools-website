@@ -70,7 +70,10 @@ def create_app():
         "WTF_CSRF_HEADERS": ["X-CSRFToken"],
     })
     from tempfile import gettempdir
-
+    app.config.setdefault("ARTIFACTS_DIR", os.path.join(app.instance_path, "tools_artifacts"))
+    os.makedirs(app.config["ARTIFACTS_DIR"], exist_ok=True)
+    # By default, write step working dirs under the artifacts root so downloads work OOTB
+    app.config.setdefault("TOOLS_WORK_DIR", app.config["ARTIFACTS_DIR"])
     # Base directory for uploads; override with RECON_ROOT if you want a custom path
     RECON_ROOT = os.getenv("RECON_ROOT", os.path.join(gettempdir(), "recon_uploads"))
 

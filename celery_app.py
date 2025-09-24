@@ -1,5 +1,6 @@
 from celery import Celery
 import os, sys, pathlib, importlib, importlib.util
+from celery.schedules import crontab
 
 # ── Robust project root locator ───────────────────────────────────────────
 def _find_project_root():
@@ -101,7 +102,16 @@ celery.conf.update(
     worker_max_tasks_per_child=100,
     broker_connection_retry_on_startup=True,
 )
-
+celery.conf.beat_schedule = {
+    "reconcile-zombies-every-10m": {
+        "task": "tools.tasks.reconcile_zombies",
+        "schedule": 600.0,  # every 10 minutes
+    },
+    "prune-history-nightly": {
+        "task": "tools.tasks.prune_history",
+        "schedule": crontab(hour=3, minute=0),
+    },
+}
 celery.conf.task_default_queue = "tools_default"
 celery.conf.task_queues = (Queue("tools_default", routing_key="tools_default"),)
 celery.conf.task_default_exchange = "tools_default"

@@ -4,6 +4,46 @@ import os, sys, shutil, time, re, subprocess
 from pathlib import Path
 from typing import List, Tuple, Iterable, Dict, Any, Optional
 
+import redis
+_redis_client = None
+
+def ops_redis():
+    global _redis_client
+    if _redis_client is None:
+        url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
+        _redis_client = redis.Redis.from_url(url, decode_responses=True)
+    return _redis_client
+
+RUNS_MAX_ACTIVE_PER_USER = int(os.environ.get("RUNS_MAX_ACTIVE_PER_USER", "1"))
+RUN_START_DEDUP_TTL      = int(os.environ.get("RUN_START_DEDUP_TTL", "10"))  # seconds
+
+def dedupe_run_key(user_id, workflow_id):
+    return f"tools:dedupe:run:{user_id}:{workflow_id}"
+
+def active_runs_key(user_id):
+    return f"tools:active_runs:{user_id}"
+
+def active_can_start(user_id: str | int) -> bool:
+    r = ops_redis()
+    cur = int(r.get(active_runs_key(user_id)) or 0)
+    return cur < RUNS_MAX_ACTIVE_PER_USER
+
+def active_incr(user_id: str | int, ttl_seconds: int = 6*3600):
+    r = ops_redis()
+    k = active_runs_key(user_id)
+    pipe = r.pipeline()
+    pipe.incr(k)
+    pipe.expire(k, ttl_seconds)
+    pipe.execute()
+
+def active_decr(user_id: str | int):
+    r = ops_redis()
+    k = active_runs_key(user_id)
+    try:
+        if int(r.decr(k)) <= 0:
+            r.delete(k)
+    except Exception:
+        pass
 # ---- What buckets every adapter may emit (typed chaining relies on these) ----
 BUCKET_KEYS = ("domains", "hosts", "ips", "ports", "services", "urls", "endpoints", "findings")
 

@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
-from flask import current_app, render_template, request, jsonify, abort, Response, stream_with_context
+import os
+from flask import current_app, render_template, request, jsonify, abort, Response, send_from_directory, stream_with_context
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy import or_
+from tools.alltools.tools._common import active_decr
 from tools.models import (
     ToolCategory,
     ToolScanHistory, 
@@ -473,16 +475,46 @@ def start_run_api(wf_id: int):
     if (not _same_user(wf.owner_id, user_id)) and not wf.is_shared:
         return jsonify({"error":"forbidden"}), 403
 
+
+    from tools.alltools.tools._common import ops_redis, dedupe_run_key, RUN_START_DEDUP_TTL, active_can_start, active_incr
+
+    # de-dupe burst clicks for a few seconds
+    r = ops_redis()
+    dkey = dedupe_run_key(user_id, wf_id)
+    if not r.set(dkey, "1", nx=True, ex=RUN_START_DEDUP_TTL):
+        return jsonify({"ok": True, "deduped": True, "message": "Run already starting"}), 202
+
     run = create_run_from_definition(wf_id, user_id)
-    # kick the coordinator
-    queue_name = current_app.config.get("CELERY_QUEUE", "tools_default")
-    advance_run.apply_async(args=[run.id], queue=queue_name)
+
+    # backpressure: only dispatch immediately if user is under the cap
+    if active_can_start(user_id):
+        active_incr(user_id)
+        queue_name = current_app.config.get("CELERY_QUEUE", "tools_default")
+        advance_run.apply_async(args=[run.id], queue=queue_name)
+    # else leave it QUEUED; the sweeper/promoter in tasks.py will pick it up
+
+
+
     publish_run_event(run.id, "run", {
         "status": run.status.name,
         "progress_pct": run.progress_pct,
         "current_step_index": run.current_step_index
     })
     return jsonify({"run": _serialize_run(run)}), 201
+
+@tools_bp.get("/api/ops/health")
+@jwt_required()
+def ops_health():
+    from tools.alltools.tools._common import ops_redis, RUNS_MAX_ACTIVE_PER_USER
+    r = ops_redis()
+    try:
+        # For Redis broker the main queue list name is usually 'celery'
+        qname = current_app.config.get("CELERY_QUEUE", "tools_default")
+        q_depth = int(r.llen(qname))
+    except Exception:
+        q_depth = None
+    return jsonify({"ok": True, "queue_depth": q_depth, "per_user_cap": RUNS_MAX_ACTIVE_PER_USER})
+
 
 @tools_bp.post("/api/workflows/<int:wf_id>/nodes/<node_id>/config")
 @jwt_required()
@@ -492,8 +524,9 @@ def upsert_node_config(wf_id: int, node_id: str):
     if not wf:
         return jsonify({"error": "not_found"}), 404
     # owner check (mirror whatever you use elsewhere)
-    if (wf.user_id is not None) and (wf.user_id != user_id):
+    if (wf.owner_id is not None) and (not _same_user(wf.owner_id, user_id)):
         return jsonify({"error": "forbidden"}), 403
+
 
     payload = request.get_json(silent=True) or {}
     cfg = payload.get("config") or {}
@@ -513,6 +546,30 @@ def upsert_node_config(wf_id: int, node_id: str):
     db.session.commit()
     return jsonify({"ok": True, "workflow": {"id": wf.id}, "node": {"id": node_id, "config": cfg}})
 
+
+@tools_bp.get("/api/runs/<int:run_id>/artifacts/<path:relpath>")
+@jwt_required()
+def download_artifact(run_id: int, relpath: str):
+    run = db.session.get(WorkflowRun, run_id)
+    if not run or not _same_user(run.user_id, _current_user_id()):
+        return jsonify({"error":"forbidden"}), 403
+    if relpath.startswith(("/", "\\")) or ".." in relpath.split("/"):
+        return jsonify({"error":"bad_path"}), 400
+
+    from werkzeug.utils import safe_join
+    base_dir = current_app.config.get(
+        "ARTIFACTS_DIR",
+        os.path.join(current_app.instance_path, "tools_artifacts"),
+    )
+    full = safe_join(base_dir, str(run_id), relpath)
+    if not full or not os.path.isfile(full):
+        return jsonify({"error":"not_found"}), 404
+
+    directory, fname = os.path.dirname(full), os.path.basename(full)
+    return send_from_directory(directory, fname, as_attachment=True,
+                               mimetype="application/octet-stream", max_age=300)
+
+                               
 @tools_bp.get("/api/runs/<int:run_id>")
 @jwt_required()
 def get_run_api(run_id: int):
@@ -646,12 +703,21 @@ def cancel_run_api(run_id: int):
     run.status = WorkflowRunStatus.CANCELED
     db.session.commit()
 
+    # Free the active slot and promote a queued run if any
+    try:
+        from tools.tasks import _promote_queued
+        active_decr(run.user_id)
+        _promote_queued()
+    except Exception:
+        pass
+
     publish_run_event(run.id, "run", {
         "status": run.status.name,
         "progress_pct": run.progress_pct,
         "current_step_index": run.current_step_index
     })
     return jsonify({"run": _serialize_run(run)})
+
 
 @tools_bp.post("/api/runs/<int:run_id>/retry")
 @jwt_required()
