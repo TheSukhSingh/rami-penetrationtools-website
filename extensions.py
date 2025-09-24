@@ -5,7 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt     import Bcrypt
 from flask_migrate    import Migrate
 import os
-from flask_jwt_extended import verify_jwt_in_request_optional, get_jwt_identity
+from flask_jwt_extended import get_jwt_identity
 
 db      = SQLAlchemy()
 bcrypt  = Bcrypt()
@@ -19,8 +19,6 @@ def _rate_limit_key():
     else fall back to client IP. Keeps limits user-scoped for logged-in users.
     """
     try:
-        # Won’t 401; it only parses the token if there is one
-        verify_jwt_in_request_optional()
         ident = get_jwt_identity()
         if ident is not None and str(ident).strip():
             return f"user:{ident}"

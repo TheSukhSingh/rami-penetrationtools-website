@@ -27,8 +27,42 @@ from .tasks import advance_run
 from .runner import create_run_from_definition
 from celery_app import celery
 from sqlalchemy.exc import IntegrityError
+from .settings import get_setting, get_rate_limit
+from .validation import validate_step_input
 
 utcnow = lambda: datetime.now(timezone.utc)
+
+from .events import _redis
+
+def _quota_key(kind: str, user_id: int) -> str:
+    today = datetime.utcnow().strftime("%Y%m%d")
+    return f"tools:quota:{today}:{kind}:u{user_id}"
+
+def _quota_allowed(kind: str, user_id: int, limit: int) -> tuple[bool, int]:
+    r = _redis(); cur = int(r.get(_quota_key(kind, user_id)) or 0)
+    return (cur < limit, cur)
+
+def _quota_incr(kind: str, user_id: int, by: int = 1) -> None:
+    r = _redis(); k = _quota_key(kind, user_id)
+    p = r.pipeline(); p.incrby(k, by); p.expire(k, 172800); p.execute()
+
+def _usage_bump(kind: str, user_id: int, tool_id: int | None = None):
+    # kind: "scan" | "run" | "error"
+    # NOTE: ToolUsageDaily already exists in models.
+    day = datetime.utcnow().date()
+    row = (db.session.query(ToolUsageDaily)
+           .filter_by(user_id=user_id, tool_id=tool_id, day=day)
+           .with_for_update(of=ToolUsageDaily, nowait=False)
+           .first())
+    if not row:
+        row = ToolUsageDaily(user_id=user_id, tool_id=tool_id, day=day, scans=0, runs=0, errors=0)
+        db.session.add(row)
+    if kind == "scan":
+        row.scans = (row.scans or 0) + 1
+    elif kind == "run":
+        row.runs = (row.runs or 0) + 1
+    elif kind == "error":
+        row.errors = (row.errors or 0) + 1
 
 def _current_user_id():
     """Return the JWT identity; cast to int when possible, else keep as string."""
@@ -111,54 +145,99 @@ def api_tools():
 
 @tools_bp.route('/api/scan', methods=['POST'])
 @jwt_required()
+@limiter.limit(lambda: get_rate_limit("SCAN_RATE_LIMIT", "5/minute"))
 def api_scan():
-    user_id = _current_user_id()    
-    tool    = request.form.get('tool')
-    cmd     = request.form.get('cmd')  
-    
+    user_id = _current_user_id()
+
+    # --- DB-backed upload cap (early reject) --------------------
+    max_bytes = int(get_setting("MAX_UPLOAD_BYTES", 2_000_000, int))
+    content_len = request.content_length or 0
+    if content_len and content_len > max_bytes:
+        return jsonify({
+            "status": "error",
+            "message": f"Upload too large (>{max_bytes} bytes)",
+            "error_reason": "FILE_TOO_LARGE",
+        }), 413
+
+    # --- Daily scan quota ---------------------------------------
+    scan_limit = int(get_setting("DAILY_SCAN_QUOTA", 200, int))
+    ok, used = _quota_allowed("scan", user_id, scan_limit)
+    if not ok:
+        return jsonify({
+            "status": "error",
+            "message": "Daily scan quota exceeded",
+            "error": "quota_exceeded",
+            "limit": scan_limit,
+            "used": used,
+        }), 429
+
+    tool    = request.form.get('tool') or (request.json or {}).get('tool')
+    cmd     = request.form.get('cmd')
+
     base_name = ''
     filename  = ''
 
+    # gather options (form/json tolerant)
     options = {}
-    for key, vals in request.form.lists():
-        if key in ('tool', 'cmd'):
-            continue
-        options[key] = vals if len(vals) > 1 else vals[0]
+    if request.form:
+        for key, vals in request.form.lists():
+            if key in ('tool', 'cmd', 'options'):
+                continue
+            options[key] = vals if len(vals) > 1 else vals[0]
+        # optional JSON options in a form field
+        if request.form.get("options"):
+            try:
+                options.update(json.loads(request.form.get("options")))
+            except:
+                pass
+    elif request.is_json:
+        options = (request.json or {}).get("options") or {}
 
-    file_field = f"{tool}-file"
+    # accept either "file" or "<tool>-file" field names
+    uploaded = None
+    if request.files:
+        uploaded = request.files.get("file") or request.files.get(f"{tool}-file")
 
-    if file_field in request.files:
-        uploaded = request.files[file_field]
-        if uploaded.filename:
-            from werkzeug.utils import secure_filename
-            import os
-            from flask import current_app
-            base = current_app.config['UPLOAD_INPUT_FOLDER']
-            user_folder = os.path.join(base, str(user_id))
-            os.makedirs(user_folder, exist_ok=True)
-            base_name = secure_filename(uploaded.filename)
-            timestamp = utcnow().strftime('%Y%m%d%H%M%S%f')
-            filename = f"{timestamp}_{base_name}"
-            filepath = os.path.join(user_folder, filename)
-            uploaded.save(filepath)
-            options['input_method'] = 'file'
-            options['file_path'] = filepath
+    # --- resolve tool + server-side schema validation ------------
+    tool_rec = db.session.query(Tool).filter_by(slug=tool).first()
+    if not tool_rec or not tool_rec.enabled:
+        return jsonify({"status": "error", "message": "Unknown or disabled tool"}), 404
 
+    errs = validate_step_input(tool_rec, options)
+    if errs:
+        return jsonify({
+            "status": "error",
+            "message": "validation_failed",
+            "error_reason": "INVALID_PARAMS",
+            "errors": errs
+        }), 400
+
+    # --- save upload (if any) -----------------------------------
+    if uploaded and uploaded.filename:
+        from werkzeug.utils import secure_filename
+        base = current_app.config['UPLOAD_INPUT_FOLDER']
+        user_folder = os.path.join(base, str(user_id))
+        os.makedirs(user_folder, exist_ok=True)
+        base_name = secure_filename(uploaded.filename)
+        timestamp = utcnow().strftime('%Y%m%d%H%M%S%f')
+        filename = f"{timestamp}_{base_name}"
+        filepath = os.path.join(user_folder, filename)
+        uploaded.save(filepath)
+        options['input_method'] = 'file'
+        options['file_path'] = filepath
+
+    # --- call adapter -------------------------------------------
     start_req = time.time()
     try:
         if tool == 'debug-echo':
-            adapter = import_module(f".alltools.tools.debug_echo", package="tools")
+            adapter = import_module("tools.alltools.tools.debug_echo")
         else:
             mod_name = tool.replace('-', '_')
-            try:
-                adapter = import_module(f".alltools.tools.{mod_name}", package="tools")
-            except ModuleNotFoundError:
-                return jsonify({"status": "error", "message": f"Unknown tool: {tool}"}), 400
-
+            adapter = import_module(f"tools.alltools.tools.{mod_name}")
         result = adapter.run_scan(options) or {}
         success = (result.get("status") in ("success", "ok"))
     except Exception as e:
-        result = {"status": "error", "message": str(e), "output": ""}
+        result = {"status": "error", "message": "adapter_crash", "error_reason": "ADAPTER_CRASH", "output": str(e)}
         success = False
 
     if success:
@@ -197,9 +276,34 @@ def api_scan():
         value_entered          = result.get('value_entered'),
     )
     db.session.add(diag)
-    db.session.commit()
-    return jsonify(result)
 
+    # usage counters
+    try:
+        _usage_bump("scan", user_id, tool_rec.id if tool_rec else None)
+        if not success:
+            _usage_bump("error", user_id, tool_rec.id if tool_rec else None)
+    except Exception:
+        pass
+
+    db.session.commit()
+
+    # --- quota increment ----------------------------------------
+    try:
+        _quota_incr("scan", user_id, by=1)
+    except:
+        pass
+
+    # --- HTTP status mapping ------------------------------------
+    status_code = 200
+    if (result or {}).get("status") == "error":
+        er = (result or {}).get("error_reason") or ""
+        status_code = 400
+        if er == "FILE_TOO_LARGE": status_code = 413
+        elif er in ("INVALID_PARAMS", "TOO_MANY_DOMAINS"): status_code = 400
+        elif er == "TIMEOUT": status_code = 504
+        elif er == "NOT_INSTALLED": status_code = 503
+
+    return jsonify(result), status_code
 # ─────────────────────────────────────────────────────────
 # Workflows CRUD (definitions / presets)
 # ─────────────────────────────────────────────────────────
@@ -464,21 +568,33 @@ def run_events(run_id: int):
 
 @tools_bp.post("/api/workflows/<int:wf_id>/run")
 @jwt_required()
-@limiter.limit("10/minute")
+@limiter.limit(lambda: get_rate_limit("RUN_RATE_LIMIT", "10/minute"))
 def start_run_api(wf_id: int):
     user_id = _current_user_id()
 
-    # permission: owner or shared (reuse your workflow get)
+    # permission: owner or shared
     wf = db.session.get(WorkflowDefinition, wf_id)
     if not wf:
         return jsonify({"error": "not found"}), 404
     if (not _same_user(wf.owner_id, user_id)) and not wf.is_shared:
         return jsonify({"error":"forbidden"}), 403
 
+    # --- Daily run quota (DB) -----------------------------------
+    run_limit = int(get_setting("DAILY_RUN_QUOTA", 50, int))
+    ok, used = _quota_allowed("run", user_id, run_limit)
+    
+    if not ok:
+        return jsonify({
+            "status": "error",
+            "error": "quota_exceeded",
+            "message": "Daily workflow run quota exceeded",
+            "limit": run_limit,
+            "used": used,
+        }), 429
 
     from tools.alltools.tools._common import ops_redis, dedupe_run_key, RUN_START_DEDUP_TTL, active_can_start, active_incr
 
-    # de-dupe burst clicks for a few seconds
+    # de-dupe burst clicks
     r = ops_redis()
     dkey = dedupe_run_key(user_id, wf_id)
     if not r.set(dkey, "1", nx=True, ex=RUN_START_DEDUP_TTL):
@@ -486,20 +602,29 @@ def start_run_api(wf_id: int):
 
     run = create_run_from_definition(wf_id, user_id)
 
-    # backpressure: only dispatch immediately if user is under the cap
     if active_can_start(user_id):
         active_incr(user_id)
         queue_name = current_app.config.get("CELERY_QUEUE", "tools_default")
         advance_run.apply_async(args=[run.id], queue=queue_name)
-    # else leave it QUEUED; the sweeper/promoter in tasks.py will pick it up
+    # else leave QUEUED for promoter
 
-
+    # --- quota increment ----------------------------------------
+    try:
+        _quota_incr("run", user_id, by=1)
+    except:
+        pass
 
     publish_run_event(run.id, "run", {
         "status": run.status.name,
         "progress_pct": run.progress_pct,
         "current_step_index": run.current_step_index
     })
+
+    try:
+        _usage_bump("run", user_id, None)
+    except Exception:
+        pass
+
     return jsonify({"run": _serialize_run(run)}), 201
 
 @tools_bp.get("/api/ops/health")
@@ -513,7 +638,19 @@ def ops_health():
         q_depth = int(r.llen(qname))
     except Exception:
         q_depth = None
-    return jsonify({"ok": True, "queue_depth": q_depth, "per_user_cap": RUNS_MAX_ACTIVE_PER_USER})
+    return jsonify({
+    "ok": True,
+    "queue_depth": q_depth,
+    "per_user_cap": RUNS_MAX_ACTIVE_PER_USER,
+    "settings": {
+        "MAX_UPLOAD_BYTES": int(get_setting("MAX_UPLOAD_BYTES", 2_000_000, int)),
+        "DAILY_SCAN_QUOTA": int(get_setting("DAILY_SCAN_QUOTA", 200, int)),
+        "DAILY_RUN_QUOTA":  int(get_setting("DAILY_RUN_QUOTA", 50, int)),
+        "SCAN_RATE_LIMIT":  get_setting("SCAN_RATE_LIMIT", "5/minute", str),
+        "RUN_RATE_LIMIT":   get_setting("RUN_RATE_LIMIT", "10/minute", str),
+        "UPLOAD_RETENTION_DAYS": int(get_setting("UPLOAD_RETENTION_DAYS", 7, int)),
+    },
+})
 
 
 @tools_bp.post("/api/workflows/<int:wf_id>/nodes/<node_id>/config")
@@ -568,7 +705,6 @@ def download_artifact(run_id: int, relpath: str):
     directory, fname = os.path.dirname(full), os.path.basename(full)
     return send_from_directory(directory, fname, as_attachment=True,
                                mimetype="application/octet-stream", max_age=300)
-
                                
 @tools_bp.get("/api/runs/<int:run_id>")
 @jwt_required()
@@ -606,7 +742,6 @@ def list_runs_api():
         "total": page_obj.total, "pages": page_obj.pages
     })
 
-
 @tools_bp.get("/api/runs/<int:run_id>/steps/<int:step_index>")
 @jwt_required()
 def get_run_step_api(run_id: int, step_index: int):
@@ -622,7 +757,6 @@ def get_run_step_api(run_id: int, step_index: int):
     data["input_manifest"] = step.input_manifest
     data["output_manifest"] = step.output_manifest
     return jsonify({"step": data})
-
 
 @tools_bp.post("/api/runs/<int:run_id>/pause")
 @jwt_required()
@@ -645,7 +779,6 @@ def pause_run_api(run_id: int):
         "current_step_index": run.current_step_index
     })
     return jsonify({"run": _serialize_run(run)})
-
 
 @tools_bp.post("/api/runs/<int:run_id>/resume")
 @jwt_required()
@@ -718,7 +851,6 @@ def cancel_run_api(run_id: int):
     })
     return jsonify({"run": _serialize_run(run)})
 
-
 @tools_bp.post("/api/runs/<int:run_id>/retry")
 @jwt_required()
 @limiter.limit("10/minute")
@@ -773,7 +905,6 @@ def retry_run_api(run_id: int):
     advance_run.delay(run.id)
     return jsonify({"run": _serialize_run(run)})
 
-
 @tools_bp.route("/api/runs/<int:run_id>/summary", methods=["GET"])
 @jwt_required()
 def get_run_summary(run_id: int):
@@ -797,8 +928,6 @@ def get_run_summary(run_id: int):
         "counters": counters,
         "manifest": manifest,
     })
-
-
 
 def _tool_to_dict_with_schema(t: Tool):
     meta = t.meta_info or {}
@@ -830,8 +959,6 @@ def list_tools():
     )
     return jsonify([_tool_to_dict_with_schema(t) for t in rows])
 
-
-
 @tools_bp.get("/api/tools/<slug>/schema")
 @jwt_required()
 def get_tool_schema(slug):
@@ -840,7 +967,6 @@ def get_tool_schema(slug):
         "tool": {"id": tool.id, "slug": tool.slug, "name": tool.name},
         "fields": [f.to_dict() for f in tool.config_fields],
     })
-
 
 @tools_bp.post("/api/tools/<slug>/schema")
 @jwt_required()
@@ -897,8 +1023,6 @@ def set_tool_schema(slug):
 
     return jsonify({"ok": True, "fields": [f.to_dict() for f in created]}), 201
 
-
-# (Optional) per-user default overrides
 @tools_bp.get("/api/tools/<slug>/user-defaults")
 @jwt_required()
 def get_user_tool_defaults(slug):
@@ -907,7 +1031,6 @@ def get_user_tool_defaults(slug):
     tool = Tool.query.filter_by(slug=slug).first_or_404()
     row = UserToolConfig.query.filter_by(user_id=user_id, tool_id=tool.id).first()
     return jsonify({"values": (row.values if row else {})})
-
 
 @tools_bp.post("/api/tools/<slug>/user-defaults")
 @jwt_required()

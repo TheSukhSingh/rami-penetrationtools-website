@@ -106,6 +106,12 @@ class ScanDiagnostics(db.Model):
 
     tool_scan_history = relationship('ToolScanHistory', back_populates='scan_diagnostics', passive_deletes=True, uselist=False)
 
+class AppSetting(db.Model):
+    __tablename__ = "app_settings"
+    key = db.Column(db.String(64), primary_key=True)
+    value = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
 # --- Tools catalog & analytics -----------------------------------------------
 
 class ToolCategory(db.Model, TimestampMixin):

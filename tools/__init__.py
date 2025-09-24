@@ -181,5 +181,49 @@ def add_debug_echo():
     db.session.commit()
     click.echo("Added 'debug-echo' under 'Debug'")
 
+@tools_bp.cli.command("seed-settings")
+def seed_settings():
+    from .settings import set_setting
+    set_setting("MAX_UPLOAD_BYTES", 2_000_000)   # 2 MB
+    set_setting("DAILY_SCAN_QUOTA", 200)
+    set_setting("DAILY_RUN_QUOTA", 50)
+    set_setting("SCAN_RATE_LIMIT", "5/minute")
+    set_setting("RUN_RATE_LIMIT", "10/minute")  # used if you DB-drive runs limiter
+    set_setting("UPLOAD_RETENTION_DAYS", 7)
+    click.echo("Seeded app settings.")
+
+@tools_bp.cli.command("cleanup-uploads")
+@click.option("--days", type=int, default=None, help="Override retention days (default: read from DB)")
+def cleanup_uploads(days: int | None):
+    import time, os
+    from flask import current_app
+    from .settings import get_setting
+
+    if days is None:
+        days = int(get_setting("UPLOAD_RETENTION_DAYS", 7, int))
+    base = current_app.config.get("UPLOAD_INPUT_FOLDER")
+    if not base or not os.path.isdir(base):
+        click.echo(f"UPLOAD_INPUT_FOLDER missing or not a dir: {base!r}")
+        return
+
+    cutoff = time.time() - days * 86400
+    removed = 0
+    for root, dirs, files in os.walk(base):
+        for name in files:
+            path = os.path.join(root, name)
+            try:
+                if os.stat(path).st_mtime < cutoff:
+                    os.remove(path); removed += 1
+            except Exception:
+                pass
+        # prune empties
+        for d in list(dirs):
+            p = os.path.join(root, d)
+            try:
+                if not os.listdir(p):
+                    os.rmdir(p)
+            except Exception:
+                pass
+    click.echo(f"Removed {removed} old upload(s) (> {days} days)")
 
 from . import routes
