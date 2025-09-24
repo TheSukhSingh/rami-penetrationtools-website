@@ -1,65 +1,35 @@
 # tools/alltools/tools/linkfinder.py
 from __future__ import annotations
-import subprocess, shlex
-from ._common import (
-    resolve_bin, read_targets_from_options, ensure_work_dir,
-    write_output_file, finalize, now_ms
-)
+from pathlib import Path
+import os, re
+from ._common import resolve_bin, ensure_work_dir, read_targets, run_cmd, write_output_file, finalize, ValidationError, URL_RE
 from tools.policies import get_effective_policy, clamp_from_constraints
-from ._common import read_targets
-
-DEFAULT_TIMEOUT = 60
 
 def run_scan(options: dict) -> dict:
-    t0 = now_ms()
+    t0 = int(os.times().elapsed*1000) if hasattr(os,"times") else 0
     work_dir = ensure_work_dir(options)
-    slug   = options.get("tool_slug", "linkfinder")
+    slug="linkfinder"
     policy = options.get("_policy") or get_effective_policy(slug)
-    ipol   = policy.get("input_policy", {})
-    rcons  = policy.get("runtime_constraints", {})
-    bins   = (policy.get("binaries") or {}).get("names") or ["linkfinder"]
+    ipol = policy.get("input_policy",{})
+    exe = resolve_bin("linkfinder","linkfinder.py")  # pip console-script or file
+    if not exe:
+        return finalize("error","linkfinder not installed",options,"linkfinder",t0,"",error_reason="NOT_INSTALLED")
 
-    urls, _ = read_targets(
-        options,
-        accept_keys=tuple(ipol.get("accepts") or ("urls",)),
-        file_max_bytes=ipol.get("file_max_bytes", 200_000),
-        cap=ipol.get("max_targets", 200),
-    )
+    raw,_ = read_targets(options, accept_keys=tuple(ipol.get("accepts") or ("urls",)), cap=100)
+    if not raw: raise ValidationError("At least one URL is required.","INVALID_PARAMS","no input")
 
+    timeout_s = clamp_from_constraints(options,"timeout_s", None, default=120, kind="int") or 120
 
-    bin_path = None
-    for b in bins:
-        bin_path = resolve_bin(b)
-        if bin_path:
-            break
+    if len(raw) == 1:
+        args = [exe, "-i", raw[0], "-o", "cli", "-d"]
+    else:
+        fp = Path(work_dir)/"linkfinder_targets.txt"; fp.write_text("\n".join(raw), "utf-8")
+        args = [exe, "-l", str(fp), "-o", "cli", "-d"]
 
-    if not bin_path:
-        return finalize("error", "linkfinder not found in PATH", options, "linkfinder -i <url> -o cli", t0, "", error_reason="INVALID_PARAMS")
-    if not urls:
-        return finalize("error", "no input urls", options, "linkfinder", t0, "", error_reason="INVALID_PARAMS")
-
-    endpoints = []
-    raw_agg = []
-    # Run per-URL to keep output clean (it’s usually fast)
-    for u in urls:
-        cmd = [bin_path, "-i", u, "-o", "cli"]
-        try:
-            proc = subprocess.run(
-                cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=clamp_from_constraints(options, "timeout_s", rcons.get("timeout_s"), default=DEFAULT_TIMEOUT, kind="int")
-
-            )
-            raw_agg.append(proc.stdout)
-            # linkfinder CLI outputs one path per line
-            for ln in proc.stdout.splitlines():
-                ln = ln.strip()
-                if ln:
-                    endpoints.append(ln)
-        except subprocess.TimeoutExpired:
-            raw_agg.append(f"[timeout] {u}")
-        except Exception as e:
-            raw_agg.append(f"[error:{e}] {u}")
-
-    raw = "\n".join(raw_agg)
-    ofile = write_output_file(work_dir, "linkfinder_out.txt", raw + ("\n" if raw else ""))
-    return finalize("success", "ok", options, "linkfinder -i <url> -o cli", t0, raw, ofile, endpoints=endpoints)
+    rc, out, ms = run_cmd(args, timeout_s=timeout_s, cwd=work_dir)
+    outfile = write_output_file(work_dir, "linkfinder_output.txt", out or "")
+    # LinkFinder CLI prints both absolute and relative endpoints; keep both, dedup inside finalize
+    endpoints = [m.group(0) for m in URL_RE.finditer(out or "")]
+    status="ok" if rc==0 else "error"
+    return finalize(status, f"{len(endpoints)} endpoints", options, " ".join(args), t0, out, output_file=outfile,
+                    endpoints=endpoints, error_reason=None if rc==0 else "OTHER")

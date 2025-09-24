@@ -106,7 +106,6 @@ class ScanDiagnostics(db.Model):
 
     tool_scan_history = relationship('ToolScanHistory', back_populates='scan_diagnostics', passive_deletes=True, uselist=False)
 
-
 # --- Tools catalog & analytics -----------------------------------------------
 
 class ToolCategory(db.Model, TimestampMixin):
@@ -135,7 +134,6 @@ class ToolCategory(db.Model, TimestampMixin):
 
     def __repr__(self):
         return f"<ToolCategory {self.slug} enabled={self.enabled}>"
-
 
 class ToolCategoryLink(db.Model, TimestampMixin):
     """
@@ -199,7 +197,6 @@ class Tool(db.Model, TimestampMixin):
 
     def __repr__(self):
         return f"<Tool {self.slug} enabled={self.enabled}>"
-
 
 class ToolUsageDaily(db.Model):
     """

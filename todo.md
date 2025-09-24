@@ -101,7 +101,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - link user dashboard
 - link billing and plan
 - link help
-- remove margin-top from page-wrapper class in navbar.css (line 816) - css file has -> ("/* TODO - REMOVE MARGIN-TOP  --- ONLY FOR DEBUGGING */")
+
 ## ACCOUNT SETTINGS PAGE    
 - redesigning of the page (page design available)
 - email change delivery
@@ -158,6 +158,7 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - Dropdown from User needs design update
 - Dropdown needs complete restyling like this image
 - link account settings
+- remove margin-top from page-wrapper class in navbar.css (line 816) - css file has -> ("/* TODO - REMOVE MARGIN-TOP  --- ONLY FOR DEBUGGING */")
 ## MAILS
 - Confirm mail design update required
 - Reset Password mail design update required

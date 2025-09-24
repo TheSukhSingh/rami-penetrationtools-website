@@ -92,6 +92,19 @@ defaultConfigFor(meta) {
         }
       }
 
+      try {
+        const wfId = this.currentWorkflow.id;
+        const graph = this.buildGraph?.();
+        await this.API.workflows.update(wfId, {
+          title: this.currentWorkflow.title ?? "Untitled",
+          graph,
+        });
+        this.addLog?.("Preset synced with latest node configs");
+      } catch (syncErr) {
+        console.warn(syncErr);
+        this.addLog?.("Warning: failed to sync preset before run; proceeding");
+      }
+
       // 3) Fire the run
       this.setBusy(true);
       this.addLog?.("Starting run…");

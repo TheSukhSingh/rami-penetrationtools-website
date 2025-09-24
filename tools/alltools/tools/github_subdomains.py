@@ -1,111 +1,75 @@
 # tools/alltools/tools/github_subdomains.py
 from __future__ import annotations
-import os, shlex
+import os, re, time, json
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
-from tools.policies import get_effective_policy, clamp_from_constraints
-
 from ._common import (
-    resolve_bin, ValidationError, now_ms, ensure_work_dir, write_output_file,
-    read_domains_validated, coerce_int_range, run_cmd, finalize
+    resolve_bin, ensure_work_dir, read_targets, run_cmd, write_output_file,
+    finalize, ValidationError, classify_domains
 )
+import subprocess
 
-def run_scan(options: Dict[str, Any]) -> Dict[str, Any]:
-    t0 = now_ms()
-    try:
-        # 0) policy
-        slug   = options.get("tool_slug", "github_subdomains")
-        policy = options.get("_policy") or get_effective_policy(slug)
-        ipol   = policy.get("input_policy", {})
-        rcons  = policy.get("runtime_constraints", {})
-        bins   = (policy.get("binaries") or {}).get("names") or ["github-subdomains"]
+HARD_TIMEOUT=300
 
-        # 1) domains to enumerate org/subdomains for
-        domains, diag = read_domains_validated(
-            options,
-            cap=ipol.get("max_targets", 50),
-            file_max_bytes=ipol.get("file_max_bytes", 100_000),
-        )
+def _fallback_github_api(dom: str, token: str, work_dir: Path, t0: int, options: dict):
+    """
+    Very small fallback: uses 'gh api' if installed OR curl via subprocess.
+    Searches code for the domain string and extracts subdomains by regex.
+    """
+    # Prefer gh if available
+    gh = resolve_bin("gh","gh.exe")
+    headers = f"Authorization: token {token}"
+    q = f'"{dom}" in:file'  # keep this mild
+    urls=[]
+    if gh:
+        cmd = [gh, "api", "-H", headers, "/search/code", "-f", f"q={q}", "-f", "per_page=50"]
+        rc,out,ms = run_cmd(cmd, timeout_s=HARD_TIMEOUT, cwd=work_dir)
+        if rc==0:
+            try:
+                data = json.loads(out)
+                for item in data.get("items", []):
+                    # pull_text_url if present; otherwise skip
+                    pass
+            except: pass
+        raw = out or ""
+    else:
+        # curl fallback
+        curl = resolve_bin("curl","curl.exe")
+        if not curl:
+            return finalize("error","Neither github-subdomains nor 'gh' nor 'curl' available",
+                            options,"github-subdomains",t0,"",error_reason="NOT_INSTALLED")
+        api = f"https://api.github.com/search/code?q={dom}+in:file&per_page=50"
+        rc,out,ms = run_cmd([curl,"-s","-H",headers,api], timeout_s=HARD_TIMEOUT, cwd=work_dir)
+        raw = out or ""
 
-        # 2) params
-        timeout_s = clamp_from_constraints(options, "timeout_s", rcons.get("timeout_s"), default=60, kind="int")
+    # very light regex just to get subdomains
+    sub_re = re.compile(rf"(?:[a-z0-9-]+\.)+{re.escape(dom)}", re.I)
+    candidates = list(dict.fromkeys(sub_re.findall(raw)))
+    good, bad = classify_domains(candidates)
+    return finalize("ok", f"{len(good)} candidates (API fallback)", options, "github-api", t0, raw, domains=good)
 
-        # 3) token + binary
-        token = (options.get("token") or os.getenv("GITHUB_TOKEN") or "").strip()
-        if not token:
-            raise ValidationError("Missing GitHub token", "INVALID_PARAMS", "Provide 'token' or GITHUB_TOKEN env var")
+def run_scan(options: dict) -> dict:
+    t0 = int(os.times().elapsed*1000) if hasattr(os,"times") else 0
+    work_dir = ensure_work_dir(options)
+    slug="github-subdomains"
+    token = options.get("github_token") or os.getenv("GITHUB_SUBDOMAINS_KEY")
+    if not token:
+        return finalize("error","Missing GitHub token (GITHUB_SUBDOMAINS_KEY).",options,"github-subdomains",t0,"",error_reason="INVALID_PARAMS", error_detail="set env or options.github_token")
 
-        bin_path = None
-        for b in bins:
-            bin_path = resolve_bin(b)
-            if bin_path:
-                break
-        if not bin_path:
-            raise ValidationError("github-subdomains binary not found in PATH", "BIN_NOT_FOUND", ",".join(bins))
+    raw,_ = read_targets(options, accept_keys=("domains",), cap=5)
+    if not raw: raise ValidationError("At least one root domain is required.","INVALID_PARAMS","no input")
+    dom = raw[0]
 
-        # 4) working dir
-        work_dir: Path = ensure_work_dir(options)
+    # Try the popular CLI if present
+    exe = resolve_bin("github-subdomains","github-subdomains.exe")
+    if exe:
+        args = [exe, "-d", dom, "-t", token]
+        rc,out,ms = run_cmd(args, timeout_s=HARD_TIMEOUT, cwd=work_dir)
+        outfile = write_output_file(work_dir, "github_subdomains_output.txt", out or "")
+        lines = [(ln or "").strip() for ln in (out or "").splitlines() if ln.strip()]
+        good,_ = classify_domains(lines)
+        status="ok" if rc==0 else "error"
+        return finalize(status, f"{len(good)} subdomains", options, " ".join(args), t0, out, output_file=outfile,
+                        domains=good, error_reason=None if rc==0 else "OTHER")
 
-        # 5) run once per domain (most tools expect a single -d)
-        outs: List[str] = []
-        exit_codes: List[int] = []
-        env = dict(os.environ)
-        env["GITHUB_TOKEN"] = token
-
-        for d in domains:
-            # popular syntax: github-subdomains -d example.com
-            cmd = [bin_path, "-d", d]
-            code, raw, _ms = run_cmd(cmd, timeout_s=timeout_s, cwd=work_dir, env=env)
-            outs.append(raw or "")
-            exit_codes.append(code)
-
-        raw_all = "\n".join(outs)
-        # treat every non-empty token with a dot as a host (very conservative)
-        hosts = []
-        for ln in raw_all.splitlines():
-            ln = ln.strip()
-            if ln and "." in ln and " " not in ln:
-                hosts.append(ln)
-
-        out_file = write_output_file(work_dir, "github_subdomains_output.txt", raw_all)
-
-        any_fail = any(c != 0 for c in exit_codes)
-        status  = "success" if not any_fail else "failed"
-        message = "Enumerated subdomains from GitHub" if not any_fail else f"github-subdomains had {sum(1 for c in exit_codes if c!=0)} failures"
-
-        res = finalize(
-            status=status,
-            message=message,
-            options=options,
-            command=" && ".join(" ".join(shlex.quote(a) for a in [bin_path, "-d", d]) for d in domains) or "github-subdomains",
-            t0_ms=t0,
-            raw_out=raw_all,
-            output_file=out_file,
-            hosts=hosts,
-            domains=hosts,
-        )
-        res.update(diag)
-        return res
-
-    except ValidationError as ve:
-        return finalize(
-            status="failed",
-            message=ve.message,
-            options=options,
-            command="github-subdomains",
-            t0_ms=t0,
-            raw_out="",
-            error_reason=ve.reason,
-            error_detail=ve.detail,
-        )
-    except Exception as e:
-        return finalize(
-            status="failed",
-            message="Unhandled exception in github-subdomains adapter",
-            options=options,
-            command="github-subdomains",
-            t0_ms=t0,
-            raw_out=str(e),
-            error_reason="UNHANDLED",
-            error_detail=repr(e),
-        )
+    # Fallback to tiny API helper
+    return _fallback_github_api(dom, token, work_dir, t0, options)

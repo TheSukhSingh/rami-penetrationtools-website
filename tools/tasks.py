@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from .runner import create_run_from_definition
 from flask import current_app
 from .events import publish_run_event
+from tools import ingest
 
 utcnow = lambda: datetime.now(timezone.utc)
 log = get_task_logger(__name__)
@@ -214,28 +215,23 @@ def run_step(self, run_id: int, step_index: int):
         # load adapter + prepare options
         mod_name = slug.replace('-', '_')
         adapter = import_module(f".alltools.tools.{mod_name}", package="tools")
-        options = _prep_options_for_tool(step, prev_output, run.user_id, current_app.config)
+
+        # Create step work dir FIRST (so ingest can write inbox file if needed)
+        base = current_app.config.get("TOOLS_WORK_DIR", "/tmp/hackr_runs")
+        step_dir = Path(base) / f"run_{run.id}" / f"step_{step_index:02d}_{tool.slug}"
+        step_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build options via ingest (DB-driven; upstream + config + seeds; normalize/dedupe/cap)
+        options = ingest.build_inputs_for_step(run, step, step_dir, current_app.config, slug=slug)
         
         # Inject the per-step policy snapshot captured by the runner
         base_opts = ((step.input_manifest or {}).get("options") or {})
         snap = base_opts.get("_policy")
         if snap:
             options["_policy"] = snap
-        else:
-            # Fallback to live policy if snapshot missing (should be rare)
-            try:
-                from tools.policies import get_effective_policy
-                options["_policy"] = get_effective_policy(slug)
-            except Exception:
-                pass
 
         # Always provide tool_slug for adapters that rely on it
         options.setdefault("tool_slug", slug)
-
-        base = current_app.config.get("TOOLS_WORK_DIR", "/tmp/hackr_runs")
-        step_dir = Path(base) / f"run_{run.id}" / f"step_{step_index:02d}_{tool.slug}"
-        step_dir.mkdir(parents=True, exist_ok=True)
-        
         options["work_dir"] = str(step_dir)
 
         # Execute tool
@@ -304,7 +300,7 @@ def run_step(self, run_id: int, step_index: int):
 def _load_adapter_for_slug(slug: str):
     """Slug 'github-subdomains' -> module tools.alltools.github_subdomains"""
     mod_name = slug.replace('-', '_')
-    return import_module(f".alltools.{mod_name}", package="tools")
+    return import_module(f".alltools.tools.{mod_name}", package="tools")
 
 def _prep_options_for_tool(step, prev_output: dict, user_id: int, app_config: dict):
     """
@@ -317,7 +313,12 @@ def _prep_options_for_tool(step, prev_output: dict, user_id: int, app_config: di
     options = {}
     if isinstance(step.input_manifest, dict):
         options.update(step.input_manifest)
-
+        inner = step.input_manifest.get("options")
+        if isinstance(inner, dict):
+            for k, v in inner.items():
+                # keep any explicit top-level value; otherwise copy from inner
+                options.setdefault(k, v)
+                
     # previous file?
     file_path = None
     for key in ("output_file", "file_path", "list_path"):
@@ -349,6 +350,14 @@ def _prep_options_for_tool(step, prev_output: dict, user_id: int, app_config: di
         # leave as manual if 'value' present in config; adapters already handle 'input_method'
         if options.get("value"):
             options["input_method"] = options.get("input_method", "manual")
+    log.info(
+        "prep_options: step=%s opts_keys=%s input_method=%r value=%r file=%r",
+        step.step_index,
+        sorted(list(options.keys()))[:12],
+        options.get("input_method"),
+        options.get("value"),
+        options.get("file_path"),
+    )
 
     return options
 

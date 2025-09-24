@@ -156,6 +156,8 @@ def read_targets(options: dict,
     return ([], "empty")
 
 def run_cmd(args: List[str], timeout_s: int, cwd: Optional[Path] = None, env: Optional[Dict[str, str]] = None) -> Tuple[int, str, int]:
+    if not args or not args[0]:
+        raise ValidationError("Executable not resolved", "NOT_INSTALLED", "args[0] missing")
     t0 = now_ms()
     try:
         res = subprocess.run(

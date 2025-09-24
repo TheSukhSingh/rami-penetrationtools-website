@@ -19,7 +19,6 @@ from tools.policies import get_effective_policy
 from . import tools_bp
 from importlib import import_module
 from sqlalchemy.orm import joinedload, selectinload
-
 import json, time
 from .events import _redis, _chan, publish_run_event
 from .tasks import advance_run
@@ -485,6 +484,34 @@ def start_run_api(wf_id: int):
     })
     return jsonify({"run": _serialize_run(run)}), 201
 
+@tools_bp.post("/api/workflows/<int:wf_id>/nodes/<node_id>/config")
+@jwt_required()
+def upsert_node_config(wf_id: int, node_id: str):
+    user_id = _current_user_id()
+    wf = db.session.get(WorkflowDefinition, wf_id)
+    if not wf:
+        return jsonify({"error": "not_found"}), 404
+    # owner check (mirror whatever you use elsewhere)
+    if (wf.user_id is not None) and (wf.user_id != user_id):
+        return jsonify({"error": "forbidden"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    cfg = payload.get("config") or {}
+
+    graph = wf.graph_json or {}
+    nodes = graph.get("nodes") or []
+    updated = False
+    for n in nodes:
+        if str(n.get("id")) == str(node_id):
+            n["config"] = {**(n.get("config") or {}), **cfg}
+            updated = True
+            break
+    if not updated:
+        return jsonify({"error": "node_not_found"}), 404
+
+    wf.graph_json = graph
+    db.session.commit()
+    return jsonify({"ok": True, "workflow": {"id": wf.id}, "node": {"id": node_id, "config": cfg}})
 
 @tools_bp.get("/api/runs/<int:run_id>")
 @jwt_required()
@@ -495,7 +522,6 @@ def get_run_api(run_id: int):
     if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
         return jsonify({"error":"forbidden"}), 403
     return jsonify({"run": _serialize_run(run)})
-
 
 @tools_bp.get("/api/runs")
 @jwt_required()
