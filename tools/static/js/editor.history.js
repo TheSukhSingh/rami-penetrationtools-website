@@ -1,97 +1,167 @@
 // tools/static/js/editor.history.js
 export function attachHistory(editor) {
-
   // Open Run History (list)
   editor.openRunHistory = async function () {
     try {
-      // Toolbar + list shell
       const wrap = document.createElement("div");
       wrap.className = "history-modal";
       wrap.innerHTML = `
-        <div class="history-toolbar">
-          <input id="rhSearch" class="input" type="search" placeholder="Search by title or run id…" aria-label="Search runs">
-          <select id="rhStatus" class="input">
-            <option value="">All statuses</option>
-            <option value="RUNNING">Running</option>
-            <option value="QUEUED">Queued</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="FAILED">Failed</option>
-            <option value="CANCELED">Canceled</option>
-            <option value="PAUSED">Paused</option>
-          </select>
-          <label class="chk"><input type="checkbox" id="rhMine"> Current preset only</label>
-        </div>
-        <div class="history-list" id="rhList"></div>
-        <div class="muted" id="rhEmpty" style="display:none">No runs.</div>
-      `;
+      <div class="history-toolbar">
+        <input id="rhSearch" class="input" type="search" placeholder="Search by title or run id…" aria-label="Search runs">
+        <select id="rhStatus" class="input">
+          <option value="">All statuses</option>
+          <option value="RUNNING">Running</option>
+          <option value="QUEUED">Queued</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="FAILED">Failed</option>
+          <option value="CANCELED">Canceled</option>
+          <option value="PAUSED">Paused</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="rhMine"> Current preset only</label>
+      </div>
+      <div class="history-list" id="rhList"></div>
+      <div class="muted" id="rhEmpty" style="display:none">No runs.</div>
+    `;
 
       const listEl = wrap.querySelector("#rhList");
       const emptyEl = wrap.querySelector("#rhEmpty");
       const searchEl = wrap.querySelector("#rhSearch");
       const statusEl = wrap.querySelector("#rhStatus");
-      const mineEl   = wrap.querySelector("#rhMine");
+      const mineEl = wrap.querySelector("#rhMine");
+
+      // cache workflow titles once for friendly display
+      const wfTitleById = new Map();
+      try {
+        const w = await editor.API.workflows.list();
+        const arr = Array.isArray(w?.data?.items)
+          ? w.data.items
+          : Array.isArray(w?.data)
+          ? w.data
+          : Array.isArray(w)
+          ? w
+          : [];
+        arr.forEach((it) => wfTitleById.set(it.id, it.title || "Untitled"));
+      } catch {}
 
       const refresh = async () => {
-        const q = searchEl.value.trim();
         const status = statusEl.value || "";
-        const workflow_id = mineEl.checked ? (editor.currentWorkflow?.id || "") : "";
-        const r = await editor.API.runs.list({ q, status, workflow_id, limit: 50 });
-        if (!r?.ok) throw new Error(r?.error?.message || "Failed to fetch runs");
-        const runs = normalizeList(r.data);
-        renderList(runs);
+        const workflow_id = mineEl.checked
+          ? editor.currentWorkflow?.id || ""
+          : "";
+        const r = await editor.API.runs.list({
+          status,
+          workflow_id,
+          page: 1,
+          per_page: 100,
+        });
+        if (!r?.ok) {
+          alert(r?.data?.error?.message || "Failed to fetch runs");
+          return;
+        }
+        const runs = normalizeList(r.data).map((x) => ({
+          ...x,
+          workflow_title:
+            x.workflow_title ||
+            wfTitleById.get(x.workflow_id) ||
+            `Workflow #${x.workflow_id ?? "?"}`,
+        }));
+
+        // client-side search
+        const term = (searchEl.value || "").trim().toLowerCase();
+        const filtered = term
+          ? runs.filter(
+              (it) =>
+                String(it.id).includes(term) ||
+                (it.workflow_title || "").toLowerCase().includes(term)
+            )
+          : runs;
+
+        renderList(filtered);
       };
 
       const renderList = (items) => {
         listEl.innerHTML = "";
         let shown = 0;
-        items.sort((a,b)=> (b.started_at || 0) - (a.started_at || 0)).forEach(it => {
-          const row = document.createElement("div");
-          row.className = "run-row";
-          row.innerHTML = `
-            <div class="run-main">
-              <div class="run-title" title="${esc(it.workflow_title || "")}">
-                ${esc(it.workflow_title || "Untitled")} <span class="muted">#${it.id}</span>
-              </div>
-              <div class="run-meta">
-                <span class="badge ${klass(it.status)}">${it.status}</span>
-                <span>·</span>
-                <span>${fmt(it.started_at) || "—"}</span>
-                <span>·</span>
-                <span>${dur(it.duration_ms)}</span>
-                <span>·</span>
-                <span>${it.step_count ?? "?"} steps</span>
-              </div>
-            </div>
-            <div class="run-actions">
-              <button class="btn xs" data-act="open">Open</button>
-              <button class="btn xs" data-act="retry">Retry</button>
-              ${it.status==="RUNNING" || it.status==="QUEUED" || it.status==="PAUSED"
-                ? `<button class="btn xs" data-act="pause">Pause</button>
-                   <button class="btn xs" data-act="resume">Resume</button>
-                   <button class="btn xs danger" data-act="cancel">Cancel</button>`
-                : ``}
-            </div>
-          `;
-          row.querySelector('[data-act="open"]').addEventListener("click", () => editor._openRunDetail(it.id));
-          row.querySelector('[data-act="retry"]').addEventListener("click", async () => {
-            const rr = await editor.API.runs.retry(it.id);
-            if (!rr?.ok) { alert(rr?.error?.message || "Retry failed"); return; }
-            editor.addLog?.(`Retry started for run #${it.id}`);
-            // Optionally open the new run if id is returned
-            const newRunId = rr.data?.id || rr.data?.run_id || rr.data?.run?.id;
-            if (newRunId) editor._openRunDetail(newRunId);
-            refresh();
-          });
-          const pauseBtn = row.querySelector('[data-act="pause"]');
-          const resumeBtn= row.querySelector('[data-act="resume"]');
-          const cancelBtn= row.querySelector('[data-act="cancel"]');
-          pauseBtn?.addEventListener("click", async ()=> { const pr = await editor.API.runs.pause(it.id); if (!pr?.ok) alert(pr?.error?.message || "Pause failed"); refresh(); });
-          resumeBtn?.addEventListener("click", async()=> { const rr = await editor.API.runs.resume(it.id); if (!rr?.ok) alert(rr?.error?.message || "Resume failed"); refresh(); });
-          cancelBtn?.addEventListener("click", async()=> { if (!confirm("Cancel this run?")) return; const cr = await editor.API.runs.cancel(it.id); if (!cr?.ok) alert(cr?.error?.message || "Cancel failed"); refresh(); });
+        items
+          .sort((a, b) => (b.started_at || 0) - (a.started_at || 0))
+          .forEach((it) => {
+            const stepsText = Number.isFinite(it.step_count) ? `${it.step_count} steps` : "";
+            const row = document.createElement("div");
+            row.className = "run-row";
 
-          listEl.appendChild(row);
-          shown++;
-        });
+            row.innerHTML = `
+  <div class="run-main">
+    <div class="run-title" title="${esc(it.workflow_title || "")}">
+      ${esc(it.workflow_title || "Untitled")} <span class="muted">#${
+              it.id
+            }</span>
+    </div>
+    <div class="run-meta">
+      <span class="badge ${klass(it.status)}">${it.status}</span>
+      <span>·</span>
+      <span>${fmt(it.started_at) || "—"}</span>
+      <span>·</span>
+      <span>${dur(it.duration_ms)}</span>
+      ${stepsText ? `<span>·</span><span>${stepsText}</span>` : ""}
+    </div>
+  </div>
+  <div class="run-actions">
+    <button class="btn xs" data-act="open">Open</button>
+    <button class="btn xs" data-act="retry">Retry</button>
+    ${
+      it.status === "RUNNING" ||
+      it.status === "QUEUED" ||
+      it.status === "PAUSED"
+        ? `<button class="btn xs" data-act="pause">Pause</button>
+         <button class="btn xs" data-act="resume">Resume</button>
+         <button class="btn xs danger" data-act="cancel">Cancel</button>`
+        : ``
+    }
+  </div>
+`;
+            row
+              .querySelector('[data-act="open"]')
+              .addEventListener("click", () => editor._openRunDetail(it.id));
+            row
+              .querySelector('[data-act="retry"]')
+              .addEventListener("click", async () => {
+                const rr = await editor.API.runs.retry(it.id, 0); // IMPORTANT: retry from step 0
+                if (!rr?.ok) {
+                  alert(rr?.data?.error?.message || "Retry failed");
+                  return;
+                }
+                editor.addLog?.(`Retry started for run #${it.id}`);
+                const newRunId =
+                  rr.data?.id || rr.data?.run_id || rr.data?.run?.id;
+                if (newRunId) editor._openRunDetail(newRunId);
+                refresh();
+              });
+            row
+              .querySelector('[data-act="pause"]')
+              ?.addEventListener("click", async () => {
+                const pr = await editor.API.runs.pause(it.id);
+                if (!pr?.ok) alert(pr?.data?.error?.message || "Pause failed");
+                refresh();
+              });
+            row
+              .querySelector('[data-act="resume"]')
+              ?.addEventListener("click", async () => {
+                const rr = await editor.API.runs.resume(it.id);
+                if (!rr?.ok) alert(rr?.data?.error?.message || "Resume failed");
+                refresh();
+              });
+            row
+              .querySelector('[data-act="cancel"]')
+              ?.addEventListener("click", async () => {
+                if (!confirm("Cancel this run?")) return;
+                const cr = await editor.API.runs.cancel(it.id);
+                if (!cr?.ok) alert(cr?.data?.error?.message || "Cancel failed");
+                refresh();
+              });
+
+            listEl.appendChild(row);
+            shown++;
+          });
         emptyEl.style.display = shown ? "none" : "block";
       };
 
@@ -110,7 +180,9 @@ export function attachHistory(editor) {
   // Run detail (with live attach if active)
   editor._openRunDetail = async function (runId) {
     // Stop any previous ephemeral stream
-    try { editor._stopEphemeralStream?.(); } catch {}
+    try {
+      editor._stopEphemeralStream?.();
+    } catch {}
 
     const shell = document.createElement("div");
     shell.className = "run-detail";
@@ -136,111 +208,242 @@ export function attachHistory(editor) {
     const stp = shell.querySelector("#rdSteps");
     const bkt = shell.querySelector("#rdBuckets");
     const btnPause = shell.querySelector("#rdPause");
-    const btnResume= shell.querySelector("#rdResume");
-    const btnCancel= shell.querySelector("#rdCancel");
+    const btnResume = shell.querySelector("#rdResume");
+    const btnCancel = shell.querySelector("#rdCancel");
     const btnRetry = shell.querySelector("#rdRetry");
 
-    const setDot = (status, pct=null) => {
-      const cls = ["idle","running","ok","failed","canceled"];
-      cls.forEach(c => dot.classList.remove(c));
-      const s = String(status||"").toUpperCase();
-      if (s==="RUNNING"||s==="QUEUED"||s==="PAUSED") dot.classList.add("running");
-      else if (s==="COMPLETED"||s==="SUCCESS") dot.classList.add("ok");
-      else if (s==="FAILED") dot.classList.add("failed");
-      else if (s==="CANCELED") dot.classList.add("canceled");
+    const setDot = (status, pct = null) => {
+      const cls = ["idle", "running", "ok", "failed", "canceled"];
+      cls.forEach((c) => dot.classList.remove(c));
+      const s = String(status || "").toUpperCase();
+      if (s === "RUNNING" || s === "QUEUED" || s === "PAUSED")
+        dot.classList.add("running");
+      else if (s === "COMPLETED" || s === "SUCCESS") dot.classList.add("ok");
+      else if (s === "FAILED") dot.classList.add("failed");
+      else if (s === "CANCELED") dot.classList.add("canceled");
       else dot.classList.add("idle");
-      txt.textContent = ` ${status}${Number.isFinite(pct)?` (${pct}%)`:""}`;
+      txt.textContent = ` ${status}${Number.isFinite(pct) ? ` (${pct}%)` : ""}`;
     };
 
-    const paintCounters = (counters={}) => {
-      const order = ["domains","hosts","ips","ports","services","urls","endpoints","findings"];
-      const parts = order.filter(k=>Number.isFinite(counters[k])).map(k=>`${k}:${counters[k]}`);
-      ctr.innerHTML = parts.length ? `<div class="output-item"><strong>Summary —</strong> ${parts.join(" ")}</div>` : "";
+    const paintCounters = (counters = {}) => {
+      const order = [
+        "domains",
+        "hosts",
+        "ips",
+        "ports",
+        "services",
+        "urls",
+        "endpoints",
+        "findings",
+      ];
+      const parts = order
+        .filter((k) => Number.isFinite(counters[k]))
+        .map((k) => `${k}:${counters[k]}`);
+      ctr.innerHTML = parts.length
+        ? `<div class="output-item"><strong>Summary —</strong> ${parts.join(
+            " "
+          )}</div>`
+        : "";
     };
 
-    const paintSteps = (steps=[]) => {
-      if (!Array.isArray(steps) || !steps.length) { stp.innerHTML = ""; return; }
+    const paintSteps = (steps = []) => {
+      if (!Array.isArray(steps) || !steps.length) {
+        stp.innerHTML = "";
+        return;
+      }
       const tbl = document.createElement("table");
       tbl.className = "results-steps";
-      tbl.innerHTML = `<thead><tr><th>#</th><th>Tool</th><th>Status</th><th>Exec (ms)</th><th>Artifacts</th></tr></thead><tbody></tbody>`;
+      tbl.innerHTML = `<thead><tr><th>#</th><th>Status</th><th>Exec (ms)</th><th>Artifacts</th></tr></thead><tbody></tbody>`;
       const tb = tbl.querySelector("tbody");
-      steps.forEach((s, i) => {
-        const art = [];
-        const of = s.output_file || s.artifact || (s.output && s.output.file);
-        if (of) art.push(`<a href="${of}" target="_blank" rel="noreferrer">output</a>`);
+
+      steps.forEach((s) => {
+        const arts = [];
+
+        // Try multiple shapes:
+        const om = s.output_manifest || s.output || {};
+        if (om) {
+          const candidateFiles = new Set();
+          // common keys
+          ["output_file", "file", "filename", "filename_by_be", "path"].forEach(
+            (k) => {
+              if (typeof om[k] === "string") candidateFiles.add(om[k]);
+            }
+          );
+          // array or object buckets
+          if (Array.isArray(om.artifacts)) {
+            om.artifacts.forEach((x) => {
+              if (typeof x === "string") candidateFiles.add(x);
+              if (x?.url) candidateFiles.add(x.url);
+              if (x?.path) candidateFiles.add(x.path);
+            });
+          }
+          if (om.files && Array.isArray(om.files)) {
+            om.files.forEach((x) => {
+              if (typeof x === "string") candidateFiles.add(x);
+              if (x?.url) candidateFiles.add(x.url);
+              if (x?.path) candidateFiles.add(x.path);
+            });
+          }
+          // add as links
+          [...candidateFiles]
+            .slice(0, 3)
+            .forEach((u) =>
+              arts.push(
+                `<a href="${u}" target="_blank" rel="noreferrer">artifact</a>`
+              )
+            );
+        }
+
+        // quick counters if present on step detail
         const cnt = s.counters || {};
-        const quick = ["domains","hosts","ips","ports","services","urls","endpoints","findings"]
-          .filter(k => Number.isFinite(cnt[k]) && cnt[k]>0).slice(0,3)
-          .map(k => `${k}:${cnt[k]}`).join(" ");
-        if (quick) art.push(quick);
+        const quick = [
+          "domains",
+          "hosts",
+          "ips",
+          "ports",
+          "urls",
+          "endpoints",
+          "findings",
+        ]
+          .filter((k) => Number.isFinite(cnt[k]) && cnt[k] > 0)
+          .slice(0, 3)
+          .map((k) => `${k}:${cnt[k]}`)
+          .join(" ");
+
+        if (quick) arts.push(quick);
+
+        const exec = Number.isFinite(s.execution_ms)
+          ? s.execution_ms
+          : Number.isFinite(s.exec_ms)
+          ? s.exec_ms
+          : "—";
+
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${i}</td><td>${s.tool_slug || s.tool || "—"}</td><td>${s.status || "—"}</td><td>${Number.isFinite(s.execution_ms)?s.execution_ms:"—"}</td><td>${art.join(" · ") || "—"}</td>`;
+        tr.innerHTML = `<td>${s.step_index}</td><td>${
+          s.status || "—"
+        }</td><td>${exec}</td><td>${arts.join(" · ") || "—"}</td>`;
         tb.appendChild(tr);
       });
+
       stp.innerHTML = "";
       stp.appendChild(tbl);
     };
 
-    const paintBuckets = (buckets={}) => {
+    const paintBuckets = (buckets = {}) => {
       bkt.innerHTML = "";
       Object.entries(buckets).forEach(([k, v]) => {
         const items = v?.items || [];
         if (!items.length) return;
         const sec = document.createElement("div");
         sec.className = "output-item";
-        const preview = items.slice(0, 50).map(x => typeof x==="string" ? x : JSON.stringify(x));
-        sec.innerHTML = `<strong>${k}</strong><br>${preview.join("<br>")}${items.length>50?"<br>…":""}`;
+        const preview = items
+          .slice(0, 50)
+          .map((x) => (typeof x === "string" ? x : JSON.stringify(x)));
+        sec.innerHTML = `<strong>${k}</strong><br>${preview.join("<br>")}${
+          items.length > 50 ? "<br>…" : ""
+        }`;
         bkt.appendChild(sec);
       });
     };
 
     const refresh = async () => {
       const g = await editor.API.runs.get(runId);
-      if (!g?.ok) throw new Error(g?.error?.message || "Failed to read run");
+      if (!g?.ok)
+        throw new Error(g?.data?.error?.message || "Failed to read run");
       const runObj = g.data?.run || g.data || g;
-      setDot(runObj.status, Number.isFinite(runObj.progress_pct)?runObj.progress_pct:null);
+      setDot(
+        runObj.status,
+        Number.isFinite(runObj.progress_pct) ? runObj.progress_pct : null
+      );
 
       // Counters & buckets via summary
       const s = await editor.API.runs.summary(runId);
-      const summary = (s?.ok && (s.data?.run || s.data)) ? (s.data.run || s.data) : {};
+      const summary =
+        s?.ok && (s.data?.run || s.data) ? s.data.run || s.data : {};
       paintCounters(summary.counters || {});
       const manifest = summary.run_manifest || summary.manifest || {};
-      const buckets  = manifest.buckets || {};
+      const buckets = manifest.buckets || {};
       paintBuckets(buckets);
 
-      // Steps (prefer manifest.steps array if present)
-      const steps = Array.isArray(manifest.steps) ? manifest.steps : (runObj.steps || []);
-      paintSteps(steps);
+      // Base steps from run (minimal)
+      const baseSteps = Array.isArray(runObj.steps) ? runObj.steps : [];
+      // Fetch details for each step to surface artifacts
+      const details = await Promise.all(
+        baseSteps.map(async (st) => {
+          try {
+            const r = await editor.API.runs.step(runId, st.step_index);
+            return r?.ok ? r.data?.step || r.data : null;
+          } catch {
+            return null;
+          }
+        })
+      );
 
-      // Enable/disable buttons per status
-      const st = String(runObj.status||"").toUpperCase();
-      const isActive = ["RUNNING","QUEUED","PAUSED"].includes(st);
-      btnPause.disabled  = !["RUNNING","QUEUED"].includes(st);
-      btnResume.disabled = !(st==="PAUSED");
+      // Merge & paint
+      const merged = baseSteps.map((st, i) => ({
+        ...st,
+        ...(details[i] || {}),
+      }));
+      paintSteps(merged);
+
+      // Buttons state
+      const st = String(runObj.status || "").toUpperCase();
+      const isActive = ["RUNNING", "QUEUED", "PAUSED"].includes(st);
+      btnPause.disabled = !["RUNNING", "QUEUED"].includes(st);
+      btnResume.disabled = !(st === "PAUSED");
       btnCancel.disabled = !isActive;
     };
 
     // Controls
-    btnPause.addEventListener("click", async ()=>{ const r = await editor.API.runs.pause(runId); if (!r?.ok) alert(r?.error?.message || "Pause failed"); refresh(); });
-    btnResume.addEventListener("click", async()=>{ const r = await editor.API.runs.resume(runId); if (!r?.ok) alert(r?.error?.message || "Resume failed"); refresh(); });
-    btnCancel.addEventListener("click", async()=>{ if (!confirm("Cancel this run?")) return; const r = await editor.API.runs.cancel(runId); if (!r?.ok) alert(r?.error?.message || "Cancel failed"); refresh(); });
-    btnRetry.addEventListener("click", async ()=>{ const r = await editor.API.runs.retry(runId); if (!r?.ok) { alert(r?.error?.message || "Retry failed"); return; } const newRun = r.data?.id || r.data?.run_id || r.data?.run?.id; if (newRun) this._openRunDetail(newRun); });
+    btnPause.addEventListener("click", async () => {
+      const r = await editor.API.runs.pause(runId);
+      if (!r?.ok) alert(r?.error?.message || "Pause failed");
+      refresh();
+    });
+    btnResume.addEventListener("click", async () => {
+      const r = await editor.API.runs.resume(runId);
+      if (!r?.ok) alert(r?.error?.message || "Resume failed");
+      refresh();
+    });
+    btnCancel.addEventListener("click", async () => {
+      if (!confirm("Cancel this run?")) return;
+      const r = await editor.API.runs.cancel(runId);
+      if (!r?.ok) alert(r?.error?.message || "Cancel failed");
+      refresh();
+    });
+    btnRetry.addEventListener("click", async () => {
+      const r = await editor.API.runs.retry(runId, 0); // retry from step 0
+      if (!r?.ok) {
+        alert(r?.data?.error?.message || "Retry failed");
+        return;
+      }
+      const newRun = r.data?.id || r.data?.run_id || r.data?.run?.id;
+      if (newRun) this._openRunDetail(newRun);
+    });
 
     await refresh();
 
     // Live attach if still active (ephemeral stream scoped to this modal)
     const stopper = editor.connectRunSSE(runId, {
       onEvent: (type, payload) => {
-        if (type==="snapshot" && payload.run) setDot(payload.run.status, payload.run.progress_pct);
-        if (type==="update" && (payload.type==="run" || payload.kind==="run")) {
+        if (type === "snapshot" && payload.run)
+          setDot(payload.run.status, payload.run.progress_pct);
+        if (
+          type === "update" &&
+          (payload.type === "run" || payload.kind === "run")
+        ) {
           setDot(payload.status, payload.progress_pct);
-          if (["COMPLETED","FAILED","CANCELED"].includes(payload.status)) {
-            try { stopper?.(); } catch {}
+          if (["COMPLETED", "FAILED", "CANCELED"].includes(payload.status)) {
+            try {
+              stopper?.();
+            } catch {}
           }
           refresh();
         }
       },
-      onError: () => { /* silent; user can hit Refresh via reopening */ }
+      onError: () => {
+        /* silent; user can hit Refresh via reopening */
+      },
     });
     editor._stopEphemeralStream = stopper;
 
@@ -250,7 +453,11 @@ export function attachHistory(editor) {
   // Optional helper: check in-flight run for current workflow (called after loading a preset)
   editor._checkInFlightForWorkflow = async function (workflowId) {
     if (!workflowId) return;
-    const r = await editor.API.runs.list({ status: "RUNNING", workflow_id: workflowId, limit: 1 });
+    const r = await editor.API.runs.list({
+      status: "RUNNING",
+      workflow_id: workflowId,
+      limit: 1,
+    });
     if (!r?.ok) return;
     const items = normalizeList(r.data);
     if (items.length) {
@@ -259,34 +466,99 @@ export function attachHistory(editor) {
       if (banner && text) {
         text.innerHTML = `A run (#${items[0].id}) is in progress for this preset. <a href="#" id="openInflight">Open</a>`;
         banner.classList.remove("hidden");
-        document.getElementById("openInflight")?.addEventListener("click", (e)=>{ e.preventDefault(); editor._openRunDetail(items[0].id); });
+        document
+          .getElementById("openInflight")
+          ?.addEventListener("click", (e) => {
+            e.preventDefault();
+            editor._openRunDetail(items[0].id);
+          });
       }
     }
   };
 
   // Helpers
   function normalizeList(data) {
-    const arr = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-    return arr.map(it => ({
-      id: it.id || it.run_id || it.pk || it.uuid,
-      workflow_id: it.workflow_id,
-      workflow_title: it.workflow_title || it.title || it.workflow?.title,
-      status: it.status || "UNKNOWN",
-      started_at: safeTs(it.started_at || it.created || it.queued_at),
-      finished_at: safeTs(it.finished_at || it.completed_at),
-      duration_ms: it.duration_ms ?? (safeTs(it.finished_at) && safeTs(it.started_at) ? (safeTs(it.finished_at)-safeTs(it.started_at)) : null),
-      step_count: it.step_count ?? it.steps ?? it.step_total,
-    })).filter(x => x.id != null);
+    const arr = Array.isArray(data?.items)
+      ? data.items
+      : Array.isArray(data)
+      ? data
+      : [];
+
+    const stepCountFrom = (it) => {
+      if (Number.isFinite(it.step_count)) return it.step_count;
+      if (Number.isFinite(it.total_steps)) return it.total_steps;
+      if (Number.isFinite(it.steps_count)) return it.steps_count;
+      if (Array.isArray(it.steps)) return it.steps.length;
+      return null;
+    };
+
+    const ts = (x) => {
+      try {
+        return x ? new Date(x).getTime() : null;
+      } catch {
+        return null;
+      }
+    };
+
+    return arr
+      .map((it) => ({
+        id: it.id || it.run_id || it.pk || it.uuid,
+        workflow_id: it.workflow_id,
+        workflow_title: it.workflow_title || it.title || it.workflow?.title,
+        status: it.status || "UNKNOWN",
+        started_at: ts(it.started_at || it.created || it.queued_at),
+        finished_at: ts(it.finished_at || it.completed_at),
+        duration_ms: Number.isFinite(it.duration_ms)
+          ? it.duration_ms
+          : ts(it.finished_at) && ts(it.started_at)
+          ? ts(it.finished_at) - ts(it.started_at)
+          : null,
+        step_count: stepCountFrom(it),
+      }))
+      .filter((x) => x.id != null);
   }
-  function klass(status){ const s=String(status||"").toUpperCase();
-    if (s==="RUNNING"||s==="QUEUED"||s==="PAUSED") return "b-running";
-    if (s==="COMPLETED") return "b-ok";
-    if (s==="FAILED") return "b-failed";
-    if (s==="CANCELED") return "b-canceled";
+
+  function klass(status) {
+    const s = String(status || "").toUpperCase();
+    if (s === "RUNNING" || s === "QUEUED" || s === "PAUSED") return "b-running";
+    if (s === "COMPLETED") return "b-ok";
+    if (s === "FAILED") return "b-failed";
+    if (s === "CANCELED") return "b-canceled";
     return "b-idle";
   }
-  function esc(s){ return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
-  function safeTs(x){ try { return x ? new Date(x).getTime() : null; } catch { return null; } }
-  function fmt(ms){ if (!ms) return ""; try { return new Date(ms).toLocaleString(); } catch { return ""; } }
-  function dur(ms){ if (!Number.isFinite(ms)) return "—"; const s=Math.max(0,Math.round(ms/1000)); const m=Math.floor(s/60), ss=s%60; return m?`${m}m ${ss}s`:`${ss}s`; }
+  function esc(s) {
+    return String(s).replace(
+      /[&<>"']/g,
+      (m) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }[m])
+    );
+  }
+  function safeTs(x) {
+    try {
+      return x ? new Date(x).getTime() : null;
+    } catch {
+      return null;
+    }
+  }
+  function fmt(ms) {
+    if (!ms) return "";
+    try {
+      return new Date(ms).toLocaleString();
+    } catch {
+      return "";
+    }
+  }
+  function dur(ms) {
+    if (!Number.isFinite(ms)) return "—";
+    const s = Math.max(0, Math.round(ms / 1000));
+    const m = Math.floor(s / 60),
+      ss = s % 60;
+    return m ? `${m}m ${ss}s` : `${ss}s`;
+  }
 }

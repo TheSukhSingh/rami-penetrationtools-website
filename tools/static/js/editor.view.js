@@ -21,16 +21,26 @@ export function attachView(editor) {
     while (wrap.children.length > maxRows) wrap.removeChild(wrap.firstChild);
     wrap.scrollTop = wrap.scrollHeight;
   };
-  editor.openModal = function (title, contentEl) {
-    const modal = document.getElementById("configModal");
-    const modalTitle = document.getElementById("modalTitle");
-    const modalBody = document.getElementById("modalBody");
-    if (!modal || !modalTitle || !modalBody) return;
-    modalTitle.textContent = title || "Dialog";
-    modalBody.innerHTML = "";
-    if (contentEl) modalBody.appendChild(contentEl);
-    modal.classList.remove("hidden");
-  };
+// generic modal opener (title + Node|string body)
+editor.openModal = function (title, content) {
+  const modalEl = document.getElementById("configModal");
+  const titleEl = document.getElementById("modalTitle");
+  const bodyEl  = document.getElementById("modalBody");
+  if (!modalEl || !titleEl || !bodyEl) return;
+
+  titleEl.textContent = title || "";
+  // clear previous content
+  bodyEl.innerHTML = "";
+
+  if (typeof content === "string") {
+    bodyEl.innerHTML = content;
+  } else if (content instanceof Node) {
+    bodyEl.appendChild(content);
+  }
+
+  modalEl.classList.remove("hidden");
+};
+
   editor.loadCatalog = async function () {
     try {
       this.catalogLoadError = false;

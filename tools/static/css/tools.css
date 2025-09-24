@@ -508,7 +508,15 @@ body {
   background: rgba(0,0,0,.5);
   z-index: 1000;
 }
-#configModal.modal:not(.hidden) { display: grid; }
+#configModal.modal:not(.hidden) { 
+  display: flex; 
+  align-items: center;
+  margin-left: 13%;
+  width: 70%;
+}
+
+
+
 
 /* inner card */
 #configModal .modal-card {

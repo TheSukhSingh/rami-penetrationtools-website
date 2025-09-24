@@ -28,6 +28,7 @@ export const API = {
     summary: (id) => getJSON(`/tools/api/runs/${id}/summary`),
     pause:   (id) => postJSON(`/tools/api/runs/${id}/pause`, {}),
     resume:  (id) => postJSON(`/tools/api/runs/${id}/resume`, {}),
+    step: (id, step_index) => getJSON(`/tools/api/runs/${id}/steps/${step_index}`),
     cancel:  (id) => postJSON(`/tools/api/runs/${id}/cancel`, {}),
     retry:   (id, step_index) =>
                postJSON(`/tools/api/runs/${id}/retry`, step_index == null ? {} : { step_index }),
@@ -73,7 +74,7 @@ export async function saveNodeConfig(wfId, nodeId, config) {
     throw new Error(res.data?.error?.message || "Failed to save node config");
   }
   // Prefer backend echo if present; otherwise return what we sent.
-  return res.data?.config || config;
+  return res.data?.config || config;``
 }
 
 export function runWorkflow(wfId) {
