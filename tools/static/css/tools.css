@@ -533,3 +533,62 @@ body {
   gap: 8px; padding: 8px 0; border-bottom: 1px solid #262626;
 }
 #configModal .btn.xs { font-size: 12px; padding: 4px 8px; }
+/* Output → Status indicator */
+.status-indicator { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; }
+.status-indicator.idle     { background:#6b7280; }  /* gray */
+.status-indicator.running  { background:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,.15); }
+.status-indicator.ok       { background:#16a34a; }
+.status-indicator.failed   { background:#dc2626; }
+.status-indicator.canceled { background:#a855f7; }
+/* Presets modal */
+.presets-modal { display:flex; flex-direction:column; gap:12px; }
+.presets-toolbar { display:flex; gap:8px; align-items:center; }
+.presets-list { display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow:auto; }
+
+.preset-row { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; }
+.preset-row:hover { background:#f9fafb; }
+.preset-main { display:flex; flex-direction:column; }
+.preset-title { font-weight:600; }
+.preset-meta { color:#6b7280; font-size:.875rem; display:flex; gap:6px; }
+
+.preset-actions { display:flex; gap:6px; }
+
+/* Globals modal */
+.globals-modal { display:flex; flex-direction:column; gap:12px; }
+.globals-modal .form-row { display:flex; gap:8px; align-items:center; }
+
+/* Results per-step table (from Task 4 polish) */
+.results-steps { width:100%; border-collapse:collapse; margin-top:8px; }
+.results-steps th, .results-steps td { border:1px solid #e5e7eb; padding:6px 8px; text-align:left; }
+.results-steps th { background:#f3f4f6; }
+.btn.dirty { border-color:#f59e0b; box-shadow:0 0 0 2px rgba(245,158,11,.15); }
+/* Run History modal */
+.history-modal { display:flex; flex-direction:column; gap:12px; }
+.history-toolbar { display:flex; gap:8px; align-items:center; }
+.history-toolbar .chk { display:flex; gap:6px; align-items:center; color:#374151; }
+.history-list { display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow:auto; }
+
+.run-row { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; }
+.run-row:hover { background:#f9fafb; }
+.run-main { display:flex; flex-direction:column; }
+.run-title { font-weight:600; }
+.run-meta { color:#6b7280; font-size:.875rem; display:flex; gap:6px; align-items:center; }
+.run-actions { display:flex; gap:6px; }
+
+.badge { padding:2px 6px; border-radius:999px; font-size:.75rem; line-height:1.2; }
+.b-idle{ background:#e5e7eb; color:#374151; }
+.b-running{ background:#dbeafe; color:#1d4ed8; }
+.b-ok{ background:#dcfce7; color:#166534; }
+.b-failed{ background:#fee2e2; color:#991b1b; }
+.b-canceled{ background:#ede9fe; color:#6d28d9; }
+
+/* Run detail */
+.run-detail { display:flex; flex-direction:column; gap:12px; }
+.run-detail-head { display:flex; align-items:center; justify-content:space-between; }
+.rd-title { font-weight:700; font-size:1rem; }
+.rd-status { display:flex; align-items:center; }
+.rd-counters .output-item { margin:0; }
+
+.results-steps { width:100%; border-collapse:collapse; margin-top:8px; }
+.results-steps th, .results-steps td { border:1px solid #e5e7eb; padding:6px 8px; text-align:left; }
+.results-steps th { background:#f3f4f6; }

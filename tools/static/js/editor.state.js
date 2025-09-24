@@ -40,11 +40,10 @@ export class WorkflowEditor {
     if (t === "end" || t === "output" || t === "sink") return "end";
     return "process";
   }
-defaultConfigFor(meta) {
-  const d = meta && (meta.defaults || meta.config || {});
-  return { input_method: "manual", value: "", ...(d || {}) };
-}
-
+  defaultConfigFor(meta) {
+    const d = meta && (meta.defaults || meta.config || {});
+    return { input_method: "manual", value: "", ...(d || {}) };
+  }
 
   buildGraph() {
     const nodes = this.nodes.map((n) => ({
@@ -66,7 +65,29 @@ defaultConfigFor(meta) {
       }
     );
   }
-
+  setStatus(status, pct = null) {
+    const row = document.querySelector('.output-section:nth-of-type(1) .output-item');
+    if (!row) return;
+    const dot = row.querySelector('.status-indicator');
+    const classes = ["idle","running","ok","failed","canceled"];
+    if (dot) {
+      classes.forEach(c => dot.classList.remove(c));
+      const m = String(status || "").toUpperCase();
+      if (m === "RUNNING" || m === "QUEUED") dot.classList.add("running");
+      else if (m === "COMPLETED" || m === "OK" || m === "SUCCESS") dot.classList.add("ok");
+      else if (m === "FAILED") dot.classList.add("failed");
+      else if (m === "CANCELED") dot.classList.add("canceled");
+      else dot.classList.add("idle");
+    }
+    const pctText = Number.isFinite(pct) ? ` (${pct}%)` : "";
+    // ensure there’s a trailing text node after the dot
+    const txt = ` ${status || "Idle"}${pctText}`;
+    if (row.lastChild && row.lastChild.nodeType === Node.TEXT_NODE) {
+      row.lastChild.textContent = txt;
+    } else {
+      row.appendChild(document.createTextNode(txt));
+    }
+  }
   // -- Main Task 3 entrypoint: save if needed, start run, attach SSE/poll
   async runWorkflow() {
     try {
@@ -107,6 +128,7 @@ defaultConfigFor(meta) {
 
       // 3) Fire the run
       this.setBusy(true);
+      this.setStatus?.("QUEUED", 0);  
       this.addLog?.("Starting run…");
       const res = await this.API.workflows.run(this.currentWorkflow.id);
       if (!res?.ok)
@@ -151,13 +173,13 @@ export function pickWorkflowList(obj) {
 }
 // tools/static/js/editor.state.js
 export const state = {
-  toolsById: new Map(),     // toolId -> tool meta (from tools-flat)
-  toolsBySlug: new Map(),   // slug -> tool meta
-  categories: [],           // [{name, tools:[tool]}]
-  workflow: null,           // full wf JSON from backend
-  nodes: new Map(),         // nodeId -> { id, tool_id, slug, x, y, config: {} }
-  edges: [],                // [{from, to}]
-  run: null                 // { id, status, ... }
+  toolsById: new Map(), // toolId -> tool meta (from tools-flat)
+  toolsBySlug: new Map(), // slug -> tool meta
+  categories: [], // [{name, tools:[tool]}]
+  workflow: null, // full wf JSON from backend
+  nodes: new Map(), // nodeId -> { id, tool_id, slug, x, y, config: {} }
+  edges: [], // [{from, to}]
+  run: null, // { id, status, ... }
 };
 
 export function initTools(flatList) {
@@ -165,16 +187,16 @@ export function initTools(flatList) {
   state.toolsBySlug.clear();
   const groups = new Map();
 
-  flatList.forEach(t => {
+  flatList.forEach((t) => {
     state.toolsById.set(t.id, t);
     state.toolsBySlug.set(t.slug, t);
-    (t.categories?.length ? t.categories : ["Other"]).forEach(cat => {
+    (t.categories?.length ? t.categories : ["Other"]).forEach((cat) => {
       if (!groups.has(cat)) groups.set(cat, []);
       groups.get(cat).push(t);
     });
   });
 
-  state.categories = [...groups.keys()].map(name => ({
+  state.categories = [...groups.keys()].map((name) => ({
     name,
     tools: groups.get(name).sort((a, b) => a.name.localeCompare(b.name)),
   }));
@@ -184,13 +206,14 @@ export function adoptWorkflow(wf) {
   state.workflow = wf;
   state.nodes.clear();
   state.edges = wf.edges || [];
-  (wf.nodes || []).forEach(n => {
+  (wf.nodes || []).forEach((n) => {
     state.nodes.set(n.id, {
       id: n.id,
       tool_id: n.tool_id,
       slug: n.slug,
-      x: n.x, y: n.y,
-      config: n.config || {}
+      x: n.x,
+      y: n.y,
+      config: n.config || {},
     });
   });
 }
@@ -211,5 +234,5 @@ export function nodeSummary(node) {
   if (c.value) return `value: ${c.value}`;
   if (c.file_path) return `file: ${c.file_path}`;
   if (c.input_method) return `input: ${c.input_method}`;
-  return '';
+  return "";
 }

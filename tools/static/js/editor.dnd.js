@@ -27,6 +27,7 @@ export function attachDnD(editor) {
     this.nodes.push(node);
     this.renderNode(node);
     this.validateWorkflow?.();
+    this.markDirty?.();
     this.addLog(`Added ${tool.name} to canvas`);
   };
 
@@ -106,6 +107,7 @@ export function attachDnD(editor) {
       this.draggedNode = null;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      this.markDirty?.();
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
@@ -156,6 +158,7 @@ export function attachDnD(editor) {
     });
     this.updateConnections();
     this.validateWorkflow?.();
+    this.markDirty?.();
     this.addLog(`Connected ${fromNode.name} to ${toNode.name}`);
   };
 
@@ -210,6 +213,9 @@ export function attachDnD(editor) {
           : "Edge delete mode OFF"
       );
     };
+    document
+      .getElementById("historyBtn")
+      ?.addEventListener("click", () => this.openRunHistory?.());
 
     // start OFF
     setEdgeDeleteMode(false);
@@ -228,6 +234,7 @@ export function attachDnD(editor) {
       const removed = this.connections.splice(idx, 1)[0];
       this.updateConnections();
       this.validateWorkflow?.();
+      this.markDirty?.();
       this.addLog(`Removed connection ${removed?.from} → ${removed?.to}`);
     });
 
@@ -238,8 +245,10 @@ export function attachDnD(editor) {
       this.nodes = [];
       this.connections = [];
       this.selectedNode = null;
+      this.markDirty?.();
       this.updateConnections();
       this.validateWorkflow?.();
+      this.markDirty?.();
       this.addLog("Canvas cleared");
     });
 
@@ -328,6 +337,7 @@ export function attachDnD(editor) {
           const run = d.run || d;
           const status = run.status || "UNKNOWN";
           const pct = Number.isFinite(run.progress_pct) ? run.progress_pct : 0;
+          this.setStatus?.(status, pct);
           this.addLog(`Run: ${status} (${pct}%)`);
 
           if (["COMPLETED", "FAILED", "CANCELED"].includes(status)) {
@@ -349,15 +359,17 @@ export function attachDnD(editor) {
           const pct = Number.isFinite(payload.run.progress_pct)
             ? payload.run.progress_pct
             : 0;
-          this.addLog(`Status: ${payload.run.status} (${pct}%)`);
+          this.setStatus?.(payload.run.status, pct); // NEW
+          this.addLog?.(`Status: ${payload.run.status} (${pct}%)`);
         }
         if (evtType === "update") {
           const kind = payload.type || payload.kind;
           if (kind === "step") {
-            this.addLog(`Step ${payload.step_index}: ${payload.status}`);
+            this.addLog?.(`Step ${payload.step_index}: ${payload.status}`);
           }
           if (kind === "run") {
-            this.addLog(`Run: ${payload.status} (${payload.progress_pct}%)`);
+            this.setStatus?.(payload.status, payload.progress_pct); // NEW
+            this.addLog?.(`Run: ${payload.status} (${payload.progress_pct}%)`);
             if (["COMPLETED", "FAILED", "CANCELED"].includes(payload.status)) {
               this.renderRunSummary?.(runId);
               try {

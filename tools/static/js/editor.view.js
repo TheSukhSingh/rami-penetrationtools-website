@@ -8,6 +8,7 @@ export function attachView(editor) {
   document
     .getElementById("toolsSearch")
     ?.addEventListener("input", editor._onSearchInput);
+
   editor.addLog = function (message) {
     const wrap = document.getElementById("outputLogs");
     if (!wrap) return;
@@ -15,9 +16,21 @@ export function attachView(editor) {
     row.className = "output-item";
     row.innerHTML = `<span class="status-indicator idle"></span>${new Date().toLocaleTimeString()}: ${message}`;
     wrap.appendChild(row);
+    // cap
+    const maxRows = 500;
+    while (wrap.children.length > maxRows) wrap.removeChild(wrap.firstChild);
     wrap.scrollTop = wrap.scrollHeight;
   };
-
+  editor.openModal = function (title, contentEl) {
+    const modal = document.getElementById("configModal");
+    const modalTitle = document.getElementById("modalTitle");
+    const modalBody = document.getElementById("modalBody");
+    if (!modal || !modalTitle || !modalBody) return;
+    modalTitle.textContent = title || "Dialog";
+    modalBody.innerHTML = "";
+    if (contentEl) modalBody.appendChild(contentEl);
+    modal.classList.remove("hidden");
+  };
   editor.loadCatalog = async function () {
     try {
       this.catalogLoadError = false;
@@ -247,201 +260,130 @@ export function attachView(editor) {
   };
 
   editor.renderRunSummary = async function (runId) {
-    try {
-      const res = await this.API.runs.get(runId);
-      if (!res.ok) throw new Error(res.error?.message || "Failed to fetch run");
-      const d = res.data || {};
-      const run = d.run || d;
-      const manifest = run.run_manifest || run.manifest || {};
-      const counters = run.counters || manifest.counters || {};
-      const out = document.getElementById("outputResults");
-      if (!out) return;
-      out.innerHTML = "";
+    const out = document.getElementById("outputResults");
+    if (!out) return;
+    out.innerHTML = "";
+
+    const paint = (runLike) => {
+      const manifest = runLike.run_manifest || runLike.manifest || {};
+      const counters = runLike.counters || manifest.counters || {};
+      const buckets = manifest.buckets || {};
+      const steps = manifest.steps || runLike.steps || []; // defensive
+
+      // Header counts (include 'services')
       const header = document.createElement("div");
       header.className = "output-item";
-      const countText = [
-        ["domains", counters.domains],
-        ["hosts", counters.hosts],
-        ["ips", counters.ips],
-        ["ports", counters.ports],
-        ["urls", counters.urls],
-        ["endpoints", counters.endpoints],
-        ["findings", counters.findings],
+      const parts = [
+        "domains",
+        "hosts",
+        "ips",
+        "ports",
+        "services",
+        "urls",
+        "endpoints",
+        "findings",
       ]
-        .filter(([, v]) => Number.isFinite(v))
-        .map(([k, v]) => `${k}:${v}`)
-        .join(" ");
-      header.textContent = `Summary — ${countText || "no counters"}`;
+        .filter((k) => Number.isFinite(counters?.[k]))
+        .map((k) => `${k}:${counters[k]}`);
+      header.textContent = `Summary — ${parts.join(" ") || "no counters"}`;
       out.appendChild(header);
-      const buckets = manifest.buckets || {};
+
+      // Per-step table
+      if (Array.isArray(steps) && steps.length) {
+        const sec = document.createElement("div");
+        sec.className = "output-item";
+        const tbl = document.createElement("table");
+        tbl.className = "results-steps";
+        tbl.innerHTML = `
+        <thead><tr>
+          <th>#</th><th>Tool</th><th>Status</th><th>Exec (ms)</th><th>Artifacts</th>
+        </tr></thead><tbody></tbody>`;
+        const tb = tbl.querySelector("tbody");
+        steps.forEach((st, i) => {
+          const tr = document.createElement("tr");
+          const art = [];
+          const of = st.output_file || st.artifact || st.output?.file;
+          if (of)
+            art.push(
+              `<a href="${of}" target="_blank" rel="noreferrer">output</a>`
+            );
+          const cnt = st.counters || {};
+          const quick = [
+            "domains",
+            "hosts",
+            "ips",
+            "ports",
+            "services",
+            "urls",
+            "endpoints",
+            "findings",
+          ]
+            .filter((k) => Number.isFinite(cnt[k]) && cnt[k] > 0)
+            .slice(0, 3)
+            .map((k) => `${k}:${cnt[k]}`)
+            .join(" ");
+          if (quick) art.push(quick);
+          tr.innerHTML = `
+          <td>${i}</td>
+          <td>${st.tool_slug || st.tool || "—"}</td>
+          <td>${st.status || "—"}</td>
+          <td>${Number.isFinite(st.execution_ms) ? st.execution_ms : "—"}</td>
+          <td>${art.join(" · ") || "—"}</td>`;
+          tb.appendChild(tr);
+        });
+        sec.appendChild(tbl);
+        out.appendChild(sec);
+      }
+
+      // Buckets preview (top 50 each)
       Object.entries(buckets).forEach(([k, v]) => {
         const items = v?.items || [];
         if (!items.length) return;
         const sec = document.createElement("div");
         sec.className = "output-item";
-        const list = items
+        const preview = items
           .slice(0, 50)
           .map((x) => (typeof x === "string" ? x : JSON.stringify(x)));
-        sec.innerHTML = `<strong>${k}</strong><br>${list.join("<br>")}${
+        sec.innerHTML = `<strong>${k}</strong><br>${preview.join("<br>")}${
           items.length > 50 ? "<br>…" : ""
         }`;
         out.appendChild(sec);
       });
-      this.addLog("Summary loaded");
-    } catch (e) {
-      console.error(e);
-      this.addLog(`Summary error: ${e.message || e}`);
-    }
-  };
-}
-// tools/static/js/editor.view.js
-import { state, updateNodeConfig, nodeSummary } from "./editor.state.js";
-import { saveNodeConfig } from "./api.js";
 
-const els = {
-  modal:    document.getElementById("configModal"),
-  title:    document.getElementById("modalTitle"),
-  body:     document.getElementById("modalBody"),
-  close:    document.getElementById("modalClose"),
-};
-els.close.addEventListener("click", closeModal);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+      // Error info
+      const er = runLike.error_reason || manifest.error_reason;
+      if (er) {
+        const err = document.createElement("div");
+        err.className = "output-item";
+        const ed = runLike.error_detail || manifest.error_detail;
+        err.innerHTML = `<strong>Error:</strong> ${er}${
+          ed ? " — " + String(ed) : ""
+        }`;
+        out.appendChild(err);
+      }
 
-function closeModal() {
-  els.modal.classList.add("hidden");
-  els.body.innerHTML = "";
-}
-
-function inputForField(field, value) {
-  const wrap = document.createElement("div");
-  wrap.className = "form-row";
-
-  const label = document.createElement("label");
-  label.textContent = field.label || field.name;
-  label.htmlFor = `f_${field.name}`;
-  label.className = "form-label";
-  wrap.appendChild(label);
-
-  let el;
-  switch (field.type) {
-    case "boolean":
-      el = document.createElement("input");
-      el.type = "checkbox";
-      el.checked = Boolean(value ?? field.default ?? false);
-      break;
-    case "integer":
-      el = document.createElement("input");
-      el.type = "number";
-      el.value = value ?? field.default ?? "";
-      break;
-    case "select":
-      el = document.createElement("select");
-      (field.choices || []).forEach(ch => {
-        const o = document.createElement("option");
-        o.value = ch.value;
-        o.textContent = ch.label ?? ch.value;
-        el.appendChild(o);
-      });
-      el.value = value ?? field.default ?? (field.choices?.[0]?.value ?? "");
-      break;
-    default: // "string" | "path"
-      el = document.createElement("input");
-      el.type = "text";
-      el.value = value ?? field.default ?? "";
-      if (field.placeholder) el.placeholder = field.placeholder;
-  }
-  el.id = `f_${field.name}`;
-  el.name = field.name;
-  el.required = !!field.required;
-
-  const ctl = document.createElement("div");
-  ctl.className = "form-control";
-  ctl.appendChild(el);
-  wrap.appendChild(ctl);
-
-  if (field.help_text) {
-    const help = document.createElement("div");
-    help.className = "form-help";
-    help.textContent = field.help_text;
-    wrap.appendChild(help);
-  }
-  return wrap;
-}
-
-function collectForm(form) {
-  const out = {};
-  [...form.querySelectorAll("input, select, textarea")].forEach(el => {
-    const nm = el.name;
-    if (!nm) return;
-    if (el.type === "checkbox") out[nm] = el.checked;
-    else if (el.type === "number") out[nm] = el.value === "" ? null : Number(el.value);
-    else out[nm] = el.value;
-  });
-  return out;
-}
-
-// Public API used from index.js
-export async function openConfigModalForNode(nodeId) {
-  const node = state.nodes.get(nodeId);
-  if (!node) return;
-
-  const tool = state.toolsById.get(node.tool_id);
-  els.title.textContent = `${tool.name} · Configuration`;
-
-  const form = document.createElement("form");
-  form.className = "config-form";
-
-  tool.schema
-    .slice() // don’t mutate original
-    .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-    .filter(f => f.visible !== false)
-    .forEach(field => {
-      const curVal = node.config ? node.config[field.name] : undefined;
-      form.appendChild(inputForField(field, curVal));
-    });
-
-  const actions = document.createElement("div");
-  actions.className = "modal-actions";
-  const saveBtn = document.createElement("button");
-  saveBtn.type = "submit";
-  saveBtn.className = "btn primary";
-  saveBtn.textContent = "Save Configuration";
-  const cancelBtn = document.createElement("button");
-  cancelBtn.type = "button";
-  cancelBtn.className = "btn";
-  cancelBtn.textContent = "Cancel";
-  actions.appendChild(saveBtn);
-  actions.appendChild(cancelBtn);
-  form.appendChild(actions);
-
-  cancelBtn.addEventListener("click", closeModal);
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const config = collectForm(form);
-
-    // Persist to backend
-    const wfId = state.workflow?.id;
-    if (!wfId) { alert("No workflow loaded."); return; }
+      this.addLog?.("Summary loaded");
+    };
 
     try {
-      const saved = await saveNodeConfig(wfId, nodeId, config);
-      updateNodeConfig(nodeId, saved.config || config);
-
-      // Update node subtitle (summary)
-      const nodeEl = document.querySelector(`[data-node-id="${nodeId}"]`);
-      if (nodeEl) {
-        const sub = nodeEl.querySelector(".node-subtitle");
-        if (sub) sub.textContent = nodeSummary(state.nodes.get(nodeId));
+      const s = await this.API.runs.summary(runId);
+      if (s?.ok && (s.data?.run || s.data)) {
+        paint(s.data.run || s.data);
+        return;
       }
-      closeModal();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to save configuration");
+      const r = await this.API.runs.get(runId);
+      if (r?.ok && (r.data?.run || r.data)) {
+        paint(r.data.run || r.data);
+        return;
+      }
+      throw new Error("No data");
+    } catch (e) {
+      console.error(e);
+      this.addLog?.(`Summary error: ${e.message || e}`);
+      const fallback = document.createElement("div");
+      fallback.className = "output-item";
+      fallback.textContent = "Failed to load summary.";
+      out.appendChild(fallback);
     }
-  });
-
-  els.body.innerHTML = "";
-  els.body.appendChild(form);
-  els.modal.classList.remove("hidden");
+  };
 }
