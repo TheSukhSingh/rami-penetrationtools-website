@@ -66,6 +66,12 @@ def _mfa_key():
     ip  = get_remote_address()
     return f"{ip}:{uid}" if uid else ip
 
+def _resend_key():
+    data = (request.get_json(silent=True) or {})
+    email = (data.get("email") or "").strip().lower()
+    ip = get_remote_address()
+    return f"{ip}:{email}" if email else ip
+
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 @limiter.limit("10 per hour", key_func=get_remote_address)
 def signup():
@@ -201,7 +207,12 @@ def local_login():
         return jsonify({"mfa_required": True, "verify_url": url_for('auth.verify_mfa')}), 202
     
     if err:
-        # all errors come back as err string; adjust status if you want 403 for locked/blocked, etc.
+        if err == "Please verify your email first.":
+            return jsonify({
+                "msg": err,
+                "need_verify": True,
+                "resend_url": url_for("auth.resend_confirmation", _external=False)
+            }), 401
         return jsonify({"msg": err}), 401
     
     # issue cookies instead of JSON body
@@ -528,6 +539,40 @@ def mfa_status():
         "has_secret": has_secret,
         "unused_recovery_codes": unused_codes,
     }), 200
+
+@auth_bp.route("/resend-confirmation", methods=["POST"])
+@csrf.exempt  # public endpoint; rely on Turnstile + rate limits
+@limiter.limit("3 per hour; 8 per day", key_func=_resend_key)
+def resend_confirmation():
+    """
+    Send a fresh email confirmation link if the account exists and is unverified.
+    Always return a generic 200 to avoid user enumeration.
+    """
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    turnstile_token = data.get("turnstile_token")
+
+    # Bot check first
+    ok, err = verify_turnstile(turnstile_token, request.remote_addr)
+    if not ok:
+        # For privacy, we *could* still 200 here. I prefer explicit 400 so the UI can prompt.
+        return jsonify(ok=False, error="CAPTCHA_FAILED", message=f"Captcha failed: {err or 'try again'}"), 400
+
+    # Try to find an unverified local account
+    try:
+        user = User.query.filter_by(email=email).first()
+        should_send = bool(user and user.local_auth and not user.local_auth.email_verified)
+        if should_send:
+            token = generate_confirmation_token(user.email)
+            confirm_url = url_for("auth.confirm_email", token=token, _external=True)
+            html = render_template("emails/activate.html", confirm_url=confirm_url)
+            send_email(user.email, "Confirm your email", html)
+    except Exception:
+        # Never leak errors here; keep response generic
+        current_app.logger.exception("resend_confirmation failed")
+
+    # Generic response (no enumeration)
+    return jsonify(ok=True, message="If the account needs verification, a new confirmation email has been sent."), 200
 
 @auth_bp.route('/sessions', methods=['GET'])
 @require_account_ok(require_verified=True)
