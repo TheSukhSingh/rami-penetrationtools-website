@@ -30,7 +30,6 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - email queueing so it's not blocked by smtp
 - throttle resend verify
 - login event is in db, make it work so we know the active users per day per month more easily rather than calculating every time...
-- 2 icons for user on navbar after it reauthenticated me...whaat?
 ## FOOTER
 - Add social links
 ## LANDING PAGE

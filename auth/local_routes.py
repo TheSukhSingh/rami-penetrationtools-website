@@ -2,7 +2,7 @@ from io import BytesIO
 from sqlalchemy.exc import IntegrityError, DataError, OperationalError, ProgrammingError, SQLAlchemyError
 from flask import (
     render_template, redirect, send_file, session,
-    url_for, request, jsonify, current_app, flash
+    url_for, request, jsonify, current_app, flash, g
 )
 from flask_limiter.util import get_remote_address
 import pyotp
@@ -20,11 +20,11 @@ from .utils import (
     confirm_token,
     generate_recovery_codes,
     send_email,
-    
     validate_and_set_password,
     login_local as util_login_local,
     get_current_user,
-    verify_turnstile
+    verify_turnstile,
+    require_account_ok
 )
 from flask_jwt_extended import (
     create_access_token, jwt_required, get_jwt_identity,
@@ -246,30 +246,6 @@ def forgot_password():
     # Always return generic message to avoid user enumeration
     return jsonify(message="If that email is registered, you’ll receive a reset link."), 200
 
-# @auth_bp.route('/reset-password/<token>', methods=['GET','POST'])
-# def reset_password(token):
-#     user = PasswordReset.verify_reset_token(token)
-#     if not user or not user.local_auth:
-#         flash('Invalid or expired reset link.', 'danger')
-#         return redirect(url_for('auth.forgot_password'))
-
-#     if request.method == 'POST':
-#         pwd     = request.form.get('password', '')
-#         confirm = request.form.get('confirm_password', '')
-
-#         # validate & set (but don’t commit yet)
-#         if not validate_and_set_password(user, pwd, confirm, commit=False):
-#             # flashes are handled in the helper
-#             return redirect(url_for('auth.reset_password', token=token))
-
-#         # everything’s valid: persist the new hash
-#         db.session.commit()
-#         flash('Your password has been updated! Please log in.', 'success')
-#         return redirect(url_for('auth.login_page'))
-
-#     return render_template('auth/reset_password.html', token=token, user=user)
-
-
 @auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
     if request.method == 'GET':
@@ -279,8 +255,6 @@ def reset_password(token):
             return redirect(url_for('index'))
         # pass pr.user to template (or drop hidden fields)
         return render_template('auth/reset_password.html', token=token, user=pr.user)
-
-    
 
     # POST
     pr = PasswordReset.get_valid_record(token)
@@ -295,14 +269,13 @@ def reset_password(token):
         return redirect(url_for('auth.reset_password', token=token))
 
     pr.consume()                # consume the token only on success
-    RefreshToken.query.filter_by(user_id=pr.user.user_id, revoked=False)\
-                     .update({"revoked": True})
+    RefreshToken.query.filter_by(user_id=pr.user.id, revoked=False).update({"revoked": True})
     db.session.commit()
     flash('Your password has been updated! Please log in.', 'success')
     return redirect(url_for('index'))
 
 @auth_bp.route('/me', methods=['GET'])
-@jwt_required()
+@require_account_ok(require_verified=True)
 def get_me():
     user = get_current_user()
     return jsonify({
@@ -313,7 +286,7 @@ def get_me():
     }), 200
 
 @auth_bp.route('/mfa/setup', methods=['GET'])
-@jwt_required()  # require a logged-in session to set up MFA
+@require_account_ok(require_verified=True)
 def mfa_setup():
     user = get_current_user()
     if not user:
@@ -332,7 +305,7 @@ def mfa_setup():
 
 @auth_bp.route('/mfa/enable', methods=['POST'])
 @csrf.exempt  
-@jwt_required()
+@require_account_ok(require_verified=True)
 def mfa_enable():
     user = get_current_user()
     if not user:
@@ -414,41 +387,3 @@ def verify_mfa():
     session.pop('mfa_user', None)
     flash('MFA verified — signed in!', 'success')
     return resp
-
-# @auth_bp.route('/mfa-setup')
-# @login_required
-# def mfa_setup():
-#     uid = get_jwt_identity() if request.headers.get('Authorization') else session.get('user','{}').get('id')
-#     user = User.query.get_or_404(uid)
-
-#     # ensure setting exists
-#     m = user.mfa_setting or MFASetting(user_id=user.id)
-#     if not m.secret:
-#         m.secret = pyotp.random_base32()
-#     db.session.add(m)
-#     db.session.commit()
-
-#     totp = pyotp.TOTP(m.secret)
-#     uri  = totp.provisioning_uri(user.email, issuer_name=current_app.name)
-
-#     img = qrcode.make(uri)
-#     buf = BytesIO(); img.save(buf); buf.seek(0)
-#     return send_file(buf, mimetype='image/png')
-
-
-# @auth_bp.route('/verify-mfa', methods=['GET','POST'])
-# def verify_mfa():
-#     if request.method=='POST':
-#         token = request.form.get('token','')
-#         uid   = session.get('mfa_user')
-#         user  = User.query.get(uid)
-#         m     = user.mfa_setting
-
-#         if m and pyotp.TOTP(m.secret).verify(token):
-#             # on success you’d issue tokens as in login_local
-#             session.pop('mfa_user', None)
-#             flash('MFA verified, please sign in again.', 'success')
-#             return redirect(url_for('auth.login_page'))
-#         flash('Invalid authentication code.', 'danger')
-
-#     return render_template('auth/verify_mfa.html')

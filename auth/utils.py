@@ -7,8 +7,7 @@ from hashlib import sha256, sha1
 import os, time
 from extensions import db
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
-from flask import current_app, flash, request, jsonify
-
+from flask import current_app, flash, request, jsonify, g
 from flask_mail import Mail, Message
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
@@ -21,6 +20,74 @@ from .passwords import COMMON_PASSWORDS
 mail = Mail()
 
 utcnow = lambda: datetime.now(timezone.utc)
+
+def _emit_guard_error(code: str, http: int, message: str):
+    # If you want to support HTML redirects for browser pages, you can branch on Accept header here.
+    # For APIs we return JSON consistently.
+    payload = {
+        "ok": False,
+        "error": code,
+        "message": message,
+    }
+    return jsonify(payload), http
+
+def _resolve_email_verified(user) -> bool:
+    """
+    Tries a few common places:
+      - user.email_verified (if your User has it)
+      - user.local_auth.email_verified (if email_verified lives on LocalAuth)
+    Defaults to False if unknown.
+    """
+    if hasattr(user, "email_verified"):
+        return bool(getattr(user, "email_verified"))
+    la = getattr(user, "local_auth", None)
+    if la and hasattr(la, "email_verified"):
+        return bool(getattr(la, "email_verified"))
+    return False
+
+def require_account_ok(require_verified: bool = True):
+    """
+    Decorator for protected endpoints.
+
+    - Verifies JWT present (and CSRF for cookie flows) via verify_jwt_in_request()
+    - Loads the current User from DB using the JWT identity (assumed to be user_id)
+    - Denies access if:
+        * user missing
+        * user.is_blocked
+        * user.is_deactivated
+        * (optionally) email not verified when require_verified=True
+
+    Usage:
+      @require_account_ok()                      -> requires verified email
+      @require_account_ok(require_verified=False) -> skip the email verification requirement
+    """
+    def _decorator(fn):
+        @wraps(fn)
+        def _wrapper(*args, **kwargs):
+            # 1) Enforce auth (401 for missing/invalid, including CSRF for cookie JWT)
+            verify_jwt_in_request()
+
+            # 2) Load user
+            identity = get_jwt_identity()
+            user = db.session.get(User, identity)
+            if not user:
+                return _emit_guard_error("AUTH_USER_NOT_FOUND", 401, "User not found.")
+
+            # 3) Account state checks
+            if bool(getattr(user, "is_blocked", False)):
+                return _emit_guard_error("ACCOUNT_BLOCKED", 403, "Your account is blocked.")
+            if bool(getattr(user, "is_deactivated", False)):
+                return _emit_guard_error("ACCOUNT_DEACTIVATED", 403, "Your account is deactivated.")
+
+            # 4) Email verification gate (if required)
+            if require_verified and not _resolve_email_verified(user):
+                return _emit_guard_error("EMAIL_UNVERIFIED", 403, "Please verify your email to continue.")
+
+            # 5) Stash for handlers down the stack
+            g.current_user = user
+            return fn(*args, **kwargs)
+        return _wrapper
+    return _decorator
 
 def init_mail(app):
     mail.init_app(app)
@@ -150,15 +217,16 @@ def jwt_login(user: User) -> Dict[str, str]:
 
     return {'access_token': access_token, 'refresh_token': refresh_token}
 
-@jwt_required(refresh=True)
 def jwt_logout():
     """
     Revoke the current refresh token. Requires @jwt_required(refresh=True) context.
     """
     jti = get_jwt()['jti']
+    if not jti:
+        return jsonify({"msg": "No token"}), 401
     hashed_jti = sha256(jti.encode('utf-8')).hexdigest()
     token_row = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
-    if token_row:
+    if token_row and not token_row.revoked:
         token_row.revoked = True
         db.session.commit()
     return jsonify({"msg": "Refresh token revoked"}), 200
