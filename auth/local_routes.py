@@ -8,10 +8,10 @@ from flask_limiter.util import get_remote_address
 import pyotp
 import qrcode
 from extensions import limiter, csrf, db
-from flask_jwt_extended import set_access_cookies, set_refresh_cookies
+from flask_jwt_extended import set_access_cookies, set_refresh_cookies, unset_jwt_cookies
 from . import auth_bp
 from .models import (
-    MFASetting, RecoveryCode, RefreshToken, User, Role,
+    MFASetting, RecoveryCode, RefreshToken, TrustedDevice, User, Role,
     PasswordReset,
 )
 from .utils import (
@@ -24,7 +24,9 @@ from .utils import (
     login_local as util_login_local,
     get_current_user,
     verify_turnstile,
-    require_account_ok
+    require_account_ok,
+    get_current_refresh_hash_from_request,
+    ensure_aware_utc, utcnow
 )
 from flask_jwt_extended import (
     create_access_token, jwt_required, get_jwt_identity,
@@ -32,6 +34,12 @@ from flask_jwt_extended import (
 )
 from hashlib import sha256
 from datetime import datetime, timezone
+
+def _mfa_key():
+    uid = session.get('mfa_user')
+    ip  = get_remote_address()
+    return f"{ip}:{uid}" if uid else ip
+
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
     data = request.get_json() or {}
@@ -277,7 +285,7 @@ def reset_password(token):
 @auth_bp.route('/me', methods=['GET'])
 @require_account_ok(require_verified=True)
 def get_me():
-    user = get_current_user()
+    user = g.current_user
     return jsonify({
         'id': user.id,
         'email': user.email,
@@ -287,8 +295,9 @@ def get_me():
 
 @auth_bp.route('/mfa/setup', methods=['GET'])
 @require_account_ok(require_verified=True)
+@limiter.limit("10 per hour", key_func=get_remote_address)
 def mfa_setup():
-    user = get_current_user()
+    user = g.current_user
     if not user:
         return jsonify({"msg": "Unauthorized"}), 401
 
@@ -304,10 +313,10 @@ def mfa_setup():
     return send_file(buf, mimetype="image/png")
 
 @auth_bp.route('/mfa/enable', methods=['POST'])
-@csrf.exempt  
 @require_account_ok(require_verified=True)
+@limiter.limit("5 per hour", key_func=get_remote_address)
 def mfa_enable():
-    user = get_current_user()
+    user = g.current_user
     if not user:
         return jsonify({"msg": "Unauthorized"}), 401
 
@@ -328,6 +337,8 @@ def mfa_enable():
     return jsonify({"msg": "MFA enabled", "recovery_codes": codes}), 200
 
 @auth_bp.route('/verify-mfa', methods=['GET','POST'])
+@limiter.limit("5 per 5 minutes", key_func=_mfa_key)
+@limiter.limit("20 per hour", key_func=_mfa_key)
 def verify_mfa():
     # UI for entering code is already in templates/auth/verify_mfa.html (has remember checkbox) :contentReference[oaicite:10]{index=10}
     if request.method == 'GET':
@@ -343,6 +354,11 @@ def verify_mfa():
         return redirect(url_for('index'))
 
     user = User.query.get(uid)
+    if not user:
+        session.pop('mfa_user', None)
+        flash('Session expired. Please sign in again.', 'warning')
+        return redirect(url_for('index'))
+
     m = user.mfa_setting
     token = (request.form.get('token') or '').strip()
     remember = bool(request.form.get('remember'))
@@ -387,3 +403,139 @@ def verify_mfa():
     session.pop('mfa_user', None)
     flash('MFA verified — signed in!', 'success')
     return resp
+
+@auth_bp.route('/mfa/recovery/regenerate', methods=['POST'])
+@require_account_ok(require_verified=True)
+@limiter.limit("3 per day", key_func=get_remote_address)
+def mfa_regenerate_recovery_codes():
+    """
+    Invalidate any existing unused recovery codes and issue a fresh set.
+    This is a sensitive operation; require CSRF and a logged-in session.
+    """
+    user = g.current_user
+
+    # Invalidate existing unused codes
+    RecoveryCode.query.filter_by(user_id=user.id, used=False).update({"used": True})
+    db.session.commit()
+
+    # Issue new ones (plaintext shown once)
+    codes = generate_recovery_codes(user.id, count=10)
+    return jsonify({"msg": "New recovery codes generated", "recovery_codes": codes}), 200
+
+@auth_bp.route('/mfa/disable', methods=['POST'])
+@require_account_ok(require_verified=True)
+@limiter.limit("5 per hour", key_func=get_remote_address)
+def mfa_disable():
+    """
+    Step-up required: user must present a valid TOTP OR a valid (unused) recovery code.
+    Also clears trusted devices so future sign-ins will require MFA again.
+    """
+    user = g.current_user
+    data = (request.get_json(silent=True) or {})
+    token = (data.get("code") or "").strip()
+
+    m = user.mfa_setting
+    if not (m and m.secret and m.enabled):
+        return jsonify({"msg": "MFA is not enabled"}), 400
+
+    ok = False
+    # 1) Try TOTP (6 or 8 digits)
+    if token and token.isdigit() and len(token) in (6, 8):
+        ok = pyotp.TOTP(m.secret).verify(token, valid_window=1)
+
+    # 2) Fallback: recovery code
+    if not ok and token:
+        h = sha256(token.encode()).hexdigest()
+        rc = RecoveryCode.query.filter_by(user_id=user.id, code_hash=h, used=False).first()
+        if rc:
+            rc.used = True
+            db.session.commit()
+            ok = True
+
+    if not ok:
+        return jsonify({"msg": "Invalid code"}), 400
+
+    # Success → disable MFA and clear trusted devices
+    m.enabled = False
+    TrustedDevice.query.filter_by(user_id=user.id).delete()
+    db.session.commit()
+    return jsonify({"msg": "MFA disabled"}), 200
+
+@auth_bp.route('/mfa/status', methods=['GET'])
+@require_account_ok(require_verified=True)
+@limiter.limit("60 per hour", key_func=get_remote_address)
+def mfa_status():
+    user = g.current_user
+    m = user.mfa_setting
+    enabled = bool(m and m.enabled)
+    has_secret = bool(m and m.secret)
+    # (Optional) count remaining unused recovery codes
+    unused_codes = RecoveryCode.query.filter_by(user_id=user.id, used=False).count()
+    return jsonify({
+        "enabled": enabled,
+        "has_secret": has_secret,
+        "unused_recovery_codes": unused_codes,
+    }), 200
+
+@auth_bp.route('/sessions', methods=['GET'])
+@require_account_ok(require_verified=True)
+@limiter.limit("30 per hour", key_func=get_remote_address)
+def list_sessions():
+    user = g.current_user
+    now_utc = utcnow()
+    current_hash = get_current_refresh_hash_from_request()
+
+    rows = (RefreshToken.query
+            .filter_by(user_id=user.id)
+            .order_by(RefreshToken.created_at.desc())
+            .all())
+
+    def to_dict(r):
+        created = ensure_aware_utc(getattr(r, "created_at", None))
+        exp     = ensure_aware_utc(getattr(r, "expires_at", None))
+        is_rev  = bool(r.revoked or (exp is not None and exp <= now_utc))
+        return {
+            "id": r.id,
+            "created_at": created.isoformat() if created else None,
+            "expires_at": exp.isoformat() if exp else None,
+            "revoked": is_rev,
+            "current": (current_hash is not None and r.token_hash == current_hash),
+        }
+
+    return jsonify({"sessions": [to_dict(r) for r in rows]}), 200
+
+@auth_bp.route('/sessions/revoke', methods=['POST'])
+@require_account_ok(require_verified=True)
+@limiter.limit("20 per hour", key_func=get_remote_address)
+def revoke_session():
+    data = request.get_json(silent=True) or {}
+    sid = data.get("session_id")
+    if not sid:
+        return jsonify({"msg": "session_id required"}), 400
+
+    user = g.current_user
+    row = RefreshToken.query.filter_by(id=sid, user_id=user.id).first()
+    if not row:
+        return jsonify({"msg": "Not found"}), 404
+
+    row.revoked = True
+    db.session.commit()
+
+    resp = jsonify({"msg": "revoked"})
+    # If you revoked your own current refresh, proactively clear cookies
+    if row.token_hash == get_current_refresh_hash_from_request():
+        unset_jwt_cookies(resp)
+    return resp, 200
+
+@auth_bp.route('/sessions/revoke-all', methods=['POST'])
+@require_account_ok(require_verified=True)
+@limiter.limit("10 per hour", key_func=get_remote_address)
+def revoke_all_sessions():
+    user = g.current_user
+    RefreshToken.query.filter_by(user_id=user.id, revoked=False)\
+                     .update({"revoked": True})
+    db.session.commit()
+    resp = jsonify({"msg": "all sessions revoked"})
+    unset_jwt_cookies(resp)  # also signs out the caller
+    return resp, 200
+

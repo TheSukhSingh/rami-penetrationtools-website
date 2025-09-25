@@ -143,47 +143,93 @@ def login_required(func):
 def init_jwt_manager(app, jwt):
     """
     Register callbacks on the JWTManager instance to check and handle revoked/expired tokens.
-    Call this in your factory after you init JWTManager:
-        init_jwt_manager(app, jwt)
+    Call this after initializing JWTManager:  init_jwt_manager(app, jwt)
     """
+
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
-        raw_jti   = jwt_payload.get("jti")
-        token_type= jwt_payload.get("type") or jwt_payload.get("typ")
+        """
+        - Allow access tokens to pass through (we only persist refresh tokens).
+        - For refresh tokens: if unknown / revoked / expired → treat as reuse/invalid.
+          In that case, revoke all user sessions, log, and optionally email the user.
+        """
+        token_type = jwt_payload.get("type") or jwt_payload.get("typ")
         if token_type != "refresh":
-            return False
+            return False  # only refresh tokens are in our server-side blocklist
 
+        raw_jti = jwt_payload.get("jti") or ""
         hashed_jti = sha256(raw_jti.encode("utf-8")).hexdigest()
-        token = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
+        row = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
 
-        if token is None or token.revoked or is_expired(token.expires_at):
+        # Safe expiry check (handles naive vs aware)
+        expired = False
+        if row and row.expires_at is not None:
+            exp = ensure_aware_utc(row.expires_at)
+            expired = bool(exp and exp <= utcnow())
+
+        # If no row (unknown), revoked, or expired => block & clean up
+        if (row is None) or row.revoked or expired:
             try:
-                uid = int(jwt_payload.get("sub"))
+                uid = int(jwt_payload.get("sub", "0"))
+                # Revoke all outstanding refresh tokens for this user
                 RefreshToken.query.filter_by(user_id=uid, revoked=False).update({"revoked": True})
                 db.session.commit()
             except Exception:
                 db.session.rollback()
-            return True
+
+            # Audit log (and optional email alert)
+            try:
+                uid = int(jwt_payload.get("sub", "0"))
+                current_app.logger.warning(
+                    "refresh reuse/invalid detected user_id=%s ip=%s ua=%s",
+                    uid, request.remote_addr, request.headers.get("User-Agent", "")
+                )
+                if current_app.config.get("SECURITY_EMAIL_ALERTS", False) and uid:
+                    user = db.session.get(User, uid)
+                    if user:
+                        try:
+                            send_email(
+                                user.email,
+                                "We blocked a suspicious sign-in",
+                                (
+                                    "<p>We detected an invalid session refresh and signed you out of all devices."
+                                    " If this wasn't you, please reset your password.</p>"
+                                ),
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            return True  # token is considered in blocklist
 
         return False
 
-
     @jwt.revoked_token_loader
     def revoked_token_callback(jwt_header, jwt_payload):
-        return jsonify({"msg": "Token has been revoked"}), 401
+        return jsonify({"ok": False, "error": "TOKEN_REVOKED", "message": "Token has been revoked."}), 401
 
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
-        return jsonify({"msg": "Token has expired"}), 401
+        ttype = (jwt_payload or {}).get("type") or (jwt_payload or {}).get("typ") or "access"
+        # You can hint the client that a refresh might help when an access token expires
+        return jsonify({
+            "ok": False,
+            "error": "TOKEN_EXPIRED",
+            "message": f"{ttype.title()} token has expired.",
+            "can_refresh": (ttype == "access")
+        }), 401
 
     @jwt.invalid_token_loader
-    def invalid_token_callback(err):
-        return jsonify({"msg": f"Invalid token"}), 422
+    def invalid_token_callback(err_msg):
+        # err_msg is a human string from FJWE; keep response stable for the SPA
+        return jsonify({"ok": False, "error": "TOKEN_INVALID", "message": "Invalid token."}), 422
 
     @jwt.unauthorized_loader
-    def missing_token_callback(err):
-        return jsonify({"msg": "Authorization required"}), 401
-    
+    def missing_token_callback(err_msg):
+        # Missing token / CSRF mismatch on cookie flows lands here
+        return jsonify({"ok": False, "error": "AUTH_REQUIRED", "message": "Authorization required."}), 401
+
 def jwt_login(user: User) -> Dict[str, str]:
     """
     Issue JWT access and refresh tokens, store refresh JTI in DB, and return both tokens.
@@ -539,7 +585,20 @@ def hibp_count_for_password(password: str) -> int | None:
     except Exception:
         return None
 
-# --------- MFA
+def get_current_refresh_hash_from_request() -> str | None:
+    """
+    Read the refresh JWT from the cookie and return its hashed JTI.
+    Returns None if no/invalid cookie is present.
+    """
+    name = current_app.config.get("JWT_REFRESH_COOKIE_NAME", "refresh_token_cookie")
+    raw = request.cookies.get(name)
+    if not raw:
+        return None
+    try:
+        payload = decode_token(raw)
+        return sha256(payload["jti"].encode("utf-8")).hexdigest()
+    except Exception:
+        return None
 
 def _sha(s: str) -> str:
     return sha256(s.encode('utf-8')).hexdigest()
@@ -550,7 +609,10 @@ def _is_trusted_device(user_id: int) -> bool:
     if not td_cookie:
         return False
     row = TrustedDevice.query.filter_by(token_hash=_sha(td_cookie), user_id=user_id).first()
-    if not row or row.expires_at <= utcnow():
+    if not row:
+        return False
+    exp = ensure_aware_utc(row.expires_at)
+    if not exp or exp <= utcnow():
         return False
     row.last_used_at = utcnow()
     db.session.commit()
