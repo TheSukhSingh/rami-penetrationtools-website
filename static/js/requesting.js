@@ -37,13 +37,14 @@
     if (!csrf) {
       return { ok: false, status: 0 };
     }
-
+    const wtf = getMetaCSRF() || "";
     refreshPromise = fetch("/auth/refresh", {
       method: "POST",
       credentials: "include",
       headers: {
         Accept: "application/json",
-        "X-CSRF-TOKEN": csrf,
+        "X-CSRF-TOKEN": csrf,     // JWT refresh CSRF
+        ...(wtf ? { "X-CSRFToken": wtf } : {}), // Flask-WTF CSRF (if present)
       },
     })
       .then((res) => ({ ok: res.ok, status: res.status }))
@@ -156,7 +157,7 @@
       if (ct.includes("application/json")) {
         try {
           body = await res.clone().json();
-        } catch {}
+        } catch { }
       }
       if (
         body &&
@@ -182,13 +183,13 @@
 
     if (contentType.includes("application/json")) {
       try {
-        data = await res.json();
+        data = await res.clone().json();
       } catch (_) {
         data = null;
       }
     } else if (contentType.startsWith("text/")) {
-      data = await res.text();
-    } // (leave blobs/streams to callers)
+      data = await res.clone().text();
+    }
 
     return {
       ok: res.ok,

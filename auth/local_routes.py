@@ -1,8 +1,22 @@
 from io import BytesIO
-from sqlalchemy.exc import IntegrityError, DataError, OperationalError, ProgrammingError, SQLAlchemyError
+from sqlalchemy.exc import ( 
+    IntegrityError, 
+    DataError, 
+    OperationalError, 
+    ProgrammingError, 
+    SQLAlchemyError
+)
 from flask import (
-    render_template, redirect, send_file, session,
-    url_for, request, jsonify, current_app, flash, g
+    render_template, 
+    redirect, 
+    send_file, 
+    session,
+    url_for, 
+    request, 
+    jsonify, 
+    current_app, 
+    flash,
+    g
 )
 from flask_limiter.util import get_remote_address
 import pyotp
@@ -11,9 +25,16 @@ from extensions import limiter, csrf, db
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies, unset_jwt_cookies
 from . import auth_bp
 from .models import (
-    MFASetting, RecoveryCode, RefreshToken, TrustedDevice, User, Role,
+    MFASetting, 
+    RecoveryCode, 
+    RefreshToken,
+    TrustedDevice, 
+    User, 
+    Role,
     PasswordReset,
 )
+from flask_wtf.csrf import CSRFError
+from flask_limiter.errors import RateLimitExceeded
 from .utils import (
     _remember_device,
     generate_confirmation_token,
@@ -26,11 +47,16 @@ from .utils import (
     verify_turnstile,
     require_account_ok,
     get_current_refresh_hash_from_request,
-    ensure_aware_utc, utcnow
+    ensure_aware_utc, 
+    utcnow
 )
 from flask_jwt_extended import (
-    create_access_token, jwt_required, get_jwt_identity,
-    create_refresh_token, get_jwt, decode_token
+    create_access_token, 
+    jwt_required, 
+    get_jwt_identity,
+    create_refresh_token, 
+    get_jwt, 
+    decode_token
 )
 from hashlib import sha256
 from datetime import datetime, timezone
@@ -41,6 +67,7 @@ def _mfa_key():
     return f"{ip}:{uid}" if uid else ip
 
 @auth_bp.route('/signup', methods=['GET', 'POST'])
+@limiter.limit("10 per hour", key_func=get_remote_address)
 def signup():
     data = request.get_json() or {}
     turnstile_token = data.get('turnstile_token')
@@ -232,6 +259,30 @@ def refresh():
     set_refresh_cookies(resp, new_rt)
     return resp, 200
 
+def _wants_json():
+    # Prefer JSON when the client asks for it or when posting JSON
+    return (request.is_json
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or request.accept_mimetypes["application/json"] >= request.accept_mimetypes["text/html"])
+
+@auth_bp.errorhandler(CSRFError)
+def _csrf_error(e):
+    if _wants_json():
+        return jsonify({"ok": False, "error": "CSRF_FAILED", "message": e.description}), 400
+    flash("Security check failed. Please refresh and try again.", "danger")
+    return redirect(url_for("index"))
+
+@auth_bp.errorhandler(RateLimitExceeded)
+def _ratelimit_error(e):
+    retry = int(getattr(e, "reset_in", 0)) or None
+    if _wants_json():
+        resp = jsonify({"ok": False, "error": "RATE_LIMITED", "message": "Too many requests.", "retry_after": retry})
+        if retry is not None:
+            resp.headers["Retry-After"] = retry
+        return resp, 429
+    return "Too many requests.", 429
+
+
 @auth_bp.route('/forgot-password', methods=['POST'])
 @limiter.limit("3 per hour", key_func=get_remote_address)
 def forgot_password():
@@ -255,6 +306,7 @@ def forgot_password():
     return jsonify(message="If that email is registered, you’ll receive a reset link."), 200
 
 @auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
+@limiter.limit("10 per hour", key_func=get_remote_address)
 def reset_password(token):
     if request.method == 'GET':
         pr = PasswordReset.get_valid_record(token)
@@ -479,7 +531,7 @@ def mfa_status():
 
 @auth_bp.route('/sessions', methods=['GET'])
 @require_account_ok(require_verified=True)
-@limiter.limit("30 per hour", key_func=get_remote_address)
+@limiter.limit("60 per hour", key_func=get_remote_address)
 def list_sessions():
     user = g.current_user
     now_utc = utcnow()
@@ -538,4 +590,3 @@ def revoke_all_sessions():
     resp = jsonify({"msg": "all sessions revoked"})
     unset_jwt_cookies(resp)  # also signs out the caller
     return resp, 200
-
