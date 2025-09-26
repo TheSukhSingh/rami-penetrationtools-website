@@ -252,6 +252,9 @@ class ToolConfigField(db.Model):
     label = db.Column(db.String(128), nullable=False)
 
     type = db.Column(db.Enum(ToolConfigFieldType), nullable=False, default=ToolConfigFieldType.STRING)
+    
+    is_locked = db.Column(db.Boolean, nullable=False, default=True)
+
     required = db.Column(db.Boolean, default=False)
     help_text = db.Column(db.String(512))
     placeholder = db.Column(db.String(256))
@@ -277,23 +280,86 @@ class ToolConfigField(db.Model):
         ),
     )
 
+    overlay = relationship(
+        "ToolConfigFieldOverlay",
+        back_populates="field",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     def to_dict(self):
+        ov = self.overlay  # may be None
+
+        effective_visible     = self.visible     if (ov is None or ov.visible     is None) else ov.visible
+        effective_required    = self.required    if (ov is None or ov.required    is None) else ov.required
+        effective_default     = self.default     if (ov is None or ov.default     is None) else ov.default
+        effective_choices     = self.choices     if (ov is None or ov.choices     is None) else ov.choices
+        effective_constraints = self.constraints if (ov is None or ov.constraints is None) else ov.constraints
+        effective_help        = self.help_text   if (ov is None or ov.help_text   is None) else ov.help_text
+        effective_placeholder = self.placeholder if (ov is None or ov.placeholder is None) else ov.placeholder
+        effective_order       = self.order_index if (ov is None or ov.order_index is None) else ov.order_index
+        effective_advanced    = self.advanced    if (ov is None or ov.advanced    is None) else ov.advanced
+
         return {
             "id": self.id,
             "name": self.name,
             "label": self.label,
             "type": self.type.value,
-            "required": self.required,
-            "help_text": self.help_text,
-            "placeholder": self.placeholder,
-            "default": self.default,
-            "choices": self.choices or [],
+            "required": effective_required,
+            "help_text": effective_help,
+            "placeholder": effective_placeholder,
+            "default": effective_default,
+            "choices": effective_choices or [],
             "group": self.group,
-            "order_index": self.order_index,
-            "advanced": self.advanced,
-            "visible": self.visible,
-            "constraints": self.constraints or {},  
+            "order_index": effective_order,
+            "advanced": effective_advanced,
+            "visible": effective_visible,
+            "constraints": effective_constraints or {},
+            "is_locked": self.is_locked,
         }
+
+class ToolConfigFieldOverlay(db.Model, TimestampMixin):
+    """
+    Admin-editable overlay for a ToolConfigField.
+    None = inherit baseline; a set value overrides the baseline at runtime.
+    Admins cannot rename/create fields — they can only edit these knobs.
+    """
+    __tablename__ = "tool_config_field_overlays"
+    __table_args__ = (
+        db.UniqueConstraint("field_id", name="uq_tcf_overlay_field"),
+        db.CheckConstraint("order_index IS NULL OR order_index >= 0", name="ck_tcf_overlay_order_nonneg"),
+        db.Index("ix_tcf_overlay_updated", "updated_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # 1:1 with a ToolConfigField
+    field_id = db.Column(
+        db.Integer,
+        db.ForeignKey("tool_config_fields.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    # ---- Safe override knobs (nullable = inherit) ----
+    visible     = db.Column(db.Boolean, nullable=True)     # None => use baseline ToolConfigField.visible
+    required    = db.Column(db.Boolean, nullable=True)
+    default     = db.Column(db.JSON,   nullable=True)
+    choices     = db.Column(db.JSON,   nullable=True)      # must be subset of baseline choices (enforced in code)
+    constraints = db.Column(db.JSON,   nullable=True)      # e.g. {"min":2,"max":50}
+    help_text   = db.Column(db.String(512), nullable=True)
+    placeholder = db.Column(db.String(256), nullable=True)
+    order_index = db.Column(db.Integer, nullable=True)
+    advanced    = db.Column(db.Boolean, nullable=True)
+
+    # audit (optional but useful)
+    updated_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # relationships
+    field = relationship("ToolConfigField", back_populates="overlay", passive_deletes=True)
+    updated_by_user = relationship("User", foreign_keys=[updated_by_user_id], passive_deletes=True)
 
 class UserToolConfig(db.Model):
     """

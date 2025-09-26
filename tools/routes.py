@@ -29,6 +29,7 @@ from celery_app import celery
 from sqlalchemy.exc import IntegrityError
 from .settings import get_setting, get_rate_limit
 from .validation import validate_step_input
+from tools.policies import get_effective_policy
 
 utcnow = lambda: datetime.now(timezone.utc)
 
@@ -928,6 +929,21 @@ def get_run_summary(run_id: int):
         "counters": counters,
         "manifest": manifest,
     })
+
+def _tool_to_dict(tool):
+    pol = get_effective_policy(tool.slug)
+    return {
+        "id": tool.id,
+        "slug": tool.slug,
+        "name": tool.name,
+        "enabled": tool.enabled,
+        "meta_info": tool.meta_info or {},
+        "schema_fields": pol.get("schema_fields", []),
+        "input_policy": pol.get("input_policy", {}),
+        "binaries": pol.get("binaries", {}),
+        # you can include runtime_constraints if FE wants to render HTML min/max quickly
+        "runtime_constraints": pol.get("runtime_constraints", {}),
+    }
 
 def _tool_to_dict_with_schema(t: Tool):
     meta = t.meta_info or {}

@@ -1,5 +1,55 @@
-# validation.py
-from tools.models import ToolConfigFieldType  # add this import
+from tools.policies import get_effective_policy
+from tools.models import ToolConfigFieldType 
+from tools.policies import get_effective_policy
+
+class ValidationError(Exception):
+    pass
+
+def validate_tool_config(tool_slug: str, config: dict):
+    pol = get_effective_policy(tool_slug)
+    fields = {f["name"]: f for f in pol.get("schema_fields", [])}
+    for name, fld in fields.items():
+        if not fld.get("visible", True):
+            continue
+        required = fld.get("required", False)
+        v = config.get(name, fld.get("default"))
+        if required and (v is None or v == ""):
+            raise ValidationError(f"'{name}' is required.")
+
+        ftype = fld.get("type")
+        cons  = fld.get("constraints", {}) or {}
+        if v is None:
+            continue
+
+        if ftype == "integer":
+            try: v = int(v)
+            except Exception: raise ValidationError(f"'{name}' must be an integer.")
+            lo, hi = cons.get("min"), cons.get("max")
+            if lo is not None and v < lo: raise ValidationError(f"'{name}' must be ≥ {lo}.")
+            if hi is not None and v > hi: raise ValidationError(f"'{name}' must be ≤ {hi}.")
+            config[name] = v
+
+        elif ftype == "float":
+            try: v = float(v)
+            except Exception: raise ValidationError(f"'{name}' must be a number.")
+            lo, hi = cons.get("min"), cons.get("max")
+            if lo is not None and v < lo: raise ValidationError(f"'{name}' must be ≥ {lo}.")
+            if hi is not None and v > hi: raise ValidationError(f"'{name}' must be ≤ {hi}.")
+            config[name] = v
+
+        elif ftype in ("select","multiselect"):
+            choices = fld.get("choices") or []
+            allowed = { (c["value"] if isinstance(c, dict) else c) for c in choices }
+            if ftype == "select":
+                if v not in allowed:
+                    raise ValidationError(f"'{name}' must be one of: {sorted(allowed)}.")
+            else:
+                vals = v if isinstance(v, list) else [v]
+                bad = [x for x in vals if x not in allowed]
+                if bad:
+                    raise ValidationError(f"'{name}' has invalid values: {bad}.")
+                config[name] = vals
+    return config
 
 def validate_step_input(tool, manifest: dict) -> list[str]:
     errs = []
@@ -11,21 +61,17 @@ def validate_step_input(tool, manifest: dict) -> list[str]:
 
         val = mf.get(f.name, f.default)
 
-        # required field
         if f.required and (val is None or (isinstance(val, str) and not val.strip())):
             errs.append(f"'{f.label}' is required")
             continue
 
-        # numeric
         if f.type in (ToolConfigFieldType.integer, ToolConfigFieldType.float) and val is not None:
             try:
-                # just validate; adapters can cast
                 _ = float(val) if f.type is ToolConfigFieldType.float else int(str(val), 10)
             except Exception:
                 kind = "float" if f.type is ToolConfigFieldType.float else "integer"
                 errs.append(f"'{f.label}' must be a {kind}")
 
-        # boolean
         if f.type is ToolConfigFieldType.boolean and val is not None:
             if isinstance(val, bool):
                 pass
@@ -34,7 +80,6 @@ def validate_step_input(tool, manifest: dict) -> list[str]:
             else:
                 errs.append(f"'{f.label}' must be true/false")
 
-        # select / multiselect choices
         if f.type in (ToolConfigFieldType.select, ToolConfigFieldType.multiselect) and f.choices:
             allowed = {c["value"] for c in (f.choices or [])}
             if f.type is ToolConfigFieldType.select:
@@ -46,7 +91,6 @@ def validate_step_input(tool, manifest: dict) -> list[str]:
                 if bad:
                     errs.append(f"'{f.label}' has invalid values: {bad}")
 
-    # cross-field checks
     if mf.get("input_method") == "manual" and not (mf.get("value") or "").strip():
         errs.append("Provide a value or choose File input")
     if mf.get("input_method") == "file" and not (mf.get("file_path") or "").strip():
