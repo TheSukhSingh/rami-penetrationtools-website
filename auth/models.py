@@ -430,3 +430,15 @@ class TrustedDevice(db.Model):
     expires_at   = db.Column(db.DateTime(timezone=True), nullable=False)
 
     user         = db.relationship('User')
+
+class SecurityEvent(db.Model):
+    __tablename__ = "security_events"
+    id          = db.Column(db.Integer, primary_key=True)
+    user_id     = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), index=True, nullable=False)
+    occurred_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    event_type  = db.Column(db.String(50), nullable=False)  # e.g., 'PASSWORD_RESET_REQUESTED', 'PASSWORD_RESET_SUCCESS'
+    ip_address  = db.Column(db.String(45))
+    user_agent  = db.Column(db.String(255))
+    meta        = db.Column(db.JSON, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('security_events', cascade='all, delete-orphan'))

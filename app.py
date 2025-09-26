@@ -92,6 +92,8 @@ def create_app():
     app.config.update({
         "TRUSTED_DEVICE_COOKIE_NAME": "tdid",
         "TRUSTED_DEVICE_DAYS": 30,
+
+        "PASSWORD_RESET_TTL_SECONDS ":600 
     })
 
     app.config.setdefault('CELERY_BROKER_URL', os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0'))

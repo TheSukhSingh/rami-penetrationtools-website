@@ -28,6 +28,7 @@ from .models import (
     MFASetting, 
     RecoveryCode, 
     RefreshToken,
+    SecurityEvent,
     TrustedDevice, 
     User, 
     Role,
@@ -409,6 +410,26 @@ def revoke_all_devices():
     )
     return resp, 200
 
+@auth_bp.route('/devices/label', methods=['POST'])
+@require_account_ok(require_verified=True)
+@limiter.limit("60 per hour", key_func=get_remote_address)
+def label_device():
+    user = g.current_user
+    data = request.get_json(silent=True) or {}
+    did = data.get("device_id")
+    label = (data.get("label") or "").strip()
+    if not did or not label:
+        return jsonify({"ok": False, "error": "BAD_REQUEST", "message": "device_id and label required"}), 400
+
+    td = TrustedDevice.query.filter_by(id=did, user_id=user.id).first()
+    if not td:
+        return jsonify({"ok": False, "error": "NOT_FOUND", "message": "Device not found"}), 404
+
+    # Clamp label length; avoid huge strings
+    td.label = label[:64]
+    db.session.commit()
+    return jsonify({"ok": True, "message": "Label updated"}), 200
+
 @auth_bp.route('/forgot-password', methods=['POST'])
 @limiter.limit("3 per hour", key_func=get_remote_address)
 def forgot_password():
@@ -427,6 +448,17 @@ def forgot_password():
         reset_url = url_for('auth.reset_password', token=token, _external=True)
         html = render_template('emails/reset_password_email.html', reset_url=reset_url)
         send_email(user.email, 'Your Password Reset Link', html)
+        try:
+            db.session.add(SecurityEvent(
+                user_id=user.id,
+                event_type="PASSWORD_RESET_REQUESTED",
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get("User-Agent", "")[:255],
+                meta={"via": "forgot_password_api"}
+            ))
+            db.session.commit()
+        except Exception:
+            current_app.logger.exception("security-event log failed")
 
     # Always return generic message to avoid user enumeration
     return jsonify(message="If that email is registered, you’ll receive a reset link."), 200
@@ -457,7 +489,31 @@ def reset_password(token):
     pr.consume()                # consume the token only on success
     RefreshToken.query.filter_by(user_id=pr.user.id, revoked=False).update({"revoked": True})
     db.session.commit()
+    try:
+        when = utcnow().strftime("%Y-%m-%d %H:%M:%S %Z")
+        ip   = request.remote_addr or "unknown"
+        ua   = (request.headers.get("User-Agent") or "")[:255]
+        html = f"""
+        <p>Hi {pr.user.name or pr.user.username},</p>
+        <p>Your HackerGG password was just changed ({when}).</p>
+        <p>If this wasn’t you, <b>reset it again</b> and contact support immediately.</p>
+        <p>IP: {ip}<br>User-Agent: {ua}</p>
+        """
+        send_email(pr.user.email, "Your password was changed", html)
+    except Exception:
+        current_app.logger.exception("password-changed email failed")
 
+    # 2) Audit trail
+    try:
+        db.session.add(SecurityEvent(
+            user_id=pr.user.id,
+            event_type="PASSWORD_RESET_SUCCESS",
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent", "")[:255],
+        ))
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("security-event log failed")
     resp = redirect(url_for('index'))
     unset_jwt_cookies(resp)     # sign the browser out on all tabs
     flash('Your password has been updated! Please log in.', 'success')
