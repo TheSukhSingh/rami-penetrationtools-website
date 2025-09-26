@@ -11,6 +11,23 @@ auth_bp = Blueprint(
  
 import click
 
+@auth_bp.after_request
+def _auth_security_headers(resp):
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('X-Frame-Options', 'DENY')  # relax only where needed
+    resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    # If you use a nonce-based global CSP, prefer that instead of this baseline.
+    resp.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; "
+        "script-src 'self' https://accounts.google.com https://www.gstatic.com; "
+        "frame-src https://accounts.google.com; "
+        "connect-src 'self'; "
+        "img-src 'self' data: https://www.gstatic.com; "
+        "style-src 'self' 'unsafe-inline'"
+    )
+    return resp
+
 @auth_bp.cli.command("purge-expired")
 @click.option("--dry", is_flag=True, help="Show counts only; do not delete")
 def purge_expired(dry: bool):

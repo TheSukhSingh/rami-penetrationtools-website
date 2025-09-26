@@ -320,48 +320,55 @@ def login_local(email: str, password: str) -> tuple[dict, str]:
     tokens = jwt_login(user)
     return tokens, None
 
-def login_oauth(provider: str, provider_id: str, profile_info: dict) -> tuple[User, dict | None]:
+def login_oauth(provider: str, provider_id: str, profile_info: dict):
     """
-    Handle OAuth sign-in/up. Returns (user, tokens_or_None).
-    If MFA is required and device not trusted -> returns (user, None) so the route can redirect to verify.
+    Returns (user, tokens) where tokens is:
+      - dict with access/refresh strings on immediate success, or
+      - None if MFA is required (route should send 202 + mfa flow)
+    Raises:
+      - PermissionError on inactive user / unverified-local linking,
+      - ValueError on explicit email linking conflict (if you detect one).
     """
-    # 1) If exact OAuth account exists → use that user
-    oauth = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
-    if oauth:
-        user = oauth.user
-    else:
-        email = (profile_info.get("email") or "").strip().lower()
-        name  = profile_info.get("name")
+    from extensions import db
+    from .models import User, OAuthAccount  # adjust import path if needed
 
-        # 2) If a user already exists with this email → link this provider
+    email = (profile_info.get("email") or "").strip().lower()
+    name = profile_info.get("name") or ""
+
+    # 1) If this provider_id is already linked → fetch its user
+    oa = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
+    if oa:
+        user = oa.user
+    else:
+        # 2) If a local user with this email exists → link (with safety checks)
         user = User.query.filter_by(email=email).first()
         if user:
+            # Prevent linking to a local account that hasn't verified its email
+            if not getattr(user, "email_verified", False):
+                raise PermissionError("LOCAL_EMAIL_UNVERIFIED")
+            # Block linking to inactive accounts
+            if getattr(user, "is_blocked", False) or getattr(user, "is_deactivated", False):
+                raise PermissionError("Account is inactive")
+
             oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
             db.session.add(oa)
             db.session.commit()
         else:
-            # 3) Otherwise create a new user and link the provider
-            username = generate_username_from_email(email)
-            user = User(email=email, username=username, name=name)
+            # 3) Create new user (Google One-Tap requires verified email before we even get here)
+            username = generate_username_from_email(email)  # keep your existing helper
+            user = User(email=email, username=username, name=name, email_verified=True)
             db.session.add(user)
             db.session.flush()  # get user.id
-
             oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
             db.session.add(oa)
             db.session.commit()
 
-    # ---- Common gate (same spirit as local login) ----
-    if getattr(user, "is_blocked", False) or getattr(user, "is_deactivated", False):
-        # mirror local: don't issue tokens for inactive accounts
-        raise PermissionError("Account is inactive")
-
-    # If MFA is enabled and device isn't trusted → don't mint/set tokens yet
-    if user.mfa_setting and user.mfa_setting.enabled and not _is_trusted_device(user.id):
+    # Enforce MFA step-up if needed and device isn’t trusted
+    if getattr(user, "mfa_setting", None) and user.mfa_setting.enabled and not _is_trusted_device(user.id):
         return user, None
 
-    # Otherwise issue tokens now (route will set cookies)
+    # Issue tokens via your existing helper
     return user, jwt_login(user)
-
 
 def get_current_user() -> Optional[User]:
     """
