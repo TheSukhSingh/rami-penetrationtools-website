@@ -25,7 +25,8 @@ from extensions import limiter, csrf, db
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies, unset_jwt_cookies
 from . import auth_bp
 from .models import (
-    MFASetting, 
+    MFASetting,
+    RateLimitEvent, 
     RecoveryCode, 
     RefreshToken,
     SecurityEvent,
@@ -211,6 +212,15 @@ def confirm_email(token):
 
     else:
         user.local_auth.email_verified = True
+        try:
+            db.session.add(SecurityEvent(
+                user_id=user.id,
+                event_type="EMAIL_VERIFIED",
+                ip_address=request.remote_addr,
+                user_agent=(request.headers.get("User-Agent") or "")[:255],
+            ))
+        except Exception:
+            current_app.logger.exception("security-event EMAIL_VERIFIED log failed")
         db.session.commit()
         flash('Your account has been confirmed!', 'success')
 
@@ -235,6 +245,16 @@ def local_login():
     if err == "MFA_REQUIRED":
         user = User.query.filter_by(email=email).first()
         session['mfa_user'] = user.id
+        try:
+            db.session.add(SecurityEvent(
+                user_id=user.id,
+                event_type="MFA_REQUIRED",
+                ip_address=request.remote_addr,
+                user_agent=(request.headers.get("User-Agent") or "")[:255],
+            ))
+            db.session.commit()
+        except Exception:
+            current_app.logger.exception("security-event MFA_REQUIRED log failed")
         return jsonify({"mfa_required": True, "verify_url": url_for('auth.verify_mfa')}), 202
     
     if err:
@@ -322,12 +342,29 @@ def _csrf_error(e):
 @auth_bp.errorhandler(RateLimitExceeded)
 def _ratelimit_error(e):
     retry = int(getattr(e, "reset_in", 0)) or None
+
+    # Persist the hit
+    try:
+        db.session.add(RateLimitEvent(
+            ip_address=request.remote_addr,
+            method=request.method,
+            path=(request.path or "")[:255],
+            endpoint=(request.endpoint or "")[:128],
+            key=(getattr(e, "description", "") or "")[:128],
+            limit=str(getattr(e, "limit", "") or "")[:64],
+            user_id=None,  # keep simple here; we’re on mixed public routes
+        ))
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("failed to log RateLimitEvent")
+
     if _wants_json():
         resp = jsonify({"ok": False, "error": "RATE_LIMITED", "message": "Too many requests.", "retry_after": retry})
         if retry is not None:
             resp.headers["Retry-After"] = retry
         return resp, 429
     return "Too many requests.", 429
+
 
 @auth_bp.route('/devices', methods=['GET'])
 @require_account_ok(require_verified=True)
@@ -565,6 +602,16 @@ def mfa_enable():
 
     ok = pyotp.TOTP(m.secret).verify(code, valid_window=1)
     if not ok:
+        try:
+            db.session.add(SecurityEvent(
+                user_id=user.id,
+                event_type="MFA_FAIL",
+                ip_address=request.remote_addr,
+                user_agent=(request.headers.get("User-Agent") or "")[:255],
+            ))
+            db.session.commit()
+        except Exception:
+            current_app.logger.exception("security-event MFA_FAIL log failed")
         return jsonify({"msg": "Invalid code"}), 400
 
     m.enabled = True
@@ -578,10 +625,8 @@ def mfa_enable():
 @limiter.limit("5 per 5 minutes", key_func=_mfa_key)
 @limiter.limit("20 per hour", key_func=_mfa_key)
 def verify_mfa():
-    # UI for entering code is already in templates/auth/verify_mfa.html (has remember checkbox) :contentReference[oaicite:10]{index=10}
     if request.method == 'GET':
         if not session.get('mfa_user'):
-            # If someone hits this directly, show the form but it won’t succeed
             return render_template('auth/verify_mfa.html')
         return render_template('auth/verify_mfa.html')
 
@@ -622,7 +667,16 @@ def verify_mfa():
     # Success → issue JWTs same as a normal login
     from .utils import jwt_login  # local import to avoid cycles
     tokens = jwt_login(user)
-
+    try:
+        db.session.add(SecurityEvent(
+            user_id=user.id,
+            event_type="MFA_SUCCESS",
+            ip_address=request.remote_addr,
+            user_agent=(request.headers.get("User-Agent") or "")[:255],
+        ))
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("security-event MFA_SUCCESS log failed")
     resp = redirect(url_for('index'))
     set_access_cookies(resp, tokens["access_token"])
     set_refresh_cookies(resp, tokens["refresh_token"])

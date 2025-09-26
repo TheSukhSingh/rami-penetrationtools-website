@@ -442,3 +442,42 @@ class SecurityEvent(db.Model):
     meta        = db.Column(db.JSON, nullable=True)
 
     user = db.relationship('User', backref=db.backref('security_events', cascade='all, delete-orphan'))
+
+# --- NEW: per-429 record (observability) ---
+class RateLimitEvent(db.Model):
+    __tablename__ = "rate_limit_events"
+    id          = db.Column(db.Integer, primary_key=True)
+    occurred_at = db.Column(db.DateTime(timezone=True), default=utcnow, index=True, nullable=False)
+    ip_address  = db.Column(db.String(45))
+    method      = db.Column(db.String(8))
+    path        = db.Column(db.String(255), index=True)
+    endpoint    = db.Column(db.String(128), index=True)
+    key         = db.Column(db.String(128))     # limiter key (ip/email/etc.)
+    limit       = db.Column(db.String(64))      # e.g. "5 per 15 minutes"
+    user_id     = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    user        = db.relationship('User', backref=db.backref('rate_limit_events', lazy='dynamic'))
+
+# --- NEW: daily rollup for auth metrics ---
+class AuthDailyStats(db.Model):
+    __tablename__ = "auth_daily_stats"
+    # Use day as PK to upsert per day
+    day                       = db.Column(db.Date, primary_key=True)
+
+    # Core counts
+    dau                       = db.Column(db.Integer, nullable=False, default=0)   # distinct users with successful login this day
+    mau_30                    = db.Column(db.Integer, nullable=False, default=0)   # distinct users over prior 30 days (including day)
+    signups                   = db.Column(db.Integer, nullable=False, default=0)   # users created that day
+    verifications             = db.Column(db.Integer, nullable=False, default=0)   # email verified that day
+
+    # MFA funnel (emit events below)
+    mfa_required              = db.Column(db.Integer, nullable=False, default=0)
+    mfa_success               = db.Column(db.Integer, nullable=False, default=0)
+    mfa_fail                  = db.Column(db.Integer, nullable=False, default=0)
+
+    # Recovery & abuse signals
+    password_resets_requested = db.Column(db.Integer, nullable=False, default=0)
+    password_resets_success   = db.Column(db.Integer, nullable=False, default=0)
+    rate_limit_hits           = db.Column(db.Integer, nullable=False, default=0)
+
+    created_at                = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at                = db.Column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
