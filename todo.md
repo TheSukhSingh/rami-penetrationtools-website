@@ -100,9 +100,37 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - link user dashboard
 - link billing and plan
 - link help
-- remove margin-top from page-wrapper class in navbar.css (line 816) - css file has -> ("/* TODO - REMOVE MARGIN-TOP  --- ONLY FOR DEBUGGING */")
+
 ## ACCOUNT SETTINGS PAGE    
 - redesigning of the page (page design available)
+- email change delivery
+    - wire real miler + HTML template, env configs, proper sender
+    - Notify old email, invalidate other sessions on change, configurable token TTL/domain
+- MFA / TOTP + backup codes
+    - Enroll/verify/disable endpoints, QR/secret generation, backup code issuance/revoke
+    - Optional re-auth requirement to toggle
+- OAuth connections management
+    - List/link/unlink providers; guard against unlinking the last login method (if no pw)
+    - Audit + email alerts on link/unlink
+- Privacy actions
+    - Implement celery jobs for export (data bundle _ signed download link) and delete (grace window, final purge)
+    - Admin hold/cancel path, confirmation emails, and audit entries
+- Notifications Integration
+    - Sync prefs to ESP/CRM (eg Mailgun/SendGrid) + per-user unsubscribe token handling
+    - Defaulting/seeding policy and enforcement across outbound email
+- Sessions hardening
+    - Capture and persist device/IP/UA/last-seen at login, show in list
+    - Optionally protect currentt session from 'revoke-all', rotate refresh tokens on sensitive changes
+- Re-auth window
+    - Implement a 10-15 min re-auth grace (claim/flag) so sensitive endpoints don't require pw every POST
+- Rate limits on sensitive routes
+    - Add limiter.limit() for pw/email/mfa/exports/deletes (align with your tools pattern)
+- Security alerts and audit log
+    - Emit events + persist audit rows for - pw changed, email changed, mfa toggled, sessions revoked, export/delete requested
+- API parity (optional)
+    - JSON endpoints mirroring the HTML flows for SPA/mobile clients
+- DB migrations
+    - Add indexes for session lookups (user_id, revoked, expires_at)
 ## BILLING AND PLAN PAGE
 - complete set up
 ## HELP PAGE
@@ -127,8 +155,9 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 ## NAVBAR
 - Dropdown needs user dashboard
 - Dropdown from User needs design update
-- Dropdown needs complete restyling like this image - ![complete restyle](md/image.png)
+- Dropdown needs complete restyling like this image
 - link account settings
+- remove margin-top from page-wrapper class in navbar.css (line 816) - css file has -> ("/* TODO - REMOVE MARGIN-TOP  --- ONLY FOR DEBUGGING */")
 ## MAILS
 - Confirm mail design update required
 - Reset Password mail design update required

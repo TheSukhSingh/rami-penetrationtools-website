@@ -2,13 +2,12 @@ from functools import wraps
 import re
 from datetime import datetime, timedelta, timezone
 import secrets
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict
 from hashlib import sha256, sha1
 import os, time
 from extensions import db
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
-from flask import current_app, flash, redirect, request, url_for, jsonify
-
+from flask import current_app, flash, request, jsonify, g
 from flask_mail import Mail, Message
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
@@ -19,10 +18,91 @@ from .models import LoginEvent, RefreshToken, User, LocalAuth, OAuthAccount, Rec
 from .passwords import COMMON_PASSWORDS
 
 mail = Mail()
+
 utcnow = lambda: datetime.now(timezone.utc)
+
+def _emit_guard_error(code: str, http: int, message: str):
+    # If you want to support HTML redirects for browser pages, you can branch on Accept header here.
+    # For APIs we return JSON consistently.
+    payload = {
+        "ok": False,
+        "error": code,
+        "message": message,
+    }
+    return jsonify(payload), http
+
+def _resolve_email_verified(user) -> bool:
+    # 1) If project ever adds User.email_verified, honor it
+    if hasattr(user, "email_verified"):
+        if bool(getattr(user, "email_verified")):
+            return True
+    # 2) LocalAuth-based verification
+    la = getattr(user, "local_auth", None)
+    if la and hasattr(la, "email_verified") and bool(la.email_verified):
+        return True
+    # 3) If the user has any linked OAuth accounts, treat as verified (provider-verified email)
+    oas = getattr(user, "oauth_accounts", None)
+    if oas and len(oas) > 0:
+        return True
+    return False
+
+
+def require_account_ok(require_verified: bool = True):
+    """
+    Decorator for protected endpoints.
+
+    - Verifies JWT present (and CSRF for cookie flows) via verify_jwt_in_request()
+    - Loads the current User from DB using the JWT identity (assumed to be user_id)
+    - Denies access if:
+        * user missing
+        * user.is_blocked
+        * user.is_deactivated
+        * (optionally) email not verified when require_verified=True
+
+    Usage:
+      @require_account_ok()                      -> requires verified email
+      @require_account_ok(require_verified=False) -> skip the email verification requirement
+    """
+    def _decorator(fn):
+        @wraps(fn)
+        def _wrapper(*args, **kwargs):
+            # 1) Enforce auth (401 for missing/invalid, including CSRF for cookie JWT)
+            verify_jwt_in_request()
+
+            # 2) Load user
+            identity = get_jwt_identity()
+            user = db.session.get(User, identity)
+            if not user:
+                return _emit_guard_error("AUTH_USER_NOT_FOUND", 401, "User not found.")
+
+            # 3) Account state checks
+            if bool(getattr(user, "is_blocked", False)):
+                return _emit_guard_error("ACCOUNT_BLOCKED", 403, "Your account is blocked.")
+            if bool(getattr(user, "is_deactivated", False)):
+                return _emit_guard_error("ACCOUNT_DEACTIVATED", 403, "Your account is deactivated.")
+
+            # 4) Email verification gate (if required)
+            if require_verified and not _resolve_email_verified(user):
+                return _emit_guard_error("EMAIL_UNVERIFIED", 403, "Please verify your email to continue.")
+
+            # 5) Stash for handlers down the stack
+            g.current_user = user
+            return fn(*args, **kwargs)
+        return _wrapper
+    return _decorator
 
 def init_mail(app):
     mail.init_app(app)
+
+def ensure_aware_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    # If naive, assume it was meant to be UTC
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+def is_expired(dt: datetime | None) -> bool:
+    dt = ensure_aware_utc(dt)
+    return bool(dt and dt <= utcnow())
 
 def generate_confirmation_token(email: str) -> str:
     serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
@@ -65,47 +145,93 @@ def login_required(func):
 def init_jwt_manager(app, jwt):
     """
     Register callbacks on the JWTManager instance to check and handle revoked/expired tokens.
-    Call this in your factory after you init JWTManager:
-        init_jwt_manager(app, jwt)
+    Call this after initializing JWTManager:  init_jwt_manager(app, jwt)
     """
+
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
-        raw_jti   = jwt_payload.get("jti")
-        token_type= jwt_payload.get("type") or jwt_payload.get("typ")
+        """
+        - Allow access tokens to pass through (we only persist refresh tokens).
+        - For refresh tokens: if unknown / revoked / expired → treat as reuse/invalid.
+          In that case, revoke all user sessions, log, and optionally email the user.
+        """
+        token_type = jwt_payload.get("type") or jwt_payload.get("typ")
         if token_type != "refresh":
-            return False
+            return False  # only refresh tokens are in our server-side blocklist
 
+        raw_jti = jwt_payload.get("jti") or ""
         hashed_jti = sha256(raw_jti.encode("utf-8")).hexdigest()
-        token = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
+        row = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
 
-        if token is None or token.revoked or (token.expires_at and token.expires_at <= utcnow()):
+        # Safe expiry check (handles naive vs aware)
+        expired = False
+        if row and row.expires_at is not None:
+            exp = ensure_aware_utc(row.expires_at)
+            expired = bool(exp and exp <= utcnow())
+
+        # If no row (unknown), revoked, or expired => block & clean up
+        if (row is None) or row.revoked or expired:
             try:
-                uid = int(jwt_payload.get("sub"))
+                uid = int(jwt_payload.get("sub", "0"))
+                # Revoke all outstanding refresh tokens for this user
                 RefreshToken.query.filter_by(user_id=uid, revoked=False).update({"revoked": True})
                 db.session.commit()
             except Exception:
                 db.session.rollback()
-            return True
+
+            # Audit log (and optional email alert)
+            try:
+                uid = int(jwt_payload.get("sub", "0"))
+                current_app.logger.warning(
+                    "refresh reuse/invalid detected user_id=%s ip=%s ua=%s",
+                    uid, request.remote_addr, request.headers.get("User-Agent", "")
+                )
+                if current_app.config.get("SECURITY_EMAIL_ALERTS", False) and uid:
+                    user = db.session.get(User, uid)
+                    if user:
+                        try:
+                            send_email(
+                                user.email,
+                                "We blocked a suspicious sign-in",
+                                (
+                                    "<p>We detected an invalid session refresh and signed you out of all devices."
+                                    " If this wasn't you, please reset your password.</p>"
+                                ),
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            return True  # token is considered in blocklist
 
         return False
 
-
     @jwt.revoked_token_loader
     def revoked_token_callback(jwt_header, jwt_payload):
-        return jsonify({"msg": "Token has been revoked"}), 401
+        return jsonify({"ok": False, "error": "TOKEN_REVOKED", "message": "Token has been revoked."}), 401
 
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
-        return jsonify({"msg": "Token has expired"}), 401
+        ttype = (jwt_payload or {}).get("type") or (jwt_payload or {}).get("typ") or "access"
+        # You can hint the client that a refresh might help when an access token expires
+        return jsonify({
+            "ok": False,
+            "error": "TOKEN_EXPIRED",
+            "message": f"{ttype.title()} token has expired.",
+            "can_refresh": (ttype == "access")
+        }), 401
 
     @jwt.invalid_token_loader
-    def invalid_token_callback(err):
-        return jsonify({"msg": f"Invalid token"}), 422
+    def invalid_token_callback(err_msg):
+        # err_msg is a human string from FJWE; keep response stable for the SPA
+        return jsonify({"ok": False, "error": "TOKEN_INVALID", "message": "Invalid token."}), 422
 
     @jwt.unauthorized_loader
-    def missing_token_callback(err):
-        return jsonify({"msg": "Authorization required"}), 401
-    
+    def missing_token_callback(err_msg):
+        # Missing token / CSRF mismatch on cookie flows lands here
+        return jsonify({"ok": False, "error": "AUTH_REQUIRED", "message": "Authorization required."}), 401
+
 def jwt_login(user: User) -> Dict[str, str]:
     """
     Issue JWT access and refresh tokens, store refresh JTI in DB, and return both tokens.
@@ -132,22 +258,25 @@ def jwt_login(user: User) -> Dict[str, str]:
     rt = RefreshToken(
         user_id    = user.id,
         token_hash = hashed_jti,
-        expires_at = datetime.fromtimestamp(data['exp'], tz=timezone.utc)
+        expires_at = datetime.fromtimestamp(data['exp'], tz=timezone.utc),
+        ip         = request.remote_addr,
+        user_agent = (request.headers.get("User-Agent") or "")[:255],
     )
     db.session.add(rt)
     db.session.commit()
 
     return {'access_token': access_token, 'refresh_token': refresh_token}
 
-@jwt_required(refresh=True)
 def jwt_logout():
     """
     Revoke the current refresh token. Requires @jwt_required(refresh=True) context.
     """
     jti = get_jwt()['jti']
+    if not jti:
+        return jsonify({"msg": "No token"}), 401
     hashed_jti = sha256(jti.encode('utf-8')).hexdigest()
     token_row = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
-    if token_row:
+    if token_row and not token_row.revoked:
         token_row.revoked = True
         db.session.commit()
     return jsonify({"msg": "Refresh token revoked"}), 200
@@ -195,86 +324,55 @@ def login_local(email: str, password: str) -> tuple[dict, str]:
     tokens = jwt_login(user)
     return tokens, None
 
-# def login_oauth(provider: str, provider_id: str, profile_info: dict) -> Dict[str, str]:
-#     """
-#     Handle OAuth sign-in/up. Finds or creates the OAuthAccount + User, then issues tokens.
-#     profile_info must contain at least 'email'; may include 'name'.
-#     """
-#     # 1) If we've seen this exact account before → use that user
-#     oauth = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
-#     if oauth:
-#         user = oauth.user
-#         # return jwt_login(user)
-#         return (user, jwt_login(user)) 
-
-#     email = (profile_info.get("email") or "").strip().lower()
-#     name  = profile_info.get("name")
-
-#     # 2) If a user already exists with this email → link this provider to that user
-#     user = User.query.filter_by(email=email).first()
-#     if user:
-#         oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
-#         db.session.add(oa)
-#         db.session.commit()
-#         # return jwt_login(user)
-#         return (user, jwt_login(user)) 
-
-#     # 3) Otherwise create a new user and link the provider
-#     username = generate_username_from_email(email)
-#     user = User(email=email, username=username, name=name)
-#     db.session.add(user)
-#     db.session.flush()  # get user.id
-
-#     oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
-#     db.session.add(oa)
-#     db.session.commit()
-
-#     # return jwt_login(user)
-#     return (user, jwt_login(user)) 
-
-
-def login_oauth(provider: str, provider_id: str, profile_info: dict) -> tuple[User, dict | None]:
+def login_oauth(provider: str, provider_id: str, profile_info: dict):
     """
-    Handle OAuth sign-in/up. Returns (user, tokens_or_None).
-    If MFA is required and device not trusted -> returns (user, None) so the route can redirect to verify.
+    Returns (user, tokens) where tokens is:
+      - dict with access/refresh strings on immediate success, or
+      - None if MFA is required (route should send 202 + mfa flow)
+    Raises:
+      - PermissionError on inactive user / unverified-local linking,
+      - ValueError on explicit email linking conflict (if you detect one).
     """
-    # 1) If exact OAuth account exists → use that user
-    oauth = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
-    if oauth:
-        user = oauth.user
+    from extensions import db
+    from .models import User, OAuthAccount  # adjust import path if needed
+
+    email = (profile_info.get("email") or "").strip().lower()
+    name = profile_info.get("name") or ""
+
+    # 1) If this provider_id is already linked → fetch its user
+    oa = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
+    if oa:
+        user = oa.user
     else:
-        email = (profile_info.get("email") or "").strip().lower()
-        name  = profile_info.get("name")
-
-        # 2) If a user already exists with this email → link this provider
+        # 2) If a local user with this email exists → link (with safety checks)
         user = User.query.filter_by(email=email).first()
         if user:
+            # Prevent linking to a local account that hasn't verified its email
+            if user.local_auth and not user.local_auth.email_verified:
+                raise PermissionError("LOCAL_EMAIL_UNVERIFIED")
+            # Block linking to inactive accounts
+            if getattr(user, "is_blocked", False) or getattr(user, "is_deactivated", False):
+                raise PermissionError("Account is inactive")
+
             oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
             db.session.add(oa)
             db.session.commit()
         else:
-            # 3) Otherwise create a new user and link the provider
-            username = generate_username_from_email(email)
+            # 3) Create new user (Google One-Tap requires verified email before we even get here)
+            username = generate_username_from_email(email)  # keep your existing helper
             user = User(email=email, username=username, name=name)
             db.session.add(user)
             db.session.flush()  # get user.id
-
             oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
             db.session.add(oa)
             db.session.commit()
 
-    # ---- Common gate (same spirit as local login) ----
-    if getattr(user, "is_blocked", False) or getattr(user, "is_deactivated", False):
-        # mirror local: don't issue tokens for inactive accounts
-        raise PermissionError("Account is inactive")
-
-    # If MFA is enabled and device isn't trusted → don't mint/set tokens yet
-    if user.mfa_setting and user.mfa_setting.enabled and not _is_trusted_device(user.id):
+    # Enforce MFA step-up if needed and device isn’t trusted
+    if getattr(user, "mfa_setting", None) and user.mfa_setting.enabled and not _is_trusted_device(user.id):
         return user, None
 
-    # Otherwise issue tokens now (route will set cookies)
+    # Issue tokens via your existing helper
     return user, jwt_login(user)
-
 
 def get_current_user() -> Optional[User]:
     """
@@ -342,40 +440,6 @@ def validate_and_set_password(user, password, confirm, commit=True):
     if cnt is not None and cnt > 0 and current_app.config.get("HIBP_BLOCK_ANY", True):
         flash("This password has appeared in known data breaches. Please choose a different one.", "warning")
         return False
-
-    # # 7.5) HIBP k-anonymity check (API-first, offline fallback)
-    # count = hibp_count_for_password(password)
-    # # Determine if the user is privileged (tighten policy)
-    # is_admin = False
-    # try:
-    #     # If roles relationship exists, treat any 'admin'/'superadmin' as privileged
-    #     is_admin = any(getattr(r, "name", "").lower() in {"admin", "superadmin"} for r in getattr(user, "roles", []))
-    # except Exception:
-    #     pass
-
-    # # Decide per policy
-    # admin_block_any   = bool(current_app.config.get("HIBP_ADMIN_BLOCK_ANY", True))
-    # block_threshold   = int(current_app.config.get("HIBP_BLOCK_COUNT", 100))
-
-    # if count is not None:
-    #     if (is_admin and admin_block_any and count >= 1) or (not is_admin and count >= block_threshold):
-    #         flash("This password has appeared in known data breaches. Please choose a different one.", "warning")
-    #         return False
-    #     # else: allow; optionally you could flash a soft warning if 1–99 for regular users
-    # else:
-    #     # Graceful degrade: API down & no offline mirror → proceed using local checks only
-    #     # (Optional) flash a low-priority note in debug environments
-    #     pass
-    
-
-    # OK: hash & store it
-    # try:
-    #     la = user.local_auth or LocalAuth(user_id=user.id)
-    #     la.set_password(password)
-    # except ValueError as ve:
-    #     flash(str(ve), 'warning')
-    #     return False
-
     try:
         la = user.local_auth or LocalAuth(user_id=user.id)
         # **attach it to the user relationship so `user.local_auth` is never None**
@@ -532,7 +596,20 @@ def hibp_count_for_password(password: str) -> int | None:
     except Exception:
         return None
 
-# --------- MFA
+def get_current_refresh_hash_from_request() -> str | None:
+    """
+    Read the refresh JWT from the cookie and return its hashed JTI.
+    Returns None if no/invalid cookie is present.
+    """
+    name = current_app.config.get("JWT_REFRESH_COOKIE_NAME", "refresh_token_cookie")
+    raw = request.cookies.get(name)
+    if not raw:
+        return None
+    try:
+        payload = decode_token(raw)
+        return sha256(payload["jti"].encode("utf-8")).hexdigest()
+    except Exception:
+        return None
 
 def _sha(s: str) -> str:
     return sha256(s.encode('utf-8')).hexdigest()
@@ -543,7 +620,10 @@ def _is_trusted_device(user_id: int) -> bool:
     if not td_cookie:
         return False
     row = TrustedDevice.query.filter_by(token_hash=_sha(td_cookie), user_id=user_id).first()
-    if not row or row.expires_at <= utcnow():
+    if not row:
+        return False
+    exp = ensure_aware_utc(row.expires_at)
+    if not exp or exp <= utcnow():
         return False
     row.last_used_at = utcnow()
     db.session.commit()
@@ -562,6 +642,20 @@ def _remember_device(user_id: int, user_agent: str) -> tuple[str, datetime]:
     ))
     db.session.commit()
     return raw, expires
+
+def get_current_trusted_device_hash_from_request() -> str | None:
+    """
+    Read the trusted-device cookie and return its hashed token (to compare with DB).
+    Returns None if cookie missing/invalid.
+    """
+    name = current_app.config.get("TRUSTED_DEVICE_COOKIE_NAME", "tdid")
+    raw = request.cookies.get(name)
+    if not raw:
+        return None
+    try:
+        return _sha(raw)
+    except Exception:
+        return None
 
 def generate_recovery_codes(user_id: int, count: int = 10) -> list[str]:
     """

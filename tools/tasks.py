@@ -10,10 +10,13 @@ from .models import (
     ToolScanHistory,  # existing audit trail for each tool exec
 )
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from .runner import create_run_from_definition
 from flask import current_app
 from .events import publish_run_event
+from tools import ingest
+from tools.alltools.tools._common import active_decr, active_incr, active_can_start, ops_redis
+import shutil
 
 utcnow = lambda: datetime.now(timezone.utc)
 log = get_task_logger(__name__)
@@ -70,16 +73,28 @@ def advance_run(self, run_id: int):
             "current_step_index": run.current_step_index
         })
         log.info(f'advance_run: run {run_id} completed')
+
+        try:
+            active_decr(run.user_id)
+        except Exception:
+            pass
+        # (Optional) try to promote a queued run now; see helper below
+        try:
+            _promote_queued()
+        except Exception:
+            pass
         return {'status': 'completed'}
 
     publish_run_event(run.id, "dispatch", {"step_index": next_step.step_index})
-    res = run_step.delay(run_id, next_step.step_index)
+    queue_name = current_app.config.get("CELERY_QUEUE", "tools_default")
+    res = run_step.apply_async(args=[run_id, next_step.step_index], queue=queue_name)
     # record Celery task id for cancel/revoke
     next_step.celery_task_id = res.id
     db.session.commit()
     return {'status': 'dispatched', 'task_id': res.id}
 
-BUCKET_KEYS = ("domains", "hosts", "ips", "ports", "urls", "endpoints", "findings")
+BUCKET_KEYS = ("domains", "hosts", "ips", "ports", "services", "urls", "endpoints", "findings")
+
 
 def _ensure_run_manifest(run):
     """
@@ -148,6 +163,26 @@ def _aggregate_run_manifest(db, run, step_index, tool_slug, step_manifest):
     db.session.commit()
     return manifest
 
+def _stage_artifact(run_id: int, step_index: int, slug: str, source_path: str) -> str | None:
+    """
+    Copy the adapter's output_file into ARTIFACTS_DIR/<run_id>/step-XX-<slug>/,
+    return the relpath (relative to ARTIFACTS_DIR/<run_id>) suitable for download endpoint.
+    """
+    if not source_path or not os.path.isfile(source_path):
+        return None
+    base_dir = current_app.config.get("ARTIFACTS_DIR", os.path.join("instance", "tools_artifacts"))
+    dest_dir = os.path.join(base_dir, str(run_id), f"step-{step_index:02d}-{slug}")
+    os.makedirs(dest_dir, exist_ok=True)
+    name = os.path.basename(source_path)
+    dest = os.path.join(dest_dir, name)
+    try:
+        if os.path.abspath(source_path) != os.path.abspath(dest):
+            shutil.copy2(source_path, dest)
+    except Exception:
+        # don't fail the run on copy issues
+        return None
+    rel = os.path.relpath(dest, os.path.join(base_dir, str(run_id))).replace("\\", "/")
+    return rel
 
 @celery.task(name='tools.tasks.run_step', bind=True)
 def run_step(self, run_id: int, step_index: int):
@@ -188,6 +223,17 @@ def run_step(self, run_id: int, step_index: int):
         "step_index": step_index, "status": "RUNNING"
     })
 
+    if run.status == WorkflowRunStatus.QUEUED:
+        run.status = WorkflowRunStatus.RUNNING
+        if not run.started_at:
+            run.started_at = utcnow()
+        db.session.commit()
+        publish_run_event(run.id, "run", {
+            "status": run.status.name,
+            "progress_pct": run.progress_pct,
+            "current_step_index": run.current_step_index
+        })
+
     prev_output = {}
     if step_index > 0:
         prev = next((ps for ps in run.steps if ps.step_index == step_index - 1), None)
@@ -201,17 +247,42 @@ def run_step(self, run_id: int, step_index: int):
 
         # load adapter + prepare options
         mod_name = slug.replace('-', '_')
-        adapter = import_module(f".alltools.{mod_name}", package="tools")
-        options = _prep_options_for_tool(step, prev_output, run.user_id, current_app.config)
+        adapter = import_module(f".alltools.tools.{mod_name}", package="tools")
 
-        base = current_app.config.get("TOOLS_WORK_DIR", "/tmp/hackr_runs")
+        # Create step work dir FIRST (so ingest can write inbox file if needed)
+        base = current_app.config.get(
+            "TOOLS_WORK_DIR",
+            current_app.config.get("ARTIFACTS_DIR", "/tmp/hackr_runs"),
+        )
         step_dir = Path(base) / f"run_{run.id}" / f"step_{step_index:02d}_{tool.slug}"
         step_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build options via ingest (DB-driven; upstream + config + seeds; normalize/dedupe/cap)
+        options = ingest.build_inputs_for_step(run, step, step_dir, current_app.config, slug=slug)
         
+        # Inject the per-step policy snapshot captured by the runner
+        base_opts = ((step.input_manifest or {}).get("options") or {})
+        snap = base_opts.get("_policy")
+        if snap:
+            options["_policy"] = snap
+
+        # Always provide tool_slug for adapters that rely on it
+        options.setdefault("tool_slug", slug)
         options["work_dir"] = str(step_dir)
 
         # Execute tool
         result = adapter.run_scan(options) or {}
+        # Normalize/stage artifact(s) for download
+        try:
+            of = result.get("output_file")
+            if of and os.path.isfile(of):
+                rel = _stage_artifact(run.id, step_index, slug, of)
+                if rel:
+                    result["artifact_relpath"] = rel
+                    result["download_url"] = f"/tools/api/runs/{run.id}/artifacts/{rel}"
+        except Exception:
+            pass
+
         success = (result.get("status") in ("success","ok"))
 
         # Persist scan + diagnostics
@@ -224,6 +295,11 @@ def run_step(self, run_id: int, step_index: int):
         step.status = WorkflowStepStatus.COMPLETED if success else WorkflowStepStatus.FAILED
         step.finished_at = utcnow()
         db.session.commit()
+        # Update the run-level manifest with typed buckets for the summary panel
+        try:
+            _aggregate_run_manifest(db, run, step_index, slug, result)
+        except Exception as e:
+            log.warning("aggregate failed for run %s step %s: %r", run.id, step_index, e)
 
         # progress
         total = max(1, run.total_steps or len(run.steps))
@@ -233,7 +309,13 @@ def run_step(self, run_id: int, step_index: int):
             run.status = WorkflowRunStatus.FAILED
         run.progress_pct = round(100.0 * done / total, 2)
         db.session.commit()
-
+        # If the run failed, free the user's active slot and try to promote a queued run
+        if not success:
+            try:
+                active_decr(run.user_id)
+                _promote_queued()
+            except Exception:
+                pass
         # publish state after commit
         publish_run_event(run.id, "step", {
             "step_index": step_index,
@@ -276,7 +358,7 @@ def run_step(self, run_id: int, step_index: int):
 def _load_adapter_for_slug(slug: str):
     """Slug 'github-subdomains' -> module tools.alltools.github_subdomains"""
     mod_name = slug.replace('-', '_')
-    return import_module(f".alltools.{mod_name}", package="tools")
+    return import_module(f".alltools.tools.{mod_name}", package="tools")
 
 def _prep_options_for_tool(step, prev_output: dict, user_id: int, app_config: dict):
     """
@@ -289,7 +371,12 @@ def _prep_options_for_tool(step, prev_output: dict, user_id: int, app_config: di
     options = {}
     if isinstance(step.input_manifest, dict):
         options.update(step.input_manifest)
-
+        inner = step.input_manifest.get("options")
+        if isinstance(inner, dict):
+            for k, v in inner.items():
+                # keep any explicit top-level value; otherwise copy from inner
+                options.setdefault(k, v)
+                
     # previous file?
     file_path = None
     for key in ("output_file", "file_path", "list_path"):
@@ -321,6 +408,14 @@ def _prep_options_for_tool(step, prev_output: dict, user_id: int, app_config: di
         # leave as manual if 'value' present in config; adapters already handle 'input_method'
         if options.get("value"):
             options["input_method"] = options.get("input_method", "manual")
+    log.info(
+        "prep_options: step=%s opts_keys=%s input_method=%r value=%r file=%r",
+        step.step_index,
+        sorted(list(options.keys()))[:12],
+        options.get("input_method"),
+        options.get("value"),
+        options.get("file_path"),
+    )
 
     return options
 
@@ -369,3 +464,77 @@ def start_run(self, workflow_id: int, user_id: int | None):
     run = create_run_from_definition(workflow_id, user_id)
     advance_run.delay(run.id)
     return {'run_id': run.id}
+def _promote_queued(limit: int = 10):
+    """
+    Promote oldest QUEUED runs to RUNNING when users are under their cap.
+    """
+    rows = (
+        db.session.query(WorkflowRun)
+        .filter(WorkflowRun.status == WorkflowRunStatus.QUEUED)
+        .order_by(WorkflowRun.created_at.asc())
+        .limit(limit)
+        .all()
+    )
+    promoted = 0
+    for run in rows:
+        uid = run.user_id
+        if active_can_start(uid):
+            active_incr(uid)
+            # Let the coordinator handle status transition and dispatch
+            advance_run.delay(run.id)
+            promoted += 1
+    return promoted
+
+@celery.task(name="tools.tasks.reconcile_zombies")
+def reconcile_zombies():
+    """
+    Auto-fail RUNNING runs that have not updated in a long time and free slots.
+    """
+    horizon = utcnow() - timedelta(minutes=45)
+    zombies = (
+        db.session.query(WorkflowRun)
+        .filter(WorkflowRun.status == WorkflowRunStatus.RUNNING,
+                WorkflowRun.updated_at < horizon)
+        .all()
+    )
+    for r in zombies:
+        r.status = WorkflowRunStatus.FAILED
+        r.finished_at = utcnow()
+        db.session.add(r)
+        try:
+            active_decr(r.user_id)
+        except Exception:
+            pass
+    if zombies:
+        db.session.commit()
+    try:
+        _promote_queued()
+    except Exception:
+        pass
+    return {"zombies": len(zombies)}
+
+@celery.task(name="tools.tasks.prune_history")
+def prune_history():
+    """
+    Delete old runs and their artifact folders to control retention.
+    """
+    keep_days = int(os.environ.get("RUNS_RETENTION_DAYS", "30"))
+    cutoff = utcnow() - timedelta(days=keep_days)
+    old = (
+        db.session.query(WorkflowRun)
+        .filter(WorkflowRun.created_at < cutoff)
+        .all()
+    )
+    deleted = 0
+    base_dir = os.environ.get("ARTIFACTS_DIR", os.path.join("instance","tools_artifacts"))
+    for r in old:
+        try:
+            path = os.path.join(base_dir, str(r.id))
+            if os.path.isdir(path):
+                import shutil; shutil.rmtree(path, ignore_errors=True)
+        except Exception:
+            pass
+        db.session.delete(r); deleted += 1
+    if deleted:
+        db.session.commit()
+    return {"deleted_runs": deleted}

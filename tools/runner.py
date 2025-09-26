@@ -6,6 +6,7 @@ from .models import (
     WorkflowRunStatus, WorkflowStepStatus, Tool
 )
 from datetime import datetime, timezone
+from tools.policies import get_effective_policy
 
 utcnow = lambda: datetime.now(timezone.utc)
 
@@ -68,15 +69,30 @@ def create_run_from_definition(workflow_id: int, user_id: Optional[int]) -> Work
     db.session.add(run); db.session.flush()
 
     for idx, node in enumerate(ordered_nodes):
-        tool = tools_by_slug.get(node.get("tool_slug"))
+        # Resolve tool
+        tool_slug = node.get("tool_slug") or node.get("slug")
+        tool = Tool.query.filter_by(slug=tool_slug, enabled=True).first()
+        # Build per-step options (copy node config) and SNAPSHOT policy
+        node_cfg = (node.get("config") or {}).copy()
+        node_cfg["tool_slug"] = tool_slug
+
+        # SNAPSHOT POLICY HERE (from ToolConfigField-derived policies)
+        policy_ss = get_effective_policy(tool_slug)
+        node_cfg["_policy"] = policy_ss
+
+        # Store the snapshot with options in the step's input_manifest (or wherever you keep per-step opts)
         step = WorkflowRunStep(
             run_id=run.id,
             step_index=idx,
-            tool_id=(tool.id if tool else None),
+            tool_id=tool.id if tool else None,
             status=WorkflowStepStatus.QUEUED,
-            input_manifest=(node.get("config") or {}),  # seed with per-node config
+            input_manifest={"options": node_cfg},  # <--- policy snapshot lives here
         )
         db.session.add(step)
+
+    run.total_steps = len(ordered_nodes)
+    run.current_step_index = 0
+    run.progress_pct = 0.0
 
     db.session.commit()
     return run

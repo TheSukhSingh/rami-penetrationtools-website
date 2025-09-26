@@ -1,0 +1,89 @@
+{% extends "main.html" %}
+{% block title %}Tools{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('tools.static', filename='css/tools.css') }}"/>
+
+<div class="tools-page">
+  <!-- LEFT: Tool Library -->
+  <aside class="tools-left">
+    <header class="tools-left__header">
+      <h2>Tools</h2>
+      <p class="muted">Drag tools to the canvas to build your workflow</p>
+    </header>
+
+    <!-- Designer list rendered by ui-bridge -->
+    <div id="toolsList" class="tools-left__list"></div>
+
+    <!-- Keep a hidden alias so the engine doesn't error if it tries to render its own list -->
+    <div id="toolCategories" class="hidden"></div>
+  </aside>
+
+  <!-- MIDDLE: Canvas (IMPORTANT: use the IDs the engine expects) -->
+  <main class="tools-canvas">
+    <div id="warningBanner" class="warning hidden"><span id="warningText"></span></div>
+
+    <div id="canvas" class="canvas-area" tabindex="0">
+      <!-- engine draws connections here -->
+      <svg id="connectionLayer" class="connections"></svg>
+      <!-- engine draws nodes here -->
+      <div id="workflowBoxes"></div>
+    </div>
+
+    <footer class="tools-actions">
+      <div class="left">
+        <button id="runBtn" class="btn primary">Run</button>
+        <button id="saveBtn" class="btn">Save Preset</button>
+        <button id="loadBtn" class="btn">Load Preset</button>
+      </div>
+      <div class="right">
+        <button id="globalConfigBtn" class="btn">Global Config</button>
+        <button id="sessionsBtn" class="btn">Sessions</button>
+        <span id="wfStatus" class="status"></span>
+        <span id="zoomPct" class="zoom"></span>
+      </div>
+    </footer>
+  </main>
+
+  <!-- RIGHT: Output -->
+  <aside class="tools-right">
+    <section class="results">
+      <h3>Results</h3>
+      <div id="outputResults" class="results__body"></div>
+    </section>
+
+    <section class="logs">
+      <h3>Logs</h3>
+      <!-- the engine writes here -->
+      <div id="terminalOutput" class="logs__body"></div>
+    </section>
+
+    <!-- kept for compatibility -->
+    <div id="chainBadge" class="hidden"></div>
+    <div id="chainReason" class="hidden"></div>
+  </aside>
+</div>
+<!-- Temporary input just to test debug-echo -->
+<div style="margin:8px 0;">
+  <label for="echoInput">Echo text:</label>
+  <input id="echoInput" type="text" placeholder="Type something…" style="width:100%;">
+</div>
+
+<!-- Config Modal shell (optional) -->
+<div id="configModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal__dialog">
+    <header class="modal__header">
+      <h3 id="modalTitle">Configuration</h3>
+      <button id="modalClose" class="icon-btn" aria-label="Close">✕</button>
+    </header>
+    <div id="modalBody" class="modal__body"></div>
+    <footer class="modal__footer">
+      <button id="modalSave" class="btn primary">Save</button>
+    </footer>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="{{ url_for('tools.static', filename='js/tools.js') }}"></script>
+<script src="{{ url_for('tools.static', filename='js/ui-bridge.js') }}"></script>
+{% endblock %}

@@ -48,7 +48,7 @@ def create_app():
         MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
         MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
         MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
-        JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=1),
+        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=5),
         JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7),
 
         TURNSTILE_SITE_KEY=os.getenv('TURNSTILE_SITE_KEY', ''),    
@@ -58,23 +58,32 @@ def create_app():
 
         FEATURE_BILLING=os.getenv("FEATURE_BILLING", "0") == "1",
         FEATURE_HELP=os.getenv("FEATURE_HELP", "0") == "1",
+
+        CELERY_QUEUE="tools_default",
+
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
+        "SESSION_COOKIE_SECURE":True,
+        "SESSION_COOKIE_SAMESITE":"Lax",
         "JWT_TOKEN_LOCATION": ["cookies"],            # read/write JWTs from cookies
         "JWT_COOKIE_SECURE": True,                    # only send over HTTPS
         "JWT_COOKIE_SAMESITE": "Lax",                 # CSRF protection level
         "JWT_COOKIE_CSRF_PROTECT": True,              # enable double-submit CSRF
         "JWT_ACCESS_COOKIE_PATH": "/",                # where access cookie is sent
-        "JWT_REFRESH_COOKIE_PATH": "/auth",
+        "JWT_REFRESH_COOKIE_PATH": "/auth/refresh", # old /auth
         "JWT_ACCESS_CSRF_COOKIE_PATH": "/",
-        "JWT_REFRESH_CSRF_COOKIE_PATH": "/",      
+        "JWT_REFRESH_CSRF_COOKIE_PATH": "/",      # old /
         "WTF_CSRF_TIME_LIMIT":3600,
         "WTF_CSRF_METHODS":['POST','PUT','PATCH','DELETE'],
-        "WTF_CSRF_HEADERS": ["X-CSRFToken", "X-CSRF-Token"],
+        "JWT_CSRF_METHODS":["POST", "PUT", "PATCH", "DELETE"],
+        "WTF_CSRF_HEADERS": ["X-CSRFToken"],
     })
     from tempfile import gettempdir
-
+    app.config.setdefault("ARTIFACTS_DIR", os.path.join(app.instance_path, "tools_artifacts"))
+    os.makedirs(app.config["ARTIFACTS_DIR"], exist_ok=True)
+    # By default, write step working dirs under the artifacts root so downloads work OOTB
+    app.config.setdefault("TOOLS_WORK_DIR", app.config["ARTIFACTS_DIR"])
     # Base directory for uploads; override with RECON_ROOT if you want a custom path
     RECON_ROOT = os.getenv("RECON_ROOT", os.path.join(gettempdir(), "recon_uploads"))
 
@@ -82,22 +91,7 @@ def create_app():
     app.config['UPLOAD_OUTPUT_FOLDER'] = os.path.join(RECON_ROOT, "results")
     os.makedirs(app.config['UPLOAD_INPUT_FOLDER'],  exist_ok=True)
     os.makedirs(app.config['UPLOAD_OUTPUT_FOLDER'], exist_ok=True)
-
-
-    # app.config.update({
-            # --- HIBP k-anonymity password check ---
-    # "HIBP_ENABLE": True,                 # master switch
-    # "HIBP_BLOCK_COUNT": 100,             # block if seen ≥ this many times
-    # "HIBP_ADMIN_BLOCK_ANY": True,        # admins blocked if seen ≥ 1
-    # "HIBP_CACHE_TTL_SECONDS": 7*24*3600, # per-prefix cache TTL (7d)
-    # "HIBP_API_TIMEOUT": 2.0,             # seconds
-    # "HIBP_USER_AGENT": "hibp-check/1.0 (contact@example.com)",
-
-    # Optional: point to a dir containing per-prefix files like 'ABCDE.txt'
-    # each file line: SUFFIX:COUNT  (SUFFIX is 35 uppercase hex chars)
-    # "HIBP_OFFLINE_PREFIX_DIR": None,     # e.g. "/var/hibp_prefix"
-    # })
-    
+  
     app.config.update({
         "HIBP_ENABLE": True,               # master switch
         "HIBP_BLOCK_ANY": True,            # block if seen in HIBP at all (>0)
@@ -108,6 +102,8 @@ def create_app():
     app.config.update({
         "TRUSTED_DEVICE_COOKIE_NAME": "tdid",
         "TRUSTED_DEVICE_DAYS": 30,
+
+        "PASSWORD_RESET_TTL_SECONDS ":600 
     })
 
     app.config.setdefault('CELERY_BROKER_URL', os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0'))
