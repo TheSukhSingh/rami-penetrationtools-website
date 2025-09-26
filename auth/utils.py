@@ -2,12 +2,12 @@ from functools import wraps
 import re
 from datetime import datetime, timedelta, timezone
 import secrets
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict
 from hashlib import sha256, sha1
 import os, time
 from extensions import db
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
-from flask import current_app, flash, redirect, request, url_for, jsonify
+from flask import current_app, flash, request, jsonify
 
 from flask_mail import Mail, Message
 from flask_jwt_extended import (
@@ -19,10 +19,21 @@ from .models import LoginEvent, RefreshToken, User, LocalAuth, OAuthAccount, Rec
 from .passwords import COMMON_PASSWORDS
 
 mail = Mail()
+
 utcnow = lambda: datetime.now(timezone.utc)
 
 def init_mail(app):
     mail.init_app(app)
+
+def ensure_aware_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    # If naive, assume it was meant to be UTC
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+def is_expired(dt: datetime | None) -> bool:
+    dt = ensure_aware_utc(dt)
+    return bool(dt and dt <= utcnow())
 
 def generate_confirmation_token(email: str) -> str:
     serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
@@ -78,7 +89,7 @@ def init_jwt_manager(app, jwt):
         hashed_jti = sha256(raw_jti.encode("utf-8")).hexdigest()
         token = RefreshToken.query.filter_by(token_hash=hashed_jti).first()
 
-        if token is None or token.revoked or (token.expires_at and token.expires_at <= utcnow()):
+        if token is None or token.revoked or is_expired(token.expires_at):
             try:
                 uid = int(jwt_payload.get("sub"))
                 RefreshToken.query.filter_by(user_id=uid, revoked=False).update({"revoked": True})
@@ -195,44 +206,6 @@ def login_local(email: str, password: str) -> tuple[dict, str]:
     tokens = jwt_login(user)
     return tokens, None
 
-# def login_oauth(provider: str, provider_id: str, profile_info: dict) -> Dict[str, str]:
-#     """
-#     Handle OAuth sign-in/up. Finds or creates the OAuthAccount + User, then issues tokens.
-#     profile_info must contain at least 'email'; may include 'name'.
-#     """
-#     # 1) If we've seen this exact account before → use that user
-#     oauth = OAuthAccount.query.filter_by(provider=provider, provider_id=provider_id).first()
-#     if oauth:
-#         user = oauth.user
-#         # return jwt_login(user)
-#         return (user, jwt_login(user)) 
-
-#     email = (profile_info.get("email") or "").strip().lower()
-#     name  = profile_info.get("name")
-
-#     # 2) If a user already exists with this email → link this provider to that user
-#     user = User.query.filter_by(email=email).first()
-#     if user:
-#         oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
-#         db.session.add(oa)
-#         db.session.commit()
-#         # return jwt_login(user)
-#         return (user, jwt_login(user)) 
-
-#     # 3) Otherwise create a new user and link the provider
-#     username = generate_username_from_email(email)
-#     user = User(email=email, username=username, name=name)
-#     db.session.add(user)
-#     db.session.flush()  # get user.id
-
-#     oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
-#     db.session.add(oa)
-#     db.session.commit()
-
-#     # return jwt_login(user)
-#     return (user, jwt_login(user)) 
-
-
 def login_oauth(provider: str, provider_id: str, profile_info: dict) -> tuple[User, dict | None]:
     """
     Handle OAuth sign-in/up. Returns (user, tokens_or_None).
@@ -342,40 +315,6 @@ def validate_and_set_password(user, password, confirm, commit=True):
     if cnt is not None and cnt > 0 and current_app.config.get("HIBP_BLOCK_ANY", True):
         flash("This password has appeared in known data breaches. Please choose a different one.", "warning")
         return False
-
-    # # 7.5) HIBP k-anonymity check (API-first, offline fallback)
-    # count = hibp_count_for_password(password)
-    # # Determine if the user is privileged (tighten policy)
-    # is_admin = False
-    # try:
-    #     # If roles relationship exists, treat any 'admin'/'superadmin' as privileged
-    #     is_admin = any(getattr(r, "name", "").lower() in {"admin", "superadmin"} for r in getattr(user, "roles", []))
-    # except Exception:
-    #     pass
-
-    # # Decide per policy
-    # admin_block_any   = bool(current_app.config.get("HIBP_ADMIN_BLOCK_ANY", True))
-    # block_threshold   = int(current_app.config.get("HIBP_BLOCK_COUNT", 100))
-
-    # if count is not None:
-    #     if (is_admin and admin_block_any and count >= 1) or (not is_admin and count >= block_threshold):
-    #         flash("This password has appeared in known data breaches. Please choose a different one.", "warning")
-    #         return False
-    #     # else: allow; optionally you could flash a soft warning if 1–99 for regular users
-    # else:
-    #     # Graceful degrade: API down & no offline mirror → proceed using local checks only
-    #     # (Optional) flash a low-priority note in debug environments
-    #     pass
-    
-
-    # OK: hash & store it
-    # try:
-    #     la = user.local_auth or LocalAuth(user_id=user.id)
-    #     la.set_password(password)
-    # except ValueError as ve:
-    #     flash(str(ve), 'warning')
-    #     return False
-
     try:
         la = user.local_auth or LocalAuth(user_id=user.id)
         # **attach it to the user relationship so `user.local_auth` is never None**
