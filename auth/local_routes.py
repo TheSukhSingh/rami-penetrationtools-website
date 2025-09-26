@@ -48,7 +48,8 @@ from .utils import (
     require_account_ok,
     get_current_refresh_hash_from_request,
     ensure_aware_utc, 
-    utcnow
+    utcnow,
+    get_current_trusted_device_hash_from_request, 
 )
 from flask_jwt_extended import (
     create_access_token, 
@@ -71,6 +72,36 @@ def _resend_key():
     email = (data.get("email") or "").strip().lower()
     ip = get_remote_address()
     return f"{ip}:{email}" if email else ip
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+def _rt_to_dict(rt: RefreshToken):
+    # Active if not revoked and not expired
+    now = _utcnow()
+    is_expired = bool(rt.expires_at and rt.expires_at <= now)
+    return {
+        "id": rt.id,
+        "created_at": rt.created_at.isoformat() if rt.created_at else None,
+        "last_used_at": rt.last_used_at.isoformat() if rt.last_used_at else None,
+        "expires_at": rt.expires_at.isoformat() if rt.expires_at else None,
+        "revoked": bool(rt.revoked),
+        "active": (not rt.revoked) and (not is_expired),
+        "ip": rt.ip or None,
+        "user_agent": rt.user_agent or None,
+        "device_label": rt.device_label or None,
+    }
+
+def _td_to_dict(td: TrustedDevice):
+    return {
+        "id": td.id,
+        "label": td.label or None,
+        "created_at": td.created_at.isoformat() if getattr(td, "created_at", None) else None,
+        "last_seen_at": td.last_seen_at.isoformat() if getattr(td, "last_seen_at", None) else None,
+        "ip": td.ip or None,
+        "user_agent": td.user_agent or None,
+        "expires_at": td.expires_at.isoformat() if getattr(td, "expires_at", None) else None,
+    }
 
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 @limiter.limit("10 per hour", key_func=get_remote_address)
@@ -113,7 +144,6 @@ def signup():
 
     db.session.add(user)
 
-    # db.session.flush()  
 
     try:
         db.session.flush()  # will assign user.id or throw if constraints fail
@@ -247,9 +277,11 @@ def refresh():
             db.session.commit()
         except Exception:
             db.session.rollback()
-        return jsonify({"msg": "Token has been revoked"}), 401
+        return jsonify({"ok": False, "error": "TOKEN_REVOKED", "message": "Token has been revoked"}), 401
 
-    # 3) Rotate: revoke old, mint new refresh + access, persist new refresh JTI
+
+    # 3) Rotate: stamp last use, revoke old, mint new refresh + access, persist new refresh JTI
+    row.last_used_at = _utcnow()
     row.revoked = True
 
     new_rt = create_refresh_token(identity=sub)
@@ -259,13 +291,16 @@ def refresh():
     db.session.add(RefreshToken(
         user_id=int(sub),
         token_hash=new_hash,
-        expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+        expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+        ip=request.remote_addr,
+        user_agent=(request.headers.get("User-Agent") or "")[:255],
     ))
 
     new_at = create_access_token(identity=sub)
     db.session.commit()
 
-    resp = jsonify({"msg": "Token refreshed"})
+    resp = jsonify({"ok": True, "message": "Token refreshed"})
+
     set_access_cookies(resp, new_at)
     set_refresh_cookies(resp, new_rt)
     return resp, 200
@@ -293,6 +328,86 @@ def _ratelimit_error(e):
         return resp, 429
     return "Too many requests.", 429
 
+@auth_bp.route('/devices', methods=['GET'])
+@require_account_ok(require_verified=True)
+@limiter.limit("60 per hour", key_func=get_remote_address)
+def list_devices():
+    user = g.current_user
+    rows = (TrustedDevice.query
+            .filter_by(user_id=user.id)
+            .order_by(TrustedDevice.created_at.desc())
+            .all())
+
+    now_utc = utcnow()
+    current_hash = get_current_trusted_device_hash_from_request()
+
+    def to_dict(td: TrustedDevice):
+        created = ensure_aware_utc(getattr(td, "created_at", None))
+        last    = ensure_aware_utc(getattr(td, "last_used_at", getattr(td, "last_seen_at", None)))
+        exp     = ensure_aware_utc(getattr(td, "expires_at", None))
+        expired = bool(exp and exp <= now_utc)
+        return {
+            "id": td.id,
+            "label": td.label or None,
+            "created_at": created.isoformat() if created else None,
+            "last_used_at": last.isoformat() if last else None,
+            "expires_at": exp.isoformat() if exp else None,
+            "expired": expired,
+            "current": (current_hash is not None and td.token_hash == current_hash),
+            "user_agent": td.user_agent or None,
+            "ip": td.ip or None,
+        }
+
+    return jsonify({"devices": [to_dict(d) for d in rows]}), 200
+
+@auth_bp.route('/devices/revoke', methods=['POST'])
+@require_account_ok(require_verified=True)
+@limiter.limit("20 per hour", key_func=get_remote_address)
+def revoke_device():
+    user = g.current_user
+    data = request.get_json(silent=True) or {}
+    did = data.get("device_id")
+    if not did:
+        return jsonify({"ok": False, "error": "BAD_REQUEST", "message": "device_id required"}), 400
+
+    td = TrustedDevice.query.filter_by(id=did, user_id=user.id).first()
+    if not td:
+        return jsonify({"ok": False, "error": "NOT_FOUND", "message": "Device not found"}), 404
+
+    # If caller is revoking the CURRENT trusted device, also clear the cookie
+    current_hash = get_current_trusted_device_hash_from_request()
+    resp = jsonify({"ok": True, "message": "Device revoked"})
+
+    if current_hash and td.token_hash == current_hash:
+        unset_jwt_cookies(resp)  # optional: only clears JWT; we also want to clear trusted device cookie
+        # Explicitly clear trusted-device cookie (name may be overridden by config)
+        resp.delete_cookie(
+            current_app.config.get("TRUSTED_DEVICE_COOKIE_NAME", "tdid"),
+            path="/", samesite="Lax"
+        )
+
+    db.session.delete(td)
+    db.session.commit()
+    return resp, 200
+
+@auth_bp.route('/devices/revoke-all', methods=['POST'])
+@require_account_ok(require_verified=True)
+@limiter.limit("10 per hour", key_func=get_remote_address)
+def revoke_all_devices():
+    user = g.current_user
+    rows = TrustedDevice.query.filter_by(user_id=user.id).all()
+    count = len(rows)
+    for td in rows:
+        db.session.delete(td)
+    db.session.commit()
+
+    resp = jsonify({"ok": True, "message": "All devices revoked", "count": count})
+    # Clear trusted-device cookie for the caller
+    resp.delete_cookie(
+        current_app.config.get("TRUSTED_DEVICE_COOKIE_NAME", "tdid"),
+        path="/", samesite="Lax"
+    )
+    return resp, 200
 
 @auth_bp.route('/forgot-password', methods=['POST'])
 @limiter.limit("3 per hour", key_func=get_remote_address)
@@ -342,8 +457,12 @@ def reset_password(token):
     pr.consume()                # consume the token only on success
     RefreshToken.query.filter_by(user_id=pr.user.id, revoked=False).update({"revoked": True})
     db.session.commit()
+
+    resp = redirect(url_for('index'))
+    unset_jwt_cookies(resp)     # sign the browser out on all tabs
     flash('Your password has been updated! Please log in.', 'success')
-    return redirect(url_for('index'))
+    return resp
+
 
 @auth_bp.route('/me', methods=['GET'])
 @require_account_ok(require_verified=True)

@@ -32,18 +32,20 @@ def _emit_guard_error(code: str, http: int, message: str):
     return jsonify(payload), http
 
 def _resolve_email_verified(user) -> bool:
-    """
-    Tries a few common places:
-      - user.email_verified (if your User has it)
-      - user.local_auth.email_verified (if email_verified lives on LocalAuth)
-    Defaults to False if unknown.
-    """
+    # 1) If project ever adds User.email_verified, honor it
     if hasattr(user, "email_verified"):
-        return bool(getattr(user, "email_verified"))
+        if bool(getattr(user, "email_verified")):
+            return True
+    # 2) LocalAuth-based verification
     la = getattr(user, "local_auth", None)
-    if la and hasattr(la, "email_verified"):
-        return bool(getattr(la, "email_verified"))
+    if la and hasattr(la, "email_verified") and bool(la.email_verified):
+        return True
+    # 3) If the user has any linked OAuth accounts, treat as verified (provider-verified email)
+    oas = getattr(user, "oauth_accounts", None)
+    if oas and len(oas) > 0:
+        return True
     return False
+
 
 def require_account_ok(require_verified: bool = True):
     """
@@ -256,7 +258,9 @@ def jwt_login(user: User) -> Dict[str, str]:
     rt = RefreshToken(
         user_id    = user.id,
         token_hash = hashed_jti,
-        expires_at = datetime.fromtimestamp(data['exp'], tz=timezone.utc)
+        expires_at = datetime.fromtimestamp(data['exp'], tz=timezone.utc),
+        ip         = request.remote_addr,
+        user_agent = (request.headers.get("User-Agent") or "")[:255],
     )
     db.session.add(rt)
     db.session.commit()
@@ -344,7 +348,7 @@ def login_oauth(provider: str, provider_id: str, profile_info: dict):
         user = User.query.filter_by(email=email).first()
         if user:
             # Prevent linking to a local account that hasn't verified its email
-            if not getattr(user, "email_verified", False):
+            if user.local_auth and not user.local_auth.email_verified:
                 raise PermissionError("LOCAL_EMAIL_UNVERIFIED")
             # Block linking to inactive accounts
             if getattr(user, "is_blocked", False) or getattr(user, "is_deactivated", False):
@@ -356,7 +360,7 @@ def login_oauth(provider: str, provider_id: str, profile_info: dict):
         else:
             # 3) Create new user (Google One-Tap requires verified email before we even get here)
             username = generate_username_from_email(email)  # keep your existing helper
-            user = User(email=email, username=username, name=name, email_verified=True)
+            user = User(email=email, username=username, name=name)
             db.session.add(user)
             db.session.flush()  # get user.id
             oa = OAuthAccount(provider=provider, provider_id=provider_id, user_id=user.id)
@@ -638,6 +642,20 @@ def _remember_device(user_id: int, user_agent: str) -> tuple[str, datetime]:
     ))
     db.session.commit()
     return raw, expires
+
+def get_current_trusted_device_hash_from_request() -> str | None:
+    """
+    Read the trusted-device cookie and return its hashed token (to compare with DB).
+    Returns None if cookie missing/invalid.
+    """
+    name = current_app.config.get("TRUSTED_DEVICE_COOKIE_NAME", "tdid")
+    raw = request.cookies.get(name)
+    if not raw:
+        return None
+    try:
+        return _sha(raw)
+    except Exception:
+        return None
 
 def generate_recovery_codes(user_id: int, count: int = 10) -> list[str]:
     """
