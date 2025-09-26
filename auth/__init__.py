@@ -1,4 +1,6 @@
 from flask import Blueprint
+from flask import Blueprint, g, request, current_app
+import secrets
 
 auth_bp = Blueprint(
     'auth',
@@ -11,22 +13,54 @@ auth_bp = Blueprint(
  
 import click
 
-@auth_bp.after_request
-def _auth_security_headers(resp):
-    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
-    resp.headers.setdefault('X-Frame-Options', 'DENY')  # relax only where needed
-    resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
-    # If you use a nonce-based global CSP, prefer that instead of this baseline.
-    resp.headers.setdefault(
-        'Content-Security-Policy',
-        "default-src 'self'; "
-        "script-src 'self' https://accounts.google.com https://www.gstatic.com; "
-        "frame-src https://accounts.google.com; "
-        "connect-src 'self'; "
-        "img-src 'self' data: https://www.gstatic.com; "
-        "style-src 'self' 'unsafe-inline'"
+# --- CSP NONCE (per-request) ---
+@auth_bp.before_app_request
+def _inject_csp_nonce():
+    # one random nonce per request; accessible in templates as {{ csp_nonce }}
+    g.csp_nonce = secrets.token_urlsafe(16)
+
+@auth_bp.app_context_processor
+def _expose_csp_nonce():
+    return {"csp_nonce": getattr(g, "csp_nonce", "")}
+
+# --- Security headers (auth pages only) ---
+@auth_bp.after_app_request
+def _auth_security_headers(response):
+    # only protect auth endpoints/pages (don’t disturb other blueprints)
+    if not (request.blueprint == "auth" or request.path.startswith("/auth")):
+        return response
+
+    # HSTS (enable under HTTPS)
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+
+    # Classic hardening
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy",
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), gyroscope=(), magnetometer=(),"
+        "fullscreen=(self), clipboard-read=(self), clipboard-write=(self)"
     )
-    return resp
+    # We also set frame-ancestors via CSP (more modern), but keep XFO for legacy
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+
+    # --- Content Security Policy with nonce ---
+    # Allow inline scripts ONLY with the per-request nonce.
+    # Allow external scripts/frames for Google One Tap + Cloudflare Turnstile.
+    nonce = getattr(g, "csp_nonce", "")
+    csp = (
+        "default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}' https://accounts.google.com https://challenges.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline'; "  # keep inline styles for now to avoid breaking forms; can tighten later
+        "img-src 'self' data: blob:; "
+        "font-src 'self' data:; "
+        "connect-src 'self' https://accounts.google.com https://challenges.cloudflare.com; "
+        "frame-src https://accounts.google.com https://challenges.cloudflare.com; "
+        "base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+    )
+    response.headers["Content-Security-Policy"] = csp
+
+    return response
 
 @auth_bp.cli.command("purge-expired")
 @click.option("--dry", is_flag=True, help="Show counts only; do not delete")

@@ -41,7 +41,7 @@ def create_app():
         MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
         MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
         MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
-        JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=1),
+        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=5),
         JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7),
 
         TURNSTILE_SITE_KEY=os.getenv('TURNSTILE_SITE_KEY', ''),    
@@ -57,16 +57,19 @@ def create_app():
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
+        "SESSION_COOKIE_SECURE":True,
+        "SESSION_COOKIE_SAMESITE":"Lax",
         "JWT_TOKEN_LOCATION": ["cookies"],            # read/write JWTs from cookies
-        "JWT_COOKIE_SECURE": False,                    # only send over HTTPS
+        "JWT_COOKIE_SECURE": True,                    # only send over HTTPS
         "JWT_COOKIE_SAMESITE": "Lax",                 # CSRF protection level
         "JWT_COOKIE_CSRF_PROTECT": True,              # enable double-submit CSRF
         "JWT_ACCESS_COOKIE_PATH": "/",                # where access cookie is sent
-        "JWT_REFRESH_COOKIE_PATH": "/", # old /auth
+        "JWT_REFRESH_COOKIE_PATH": "/auth/refresh", # old /auth
         "JWT_ACCESS_CSRF_COOKIE_PATH": "/",
         "JWT_REFRESH_CSRF_COOKIE_PATH": "/",      # old /
         "WTF_CSRF_TIME_LIMIT":3600,
         "WTF_CSRF_METHODS":['POST','PUT','PATCH','DELETE'],
+        "JWT_CSRF_METHODS":["POST", "PUT", "PATCH", "DELETE"],
         "WTF_CSRF_HEADERS": ["X-CSRFToken"],
     })
     from tempfile import gettempdir
