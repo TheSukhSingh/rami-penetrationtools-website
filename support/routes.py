@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import jsonify, current_app, request, abort
+from flask import jsonify, current_app, request, abort, send_file
 from . import support_bp
 from .authz import admin_required, auth_required, current_user_and_admin
 
@@ -15,6 +15,8 @@ from support.models import (
     PRIORITY_VALUES,
     VISIBILITY_VALUES,
 )
+from support.storage import save_upload, scan_file
+from werkzeug.datastructures import FileStorage
 
 # Uses your existing auth models
 from auth.models import User, Role
@@ -246,7 +248,16 @@ def support_ticket_detail(ticket_id: int):
         "visibility": m.visibility,
         "body": m.body,
         "created_at": m.created_at.isoformat(),
+        "attachments": [{
+            "id": a.id,
+            "filename": a.filename,
+            "size": a.size,
+            "mime": a.mime,
+            "scan_status": a.scan_status,
+            "download_url": f"/support/attachments/{a.id}/download"
+        } for a in m.attachments]
     } for m in msgs_q.all()]
+
 
     return jsonify({
         "ok": True,
@@ -358,6 +369,151 @@ def support_ticket_reply(ticket_id: int):
             "closed_at": t.closed_at.isoformat() if t.closed_at else None,
         }
     }), 201
+
+@support_bp.post("/t/<int:ticket_id>/upload")
+@auth_required
+def support_ticket_upload(ticket_id: int):
+    """
+    Upload an attachment and (optionally) post a message.
+    Request: multipart/form-data
+      - file: the file (required)
+      - body: optional text to post with the file (default: "")
+      - internal: optional bool (admin_owner only; default False)
+      - set_status: optional str (admin_owner only)
+    Behavior:
+      - Creates a SupportMessage (public for users; admin can choose internal/public)
+      - Streams file to disk with size/type validation
+      - Marks scan_status (placeholder: clean)
+    """
+    me_user, is_admin = current_user_and_admin()
+
+    # Row guard: ticket must exist and user must be requester (or admin)
+    t = SupportTicket.query.filter_by(id=ticket_id).first()
+    if not t:
+        abort(404, description="ticket not found")
+    if not is_admin and (not me_user or t.requester_user_id != me_user.id):
+        abort(403)
+
+    if "file" not in request.files:
+        abort(400, description="file is required (multipart/form-data)")
+
+    file: FileStorage = request.files["file"]
+    body = (request.form.get("body") or "").strip()
+
+    internal = False
+    if is_admin:
+        internal = str(request.form.get("internal", "0")).lower() in ("1", "true", "yes")
+    visibility = "internal" if internal else "public"
+
+    # Create a message (even if body is empty, to anchor the attachment)
+    msg = SupportMessage(
+        ticket_id=t.id,
+        author_user_id=(me_user.id if me_user else None),
+        visibility=visibility,
+        body=body or "",
+    )
+    db.session.add(msg)
+    db.session.flush()  # get msg.id
+
+    # Save file
+    try:
+        storage_url, size, mime, final_name = save_upload(t.id, msg.id, file)
+    except ValueError as ve:
+        db.session.rollback()
+        abort(400, description=str(ve))
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("[support] upload failed")
+        abort(500, description="upload failed")
+
+    # Create attachment row (scan pending)
+    att = SupportAttachment(
+        message_id=msg.id,
+        filename=final_name,
+        size=size,
+        mime=mime or "application/octet-stream",
+        storage_url=storage_url,
+        checksum=None,
+        scan_status="pending",
+    )
+    db.session.add(att)
+    db.session.commit()
+
+    # Synchronous scan (placeholder)
+    try:
+        status = scan_file(storage_url)
+        att.scan_status = status if status in ("clean", "infected", "failed") else "failed"
+        # Status nudges
+        if not is_admin and t.status in ("pending_user", "solved", "closed"):
+            _set_status(t, "open")
+        elif is_admin and t.status == "new" and visibility == "public":
+            _set_status(t, "open")
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("[support] scan failed")
+        # keep 'pending' if scan errored; client can retry/view status
+
+    return jsonify({
+        "ok": True,
+        "message": {
+            "id": msg.id,
+            "visibility": msg.visibility,
+            "created_at": msg.created_at.isoformat(),
+        },
+        "attachment": {
+            "id": att.id,
+            "filename": att.filename,
+            "size": att.size,
+            "mime": att.mime,
+            "scan_status": att.scan_status,
+        },
+        "ticket": {
+            "id": t.id,
+            "status": t.status,
+            "updated_at": t.updated_at.isoformat(),
+        }
+    }), 201
+
+@support_bp.get("/attachments/<int:attachment_id>/download")
+@auth_required
+def support_attachment_download(attachment_id: int):
+    """
+    Download an attachment if you're allowed to view the parent ticket.
+    - Only 'clean' files are downloadable.
+    - Admin_owner can download always; users only if requester of that ticket.
+    """
+    me_user, is_admin = current_user_and_admin()
+
+    att = (SupportAttachment.query
+           .filter_by(id=attachment_id)
+           .first())
+    if not att:
+        abort(404, description="attachment not found")
+
+    msg = SupportMessage.query.filter_by(id=att.message_id).first()
+    if not msg:
+        abort(404, description="message missing")
+    t = SupportTicket.query.filter_by(id=msg.ticket_id).first()
+    if not t:
+        abort(404, description="ticket missing")
+
+    # Permission: requester or admin
+    if not is_admin and (not me_user or t.requester_user_id != me_user.id):
+        abort(403)
+
+    # Only allow clean attachments
+    if att.scan_status != "clean":
+        abort(409, description=f"attachment not available (scan_status={att.scan_status})")
+
+    path = att.storage_url
+    if not path or not os.path.exists(path):
+        abort(404, description="file not found on storage")
+
+    try:
+        return send_file(path, as_attachment=True, download_name=att.filename, mimetype=att.mime or None, max_age=0)
+    except Exception:
+        current_app.logger.exception("[support] send_file failed for att=%s", att.id)
+        abort(500, description="download failed")
 
 @support_bp.patch("/t/<int:ticket_id>/status")
 @admin_required

@@ -57,6 +57,12 @@ def create_app():
         CELERY_QUEUE="tools_default",
 
         SUPPORT_SOLO_MODE=True,
+        # Support attachments (Task 8)
+        SUPPORT_UPLOAD_DIR=os.environ.get("SUPPORT_UPLOAD_DIR", "./var/support_uploads"),
+        SUPPORT_MAX_UPLOAD_MB=int(os.environ.get("SUPPORT_MAX_UPLOAD_MB", "15")),
+        SUPPORT_ALLOWED_MIME=os.environ.get("SUPPORT_ALLOWED_MIME", "image/png,image/jpeg,application/pdf,text/plain,application/zip").split(","),
+        SUPPORT_ALLOWED_EXT=os.environ.get("SUPPORT_ALLOWED_EXT", "png,jpg,jpeg,pdf,txt,log,zip").split(","),
+
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
