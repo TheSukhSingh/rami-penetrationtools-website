@@ -1,6 +1,6 @@
 from datetime import datetime
 import os
-from flask import jsonify, current_app, request, abort, send_file, Response
+from flask import jsonify, current_app, render_template, request, abort, send_file, Response
 from . import support_bp
 from .authz import admin_required, auth_required, current_user_and_admin
 
@@ -111,17 +111,8 @@ def _remove_tags(ticket: SupportTicket, rem_list):
 # ---------- existing endpoints ------------------------------------------------
 
 @support_bp.get("/")
-@auth_required
-def support_home():
-    user, is_admin = current_user_and_admin()
-    return jsonify({
-        "ok": True,
-        "feature_help": bool(current_app.config.get("FEATURE_HELP", False)),
-        "solo_mode": True,
-        "me": getattr(user, "email", None),
-        "role_view": "admin" if is_admin else "user",
-        "message": "Support Center (Solo Mode) is live."
-    })
+def support_index():
+    return render_template("support/index.html")
 
 @support_bp.get("/admin")
 @admin_required
@@ -232,7 +223,7 @@ def support_my_tickets():
 
     return jsonify({"ok": True, "tickets": items})
 
-@support_bp.get("/t/<int:ticket_id>")
+@support_bp.get("/t/<ticket_id>")
 @auth_required
 def support_ticket_detail(ticket_id: int):
     me_user, is_admin = current_user_and_admin()
@@ -287,7 +278,7 @@ def support_ticket_detail(ticket_id: int):
         "messages": messages
     })
 
-@support_bp.post("/t/<int:ticket_id>/reply")
+@support_bp.post("/t/<ticket_id>/reply")
 @auth_required
 def support_ticket_reply(ticket_id: int):
     """
@@ -393,7 +384,7 @@ def support_ticket_reply(ticket_id: int):
         }
     }), 201
 
-@support_bp.post("/t/<int:ticket_id>/upload")
+@support_bp.post("/t/<ticket_id>/upload")
 @auth_required
 def support_ticket_upload(ticket_id: int):
     """
@@ -552,7 +543,7 @@ def support_attachment_download(attachment_id: int):
         current_app.logger.exception("[support] send_file failed for att=%s", att.id)
         abort(500, description="download failed")
 
-@support_bp.patch("/t/<int:ticket_id>/status")
+@support_bp.patch("/t/<ticket_id>/status")
 @admin_required
 def support_ticket_set_status(ticket_id: int):
     """
@@ -769,7 +760,7 @@ def support_admin_tickets():
 
 # ---------- Quick edits, bulk actions, snippets (Task 6) ---------------------
 
-@support_bp.patch("/t/<int:ticket_id>/priority")
+@support_bp.patch("/t/<ticket_id>/priority")
 @admin_required
 def support_ticket_set_priority(ticket_id: int):
     payload = request.get_json(silent=True) or {}
@@ -792,7 +783,7 @@ def support_ticket_set_priority(ticket_id: int):
 
     return jsonify({"ok": True, "ticket": {"id": t.id, "priority": t.priority, "updated_at": t.updated_at.isoformat()}})
 
-@support_bp.patch("/t/<int:ticket_id>/assign")
+@support_bp.patch("/t/<ticket_id>/assign")
 @admin_required
 def support_ticket_assign(ticket_id: int):
     payload = request.get_json(silent=True) or {}
@@ -975,7 +966,7 @@ def support_snippets_delete(snippet_id: int):
     db.session.commit()
     return jsonify({"ok": True})
 
-@support_bp.post("/t/<int:ticket_id>/apply-snippet")
+@support_bp.post("/t/<ticket_id>/apply-snippet")
 @admin_required
 def support_ticket_apply_snippet(ticket_id: int):
     payload = request.get_json(silent=True) or {}

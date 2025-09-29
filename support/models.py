@@ -2,6 +2,11 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, Index, ForeignKey
 from sqlalchemy.orm import relationship
 from extensions import db
+from uuid import uuid4
+
+def gen_ticket_id() -> str:
+    # 32-char hex; stable, collision-resistant enough for tickets
+    return uuid4().hex
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Enumerations via CHECK constraints (portable for SQLite/Postgres)
@@ -14,7 +19,7 @@ SCAN_STATUS_VALUES = ("pending", "clean", "infected", "failed")
 class SupportTicket(db.Model):
     __tablename__ = "support_tickets"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    id = db.Column(db.String(32), primary_key=True, nullable=False, default=gen_ticket_id)
 
     # Adjust the FK target if your users table name differs from "users"
     requester_user_id = db.Column(db.Integer, ForeignKey("users.id"), nullable=False, index=True)
@@ -55,9 +60,10 @@ class SupportTicket(db.Model):
 
 class SupportMessage(db.Model):
     __tablename__ = "support_messages"
+    __table_args__ = {"sqlite_autoincrement": True}
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    ticket_id = db.Column(db.BigInteger, ForeignKey("support_tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = db.Column(db.Integer, primary_key=True)  # was BigInteger
+    ticket_id = db.Column(db.Integer, ForeignKey("support_tickets.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # author_user_id may be null for system messages (auto-reminders, auto-close)
     author_user_id = db.Column(db.Integer, ForeignKey("users.id"), nullable=True, index=True)
@@ -81,7 +87,7 @@ class SupportMessage(db.Model):
 class SupportAttachment(db.Model):
     __tablename__ = "support_attachments"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     message_id = db.Column(db.BigInteger, ForeignKey("support_messages.id", ondelete="CASCADE"), nullable=False, index=True)
 
     filename = db.Column(db.String(255), nullable=False)
@@ -110,7 +116,7 @@ class SupportAttachment(db.Model):
 class SupportSnippet(db.Model):
     __tablename__ = "support_snippets"
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     title = db.Column(db.String(80), nullable=False)
     body = db.Column(db.Text, nullable=False)  # keep small-ish; UX will paginate list
     is_active = db.Column(db.Boolean, nullable=False, default=True)
@@ -123,12 +129,13 @@ class SupportSnippet(db.Model):
 # ─────────────────────────────────────────────────────────────────────────────
 class SupportAudit(db.Model):
     __tablename__ = "support_audits"
+    __table_args__ = {"sqlite_autoincrement": True}
 
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    id = db.Column(db.Integer, primary_key=True)
     actor_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     action = db.Column(db.String(64), nullable=False)              # e.g., status_set, priority_set, assign, upload, download
     resource_type = db.Column(db.String(32), nullable=False)       # ticket|message|attachment|settings
-    resource_id = db.Column(db.BigInteger, nullable=False, index=True)
+    resource_id = db.Column(db.Integer, nullable=False, index=True)
     before = db.Column(db.JSON, nullable=True)
     after = db.Column(db.JSON, nullable=True)
     reason = db.Column(db.String(255), nullable=True)

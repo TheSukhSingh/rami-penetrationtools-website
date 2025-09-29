@@ -1,0 +1,158 @@
+{% set title = "Support" %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('support.static', filename='css/support.css') }}">
+</head>
+<body>
+  <header class="app-bar">
+    <h1>Support</h1>
+    <div id="auth-hint" class="auth-hint" hidden>
+      <span>You're not authenticated. Log in, then reload this page.</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Sidebar: My Tickets + New -->
+    <aside class="sidebar">
+      <section class="card">
+        <div class="card-head">
+          <h2>My tickets</h2>
+          <button id="refreshMy" class="btn btn-light" title="Refresh">↻</button>
+        </div>
+        <div id="myTickets" class="list"></div>
+      </section>
+
+      <section class="card">
+        <h2>New ticket</h2>
+        <form id="newTicketForm" class="form">
+          <label>Subject
+            <input type="text" name="subject" required maxlength="160" />
+          </label>
+          <label>Description
+            <textarea name="description" rows="4" required></textarea>
+          </label>
+          <label>Priority
+            <select name="priority">
+              <option value="normal" selected>Normal</option>
+              <option value="low">Low</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+          <button class="btn">Create</button>
+          <div id="newTicketMsg" class="muted small"></div>
+        </form>
+      </section>
+
+      <!-- Admin panel (auto shown if admin accessible) -->
+      <section id="adminPanel" class="card" hidden>
+        <div class="card-head">
+          <h2>Admin</h2>
+          <button id="refreshAdmin" class="btn btn-light" title="Refresh">↻</button>
+        </div>
+
+        <div class="stack gap-s">
+          <div class="muted small">You have admin access.</div>
+          <div id="adminCounts" class="chips"></div>
+
+          <details class="accordion">
+            <summary>Admin tickets</summary>
+            <form id="adminFilterForm" class="form small-grid">
+              <input type="text" name="search" placeholder="Search…" />
+              <select name="status">
+                <option value="">Any status</option>
+                <option>new</option><option>open</option><option>on_hold</option>
+                <option>pending_user</option><option>solved</option><option>closed</option>
+              </select>
+              <select name="priority">
+                <option value="">Any priority</option>
+                <option>low</option><option>normal</option><option>high</option>
+              </select>
+              <button class="btn btn-light" type="submit">Apply</button>
+            </form>
+            <div id="adminTickets" class="list compact"></div>
+          </details>
+
+          <details id="adminTicketTools" class="accordion" open hidden>
+            <summary>Selected ticket admin tools</summary>
+            <div class="form">
+              <div class="row">
+                <label>Status
+                  <select id="admStatusSel">
+                    <option>new</option><option selected>open</option><option>on_hold</option>
+                    <option>pending_user</option><option>solved</option><option>closed</option>
+                  </select>
+                </label>
+                <button id="admSetStatus" class="btn btn-light" type="button">Update</button>
+              </div>
+
+              <div class="row">
+                <label>Priority
+                  <select id="admPrioritySel">
+                    <option>low</option><option selected>normal</option><option>high</option>
+                  </select>
+                </label>
+                <button id="admSetPriority" class="btn btn-light" type="button">Update</button>
+              </div>
+
+              <div class="row">
+                <label>Assign to user id
+                  <input id="admAssignId" type="number" min="1" step="1" placeholder="e.g. 1" />
+                </label>
+                <button id="admAssign" class="btn btn-light" type="button">Assign</button>
+              </div>
+
+              <div class="row">
+                <label>Snippets
+                  <select id="admSnippetSel"></select>
+                </label>
+                <button id="admApplySnippet" class="btn btn-light" type="button">Apply snippet</button>
+              </div>
+
+              <div id="adminActionMsg" class="muted small"></div>
+            </div>
+          </details>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Main content: Ticket detail -->
+    <section class="content">
+      <div id="ticketHeader" class="ticket-head card" hidden>
+        <div class="ticket-meta">
+          <div class="title">
+            <span class="badge" id="tPriority">normal</span>
+            <h2 id="tSubject">Subject</h2>
+          </div>
+          <div class="meta">
+            <span id="tStatus" class="chip">new</span>
+            <span class="chip">#<span id="tId">…</span></span>
+            <span class="chip">Updated <span id="tUpdated">…</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="thread" class="thread card" hidden>
+        <ul id="messages" class="messages"></ul>
+        <form id="replyForm" class="form reply">
+          <textarea name="body" rows="3" placeholder="Write a reply…" required></textarea>
+          <div class="row">
+            <input type="file" name="file" />
+            <button class="btn">Send reply</button>
+          </div>
+          <div id="replyMsg" class="muted small"></div>
+        </form>
+      </div>
+
+      <div id="emptyState" class="empty" hidden>
+        <p>Select a ticket on the left, or create a new one.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('support.static', filename='js/support.js') }}"></script>
+</body>
+</html>

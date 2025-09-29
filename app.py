@@ -143,9 +143,7 @@ def create_app():
     app.register_blueprint(tools_bp)
     app.register_blueprint(blog_bp)
     app.register_blueprint(user_dashboard_bp)
-
-    if app.config.get("FEATURE_HELP", False):
-        app.register_blueprint(support_bp)
+    app.register_blueprint(support_bp)
 
     init_jwt_manager(app, jwt)
 
