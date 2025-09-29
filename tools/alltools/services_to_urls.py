@@ -1,7 +1,7 @@
 # tools/alltools/tools/services_to_urls.py
 from __future__ import annotations
 from typing import List, Tuple
-from ._common import (
+from tools.alltools.tools._common import (
     ensure_work_dir, read_targets, PORT_RE, finalize, ValidationError, now_ms
 )
 
