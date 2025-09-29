@@ -116,3 +116,26 @@ def notify_status_change_to_user(ticket, requester):
         <p>— Support</p>
     """
     _send_email(requester.email, subj, html)
+
+def notify_pending_user_reminder(ticket, requester, days_waited: int):
+    link = _ticket_url(ticket.id)
+    subj = f"[hackr.gg] Reminder: we’re waiting on you (Ticket #{ticket.id})"
+    html = f"""
+        <p>Hi {getattr(requester, 'name', requester.email)},</p>
+        <p>We’re still waiting for your reply on ticket <strong>#{ticket.id}</strong> (“{ticket.subject}”).</p>
+        <p>Please reply here: <a href="{link}">{link}</a></p>
+        <p>— Support</p>
+    """
+    _send_email(requester.email, subj, html)
+
+def notify_auto_close_reminder(ticket, requester, days_remaining: int):
+    link = _ticket_url(ticket.id)
+    subj = f"[hackr.gg] Ticket #{ticket.id} will auto-close soon"
+    html = f"""
+        <p>Hi {getattr(requester, 'name', requester.email)},</p>
+        <p>Your ticket <strong>#{ticket.id}</strong> is currently <strong>solved</strong>. If you still need help, just reply.</p>
+        <p>Otherwise it will auto-close in <strong>{days_remaining} day(s)</strong>.</p>
+        <p>Link: <a href="{link}">{link}</a></p>
+        <p>— Support</p>
+    """
+    _send_email(requester.email, subj, html)

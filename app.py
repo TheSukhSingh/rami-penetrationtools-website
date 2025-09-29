@@ -63,6 +63,8 @@ def create_app():
         SUPPORT_ALLOWED_MIME=os.environ.get("SUPPORT_ALLOWED_MIME", "image/png,image/jpeg,application/pdf,text/plain,application/zip").split(","),
         SUPPORT_ALLOWED_EXT=os.environ.get("SUPPORT_ALLOWED_EXT", "png,jpg,jpeg,pdf,txt,log,zip").split(","),
 
+        SUPPORT_PENDING_REMINDER_DAYS=int(os.getenv("SUPPORT_PENDING_REMINDER_DAYS", "3")),
+        SUPPORT_AUTO_CLOSE_DAYS=int(os.getenv("SUPPORT_AUTO_CLOSE_DAYS", "7")),
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
