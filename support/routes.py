@@ -19,6 +19,13 @@ from support.models import (
 # Uses your existing auth models
 from auth.models import User, Role
 
+# NEW: notifications
+from support.notify import (
+    notify_new_ticket,
+    notify_user_reply_to_admin,
+    notify_admin_public_reply_to_user,
+    notify_status_change_to_user,
+)
 
 def _get_admin_owner_user_id():
     """
@@ -35,7 +42,6 @@ def _get_admin_owner_user_id():
         return admin_user_id[0] if admin_user_id else None
     except Exception:
         return None
-
 
 # ---------- helpers -----------------------------------------------------------
 
@@ -59,11 +65,9 @@ def _set_status(ticket: SupportTicket, new_status: str):
         ticket.closed_at = None
     elif new_status == "closed":
         ticket.closed_at = now
-        # keep solved_at if already set
 
     ticket.status = new_status
     ticket.updated_at = now
-
 
 def _safe_int(val, default=1, min_=1, max_=1000):
     try:
@@ -76,20 +80,15 @@ def _safe_int(val, default=1, min_=1, max_=1000):
     except Exception:
         return default
 
-
 def _ci_like(column, needle: str):
-    """Portable case-insensitive LIKE."""
     return func.lower(column).like(f"%{needle.lower()}%")
-
 
 def _normalize_tags_list(value):
     if value is None:
         return []
     if isinstance(value, list):
         return [str(x).strip() for x in value if str(x).strip()]
-    # if stored as other type, attempt to treat as empty
     return []
-
 
 def _add_tags(ticket: SupportTicket, add_list):
     add = set(_normalize_tags_list(add_list))
@@ -97,13 +96,11 @@ def _add_tags(ticket: SupportTicket, add_list):
     tags |= add
     ticket.tags = sorted(tags)
 
-
 def _remove_tags(ticket: SupportTicket, rem_list):
     rem = set(_normalize_tags_list(rem_list))
     tags = set(_normalize_tags_list(ticket.tags))
     tags -= rem
     ticket.tags = sorted(tags)
-
 
 # ---------- existing endpoints ------------------------------------------------
 
@@ -120,7 +117,6 @@ def support_home():
         "message": "Support Center (Solo Mode) is live."
     })
 
-
 @support_bp.get("/admin")
 @admin_required
 def support_admin_home():
@@ -130,19 +126,11 @@ def support_admin_home():
         "next": ["/support (user view)", "/support/admin (this)"]
     })
 
-
 @support_bp.post("/new")
 @auth_required
 def support_new_ticket():
     """
     Create a new ticket with first public message.
-    Body: JSON
-      - subject (str, required, <=150)
-      - description (str, required, <=10000)
-      - priority (optional: low|normal|high|urgent; default normal)
-      - tool (optional, str)
-      - category (optional, str)
-      - context (optional, dict)
     """
     payload = request.get_json(silent=True) or {}
     subject = (payload.get("subject") or "").strip()
@@ -193,6 +181,15 @@ def support_new_ticket():
     db.session.add(msg)
     db.session.commit()
 
+    # ── Notifications
+    requester = User.query.get(requester_id)
+    admin_user = User.query.get(default_assignee_id) if default_assignee_id else None
+    try:
+        if requester:
+            notify_new_ticket(ticket, requester, admin_user=admin_user)
+    except Exception:
+        current_app.logger.exception("[support] notify_new_ticket failed")
+
     return jsonify({
         "ok": True,
         "ticket": {
@@ -204,7 +201,6 @@ def support_new_ticket():
             "created_at": ticket.created_at.isoformat(),
         }
     }), 201
-
 
 @support_bp.get("/my")
 @auth_required
@@ -223,12 +219,10 @@ def support_my_tickets():
 
     return jsonify({"ok": True, "tickets": items})
 
-
 @support_bp.get("/t/<int:ticket_id>")
 @auth_required
 def support_ticket_detail(ticket_id: int):
     me_user, is_admin = current_user_and_admin()
-
     t = SupportTicket.query.filter_by(id=ticket_id).first()
     if not t:
         abort(404, description="ticket not found")
@@ -271,16 +265,11 @@ def support_ticket_detail(ticket_id: int):
         "messages": messages
     })
 
-
 @support_bp.post("/t/<int:ticket_id>/reply")
 @auth_required
 def support_ticket_reply(ticket_id: int):
     """
-    Add a reply to a ticket.
-    Body: JSON
-      - body (str, required, <=10000)
-      - internal (bool, optional; admin_owner only; default False)
-      - set_status (str, optional; admin_owner only)
+    Add a reply; also triggers relevant emails.
     """
     me_user, is_admin = current_user_and_admin()
     payload = request.get_json(silent=True) or {}
@@ -298,7 +287,6 @@ def support_ticket_reply(ticket_id: int):
         abort(403)
 
     now = datetime.utcnow()
-
     internal = bool(payload.get("internal", False)) if is_admin else False
     visibility = "internal" if internal else "public"
 
@@ -309,6 +297,8 @@ def support_ticket_reply(ticket_id: int):
         body=body,
     )
     db.session.add(msg)
+
+    status_before = t.status
 
     if is_admin:
         requested = (payload.get("set_status") or "").strip().lower()
@@ -327,6 +317,32 @@ def support_ticket_reply(ticket_id: int):
 
     db.session.commit()
 
+    # ── Notifications
+    try:
+        if is_admin:
+            # Admin's public reply → notify requester
+            if visibility == "public":
+                requester = User.query.get(t.requester_user_id)
+                if requester and getattr(requester, "email", None):
+                    notify_admin_public_reply_to_user(t, admin_user=me_user, requester=requester)
+            # If admin set status to solved/closed in the same call, notify user
+            if t.status in ("solved", "closed") and status_before != t.status:
+                requester = User.query.get(t.requester_user_id)
+                if requester and getattr(requester, "email", None):
+                    notify_status_change_to_user(t, requester)
+        else:
+            # User reply → notify admin_owner (or assignee)
+            admin_user = None
+            if t.assignee_user_id:
+                admin_user = User.query.get(t.assignee_user_id)
+            if not admin_user:
+                aid = _get_admin_owner_user_id()
+                admin_user = User.query.get(aid) if aid else None
+            if admin_user and getattr(admin_user, "email", None):
+                notify_user_reply_to_admin(t, user=me_user, admin_user=admin_user)
+    except Exception:
+        current_app.logger.exception("[support] reply notifications failed")
+
     return jsonify({
         "ok": True,
         "message": {
@@ -343,14 +359,11 @@ def support_ticket_reply(ticket_id: int):
         }
     }), 201
 
-
 @support_bp.patch("/t/<int:ticket_id>/status")
 @admin_required
 def support_ticket_set_status(ticket_id: int):
     """
     Admin-only status change.
-    Body: JSON
-      - status (str, required): new|open|pending_user|on_hold|solved|closed
     """
     payload = request.get_json(silent=True) or {}
     new_status = (payload.get("status") or "").strip().lower()
@@ -361,8 +374,18 @@ def support_ticket_set_status(ticket_id: int):
     if not t:
         abort(404, description="ticket not found")
 
+    prev = t.status
     _set_status(t, new_status)
     db.session.commit()
+
+    # ── Notifications on solved/closed
+    try:
+        if t.status in ("solved", "closed") and prev != t.status:
+            requester = User.query.get(t.requester_user_id)
+            if requester and getattr(requester, "email", None):
+                notify_status_change_to_user(t, requester)
+    except Exception:
+        current_app.logger.exception("[support] status-change notification failed")
 
     return jsonify({
         "ok": True,
@@ -375,8 +398,7 @@ def support_ticket_set_status(ticket_id: int):
         }
     })
 
-
-# ---------- Task 5: Admin Inbox & Filters (unchanged from previous step) -----
+# ---------- Admin Inbox & Filters (Task 5) -----------------------------------
 
 @support_bp.get("/admin/tickets")
 @admin_required
@@ -544,8 +566,7 @@ def support_admin_tickets():
         "tickets": items,
     })
 
-
-# ---------- NEW: Task 6 — Quick edits, bulk actions, snippets ----------------
+# ---------- Quick edits, bulk actions, snippets (Task 6) ---------------------
 
 @support_bp.patch("/t/<int:ticket_id>/priority")
 @admin_required
@@ -561,7 +582,6 @@ def support_ticket_set_priority(ticket_id: int):
     t.updated_at = datetime.utcnow()
     db.session.commit()
     return jsonify({"ok": True, "ticket": {"id": t.id, "priority": t.priority, "updated_at": t.updated_at.isoformat()}})
-
 
 @support_bp.patch("/t/<int:ticket_id>/assign")
 @admin_required
@@ -580,7 +600,6 @@ def support_ticket_assign(ticket_id: int):
             uid = int(assignee_user_id)
         except Exception:
             abort(400, description="assignee_user_id must be int or null")
-        # Optional: enforce admin_owner-only assignees in Solo Mode
         ok = (db.session.query(User.id)
               .join(User.roles)
               .filter(User.id == uid, Role.name == "admin_owner")
@@ -593,22 +612,9 @@ def support_ticket_assign(ticket_id: int):
     db.session.commit()
     return jsonify({"ok": True, "ticket": {"id": t.id, "assignee_user_id": t.assignee_user_id, "updated_at": t.updated_at.isoformat()}})
 
-
 @support_bp.post("/admin/bulk")
 @admin_required
 def support_admin_bulk_actions():
-    """
-    Bulk actions on tickets.
-    Body JSON:
-      {
-        "ticket_ids": [1,2,3],                 # required
-        "set_status": "pending_user",          # optional
-        "set_priority": "high",                # optional
-        "assign_to_user_id": 1,                # optional (admin_owner only)
-        "add_tags": ["billing", "httpx"],      # optional
-        "remove_tags": ["legacy"]              # optional
-      }
-    """
     payload = request.get_json(silent=True) or {}
     ids = payload.get("ticket_ids") or []
     if not isinstance(ids, list) or not ids:
@@ -619,7 +625,6 @@ def support_admin_bulk_actions():
     if not rows:
         return jsonify({"ok": True, "updated": 0, "found": 0})
 
-    # validate incoming fields
     set_status = (payload.get("set_status") or "").strip().lower()
     if set_status and set_status not in STATUS_VALUES:
         abort(400, description="invalid set_status")
@@ -670,15 +675,9 @@ def support_admin_bulk_actions():
     db.session.commit()
     return jsonify({"ok": True, "found": len(rows), "updated": updated})
 
-
-# -------- Snippets: CRUD + apply --------------------------------------------
-
 @support_bp.get("/admin/snippets")
 @admin_required
 def support_snippets_list():
-    """
-    List snippets. Query: ?active_only=1 to filter.
-    """
     active_only = str(request.args.get("active_only", "0")).lower() in ("1", "true", "yes")
     q = SupportSnippet.query
     if active_only:
@@ -689,13 +688,9 @@ def support_snippets_list():
         "updated_at": s.updated_at.isoformat(), "created_at": s.created_at.isoformat()
     } for s in rows]})
 
-
 @support_bp.post("/admin/snippets")
 @admin_required
 def support_snippets_create():
-    """
-    Body: { title: str<=80, body: str<=5000, is_active?: bool }
-    """
     payload = request.get_json(silent=True) or {}
     title = (payload.get("title") or "").strip()
     body = (payload.get("body") or "").strip()
@@ -704,15 +699,10 @@ def support_snippets_create():
     if not body or len(body) > 5000:
         abort(400, description="body is required (<=5000 chars)")
 
-    s = SupportSnippet(
-        title=title,
-        body=body,
-        is_active=bool(payload.get("is_active", True)),
-    )
+    s = SupportSnippet(title=title, body=body, is_active=bool(payload.get("is_active", True)))
     db.session.add(s)
     db.session.commit()
     return jsonify({"ok": True, "snippet": {"id": s.id, "title": s.title, "is_active": s.is_active}}), 201
-
 
 @support_bp.patch("/admin/snippets/<int:snippet_id>")
 @admin_required
@@ -740,7 +730,6 @@ def support_snippets_update(snippet_id: int):
     db.session.commit()
     return jsonify({"ok": True, "snippet": {"id": s.id, "title": s.title, "is_active": s.is_active}})
 
-
 @support_bp.delete("/admin/snippets/<int:snippet_id>")
 @admin_required
 def support_snippets_delete(snippet_id: int):
@@ -751,14 +740,9 @@ def support_snippets_delete(snippet_id: int):
     db.session.commit()
     return jsonify({"ok": True})
 
-
 @support_bp.post("/t/<int:ticket_id>/apply-snippet")
 @admin_required
 def support_ticket_apply_snippet(ticket_id: int):
-    """
-    Apply a snippet by posting it as a message on the ticket.
-    Body: { snippet_id: int, internal?: bool, set_status?: str }
-    """
     payload = request.get_json(silent=True) or {}
     sid = payload.get("snippet_id")
     if not sid:
@@ -775,7 +759,6 @@ def support_ticket_apply_snippet(ticket_id: int):
     internal = bool(payload.get("internal", False))
     visibility = "internal" if internal else "public"
 
-    # Post message
     me_user, _ = current_user_and_admin()
     msg = SupportMessage(
         ticket_id=t.id,
@@ -785,18 +768,29 @@ def support_ticket_apply_snippet(ticket_id: int):
     )
     db.session.add(msg)
 
-    # Optional status change
     requested = (payload.get("set_status") or "").strip().lower()
     if requested:
         _set_status(t, requested)
     else:
-        # if snippet is public and ticket is new, open it
         if t.status == "new" and visibility == "public":
             _set_status(t, "open")
         else:
             t.updated_at = datetime.utcnow()
 
     db.session.commit()
+
+    # On public snippet post, optionally notify requester (same behavior as admin public reply)
+    try:
+        if visibility == "public":
+            requester = User.query.get(t.requester_user_id)
+            if requester and getattr(requester, "email", None):
+                notify_admin_public_reply_to_user(t, admin_user=me_user, requester=requester)
+        if t.status in ("solved", "closed") and requested:
+            requester = User.query.get(t.requester_user_id)
+            if requester and getattr(requester, "email", None):
+                notify_status_change_to_user(t, requester)
+    except Exception:
+        current_app.logger.exception("[support] apply-snippet notifications failed")
 
     return jsonify({
         "ok": True,

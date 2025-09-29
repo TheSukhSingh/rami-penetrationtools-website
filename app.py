@@ -51,6 +51,7 @@ def create_app():
         RATELIMIT_HEADERS_ENABLED=True,
 
         FEATURE_BILLING=os.getenv("FEATURE_BILLING", "0") == "1",
+        EXTERNAL_BASE_URL="https://hackr.gg",
         FEATURE_HELP=os.getenv("FEATURE_HELP", "0") == "1",
 
         CELERY_QUEUE="tools_default",
