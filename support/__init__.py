@@ -1,6 +1,5 @@
 from flask import Blueprint
 
-# /support routes (ticket-only module; we'll add models in Task 2)
 support_bp = Blueprint(
     "support",
     __name__,
@@ -9,5 +8,6 @@ support_bp = Blueprint(
     static_folder="static",
 )
 
-# Import routes so they register
-from . import routes  # noqa: E402,F401
+# Make sure models are imported so Alembic detects them
+from . import models            # ← add this line
+from . import routes            # keep this

@@ -1,10 +1,10 @@
 from flask import jsonify, current_app
-from . import help_bp
+from . import support_bp
 from .authz import admin_required, auth_required, current_user_and_admin
 
-@help_bp.get("/")
+@support_bp.get("/")
 @auth_required
-def help_home():
+def support_home():
     user, is_admin = current_user_and_admin()
     return jsonify({
         "ok": True,
@@ -12,15 +12,15 @@ def help_home():
         "solo_mode": True,
         "me": getattr(user, "email", None),
         "role_view": "admin" if is_admin else "user",
-        "message": "Help Center (Solo Mode) is live."
+        "message": "Support Center (Solo Mode) is live."
     })
 
-@help_bp.get("/admin")
+@support_bp.get("/admin")
 @admin_required
-def help_admin_home():
-    # Thin stub — in Task 5/6 you'll get the full inbox + workspace
+def support_admin_home():
+    # Thin stub — inbox/workspace come in next tasks
     return jsonify({
         "ok": True,
         "message": "Admin Support Console (Solo Mode) ready.",
-        "next": ["/help (user view)", "/help/admin (this)", "Ticket CRUD in Task 2+"]
+        "next": ["/support (user view)", "/support/admin (this)", "Ticket CRUD in Task 3+"]
     })
