@@ -146,6 +146,48 @@ def api_tools():
 def api_specs():
     return jsonify(get_global_specs())
 
+@tools_bp.patch("/api/tools/<slug>/enabled")
+@jwt_required()
+@limiter.limit("20/minute")
+def set_tool_enabled(slug):
+    tool = Tool.query.filter_by(slug=slug).first_or_404()
+    data = request.get_json(silent=True) or {}
+    if "enabled" not in data:
+        return jsonify({"error":"enabled required"}), 400
+    tool.enabled = bool(data["enabled"])
+    db.session.commit()
+    return jsonify({"ok": True, "slug": tool.slug, "enabled": tool.enabled})
+
+@tools_bp.patch("/api/tools/<slug>/meta")
+@jwt_required()
+@limiter.limit("10/minute")
+def set_tool_meta(slug):
+    tool = Tool.query.filter_by(slug=slug).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    meta = tool.meta_info or {}
+    # Allow basic presentation fields (optional)
+    for k in ("desc","time","type"):
+        if k in data:
+            meta[k] = data[k]
+
+    # Policy overlays
+    if "policy_overrides" in data:
+        po = data["policy_overrides"] or {}
+        # only accept safe keys
+        allowed = {"input_policy","binaries","runtime_constraints","io_policy","wordlist_default"}
+        meta.setdefault("policy_overrides", {})
+        for k, v in po.items():
+            if k in allowed:
+                meta["policy_overrides"][k] = v
+
+    tool.meta_info = meta
+    db.session.commit()
+
+    # Echo the effective policy so Admin can see the merge result immediately
+    pol = get_effective_policy(tool.slug)
+    return jsonify({"ok": True, "tool": {"slug": tool.slug, "enabled": tool.enabled, "meta_info": tool.meta_info}, "effective_policy": pol})
+
 @tools_bp.route('/api/scan', methods=['POST'])
 @jwt_required()
 @limiter.limit(lambda: get_rate_limit("SCAN_RATE_LIMIT", "5/minute"))
@@ -918,12 +960,18 @@ def get_run_summary(run_id: int):
     if (run.user_id is not None) and (not _same_user(run.user_id, user_id)):
         return jsonify({"error":"forbidden"}), 403
     # Ensure structure even if empty
+    ALL_BUCKETS = (
+        "domains","hosts","ips","ports","services",
+        "urls","endpoints","params",
+        "tech_stack","vulns","exploit_results","screenshots"
+    )
     manifest = run.run_manifest or {
-        "buckets": {k: {"count": 0, "items": []} for k in ("domains","hosts","ips","ports","urls","endpoints","findings")},
-        "provenance": {k: {} for k in ("domains","hosts","ips","ports","urls","endpoints","findings")},
+        "buckets": {k: {"count": 0, "items": []} for k in ALL_BUCKETS},
+        "provenance": {k: {} for k in ALL_BUCKETS},
         "steps": {},
         "last_updated": None,
     }
+
     # Add top-level counters for convenience
     counters = {k: manifest["buckets"][k]["count"] for k in manifest["buckets"].keys()}
     return jsonify({

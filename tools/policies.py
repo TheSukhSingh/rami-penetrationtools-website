@@ -151,31 +151,46 @@ def _field_map(tool: Tool) -> Dict[str, ToolConfigField]:
 
 @lru_cache(maxsize=256)
 def get_effective_policy(tool_slug: str) -> dict:
-    base = deepcopy(BASELINE.get(tool_slug) or {})
-    # load tool + fields + overlay
-    tool = (Tool.query.options(
-                selectinload(Tool.config_fields).selectinload(ToolConfigField.overlay)
-            )
-            .filter_by(slug=tool_slug, enabled=True)
-            .first())
-    if not tool:
-        return base or {}
+    """
+    Build the effective policy for a tool by layering, in order:
+      1) Code BASELINE (defaults)
+      2) DB ToolConfigField rows (+ per-field overlay)
+      3) DB meta_info.policy_overrides (input_policy, binaries, runtime_constraints, io_policy, wordlist_default)
 
-    # Start with baseline schema_fields; index by name for quick merge
+    Returns a dict with: input_policy, binaries, runtime_constraints, schema_fields, io_policy
+    """
+    base = deepcopy(BASELINE.get(tool_slug) or {})
+
+    # If tool is disabled or absent, fall back to baseline + ensure io_policy is present
+    tool = (
+        Tool.query.options(
+            selectinload(Tool.config_fields).selectinload(ToolConfigField.overlay)
+        )
+        .filter_by(slug=tool_slug, enabled=True)
+        .first()
+    )
+    if not tool:
+        # Guarantee io_policy exists for FE even without a DB row
+        if "io_policy" not in base:
+            base["io_policy"] = deepcopy(IO_BASELINE.get(tool_slug) or DEFAULT_IO)
+        return base
+
+    # ---- Start with baseline fields, indexed by name for merging ----
     base_fields_by_name = {f["name"]: deepcopy(f) for f in (base.get("schema_fields") or [])}
 
-    schema_fields = []
-    runtime_constraints = deepcopy(base.get("runtime_constraints") or {})
-    input_policy = deepcopy(base.get("input_policy") or {})
-    binaries = deepcopy(base.get("binaries") or {})
+    schema_fields: list[dict] = []
+    runtime_constraints: dict = deepcopy(base.get("runtime_constraints") or {})
+    input_policy: dict = deepcopy(base.get("input_policy") or DEFAULT_INPUT)
+    binaries: dict = deepcopy(base.get("binaries") or DEFAULT_BIN)
 
-    # Merge each DB field against baseline definition (if baseline absent, still expose DB field safely)
-    for f in tool.config_fields:  # ToolConfigField rows
-        eff = base_fields_by_name.get(f.name, {})
-        # start from DB baseline row values
+    # ---- Merge DB ToolConfigField rows onto baseline field defs ----
+    for f in (tool.config_fields or []):
+        eff = deepcopy(base_fields_by_name.get(f.name, {}))
+
+        # seed with DB row values (acts as a local baseline for this field)
         eff.setdefault("name", f.name)
         eff.setdefault("label", f.label)
-        eff.setdefault("type", f.type.value)
+        eff.setdefault("type", f.type.value)                  # "integer" | "float" | "boolean" | "string" | "select" ...
         eff.setdefault("required", f.required)
         eff.setdefault("help_text", f.help_text)
         eff.setdefault("placeholder", f.placeholder)
@@ -187,7 +202,7 @@ def get_effective_policy(tool_slug: str) -> dict:
         eff.setdefault("group", f.group)
         eff.setdefault("constraints", f.constraints or {})
 
-        # apply overlay (if present)
+        # apply per-field overlay (if present)
         ov = f.overlay
         if ov:
             if ov.visible is not None:       eff["visible"] = ov.visible
@@ -204,9 +219,9 @@ def get_effective_policy(tool_slug: str) -> dict:
 
         # keep runtime constraints in sync for numeric/bounded fields
         rc = runtime_constraints.get(f.name) or {}
-        if eff["type"] in ("integer","float"):
-            c = eff.get("constraints") or {}
-            lo, hi = c.get("min"), c.get("max")
+        if eff["type"] in ("integer", "float"):
+            c  = eff.get("constraints") or {}
+            lo = c.get("min"); hi = c.get("max")
             default = eff.get("default")
             if default is not None:
                 default = _clamp_num(default, lo, hi)
@@ -216,15 +231,87 @@ def get_effective_policy(tool_slug: str) -> dict:
                 "default": default if default is not None else rc.get("default"),
             }
         else:
-            # booleans/strings/selects — carry default through
+            # booleans/strings/selects — carry default/choices through
             runtime_constraints[f.name] = {
                 "type": eff["type"],
                 "default": eff.get("default", rc.get("default")),
                 "choices": eff.get("choices"),
             }
 
+    # ---- Add any baseline-only fields that DB doesn't define ----
+    existing = {sf["name"] for sf in schema_fields}
+    for name, bf in base_fields_by_name.items():
+        if name in existing:
+            continue
+        eff = deepcopy(bf)
+        schema_fields.append(eff)
+
+        # keep runtime constraints consistent for baseline-only fields too
+        t  = eff.get("type")
+        rc = runtime_constraints.get(name) or {}
+        if t in ("integer", "float"):
+            c  = eff.get("constraints") or {}
+            lo = c.get("min"); hi = c.get("max")
+            default = eff.get("default")
+            if default is not None:
+                default = _clamp_num(default, lo, hi)
+            runtime_constraints[name] = {
+                "type": t,
+                "min": lo, "max": hi,
+                "default": default if default is not None else rc.get("default"),
+            }
+        else:
+            runtime_constraints[name] = {
+                "type": t,
+                "default": eff.get("default", rc.get("default")),
+                "choices": eff.get("choices"),
+            }
+
+    # stable/grouped ordering for FE
     schema_fields.sort(key=lambda x: (x.get("group") or "", x.get("order_index") or 0, x["name"]))
+
+    # ---- Admin-level policy overrides from DB meta_info ----
+    meta = tool.meta_info or {}
+    ov   = meta.get("policy_overrides") or {}
+
+    # input_policy overlay (accepts / max_targets / file_max_bytes)
+    if isinstance(ov.get("input_policy"), dict):
+        input_policy.update({k: v for k, v in ov["input_policy"].items() if v is not None})
+
+    # binaries overlay (names, custom paths, etc.)
+    if isinstance(ov.get("binaries"), dict):
+        b = ov["binaries"]
+        if isinstance(b.get("names"), list):
+            # union-safe merge of binary names
+            names = list({*binaries.get("names", []), *b["names"]})
+            binaries["names"] = names
+        for k, v in b.items():
+            if k == "names":
+                continue
+            binaries[k] = v
+
+    # runtime_constraints overlay per field (min/max/regex/max_length)
+    if isinstance(ov.get("runtime_constraints"), dict):
+        for fname, c in ov["runtime_constraints"].items():
+            base_c = runtime_constraints.get(fname) or {}
+            if isinstance(c, dict):
+                runtime_constraints[fname] = _merge_constraints(base_c, c)
+
+    # ---- Compute IO policy + apply admin overlay ----
     io_policy = deepcopy(base.get("io_policy") or IO_BASELINE.get(tool_slug) or DEFAULT_IO)
+
+    # io_policy overlay (typed buckets: consumes/emits)
+    io_ov = ov.get("io_policy") or {}
+    if isinstance(io_ov.get("consumes"), list):
+        io_policy["consumes"] = [b for b in io_ov["consumes"] if b in BUCKETS]
+    if isinstance(io_ov.get("emits"), list):
+        io_policy["emits"] = [b for b in io_ov["emits"] if b in BUCKETS]
+
+    # Optional: default wordlist tier hint per tool (FE can use it)
+    wl = ov.get("wordlist_default")
+    if wl in WORDLIST_TIERS:
+        runtime_constraints.setdefault("_hints", {})["wordlist_default"] = wl
+
     return {
         "input_policy": input_policy,
         "binaries": binaries,

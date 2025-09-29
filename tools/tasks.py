@@ -93,7 +93,12 @@ def advance_run(self, run_id: int):
     db.session.commit()
     return {'status': 'dispatched', 'task_id': res.id}
 
-BUCKET_KEYS = ("domains", "hosts", "ips", "ports", "services", "urls", "endpoints", "findings")
+BUCKET_KEYS = (
+    "domains", "hosts", "ips", "ports", "services",
+    "urls", "endpoints", "params",
+    "tech_stack", "vulns", "exploit_results",
+    "screenshots"
+)
 
 def _ensure_run_manifest(run):
     """
