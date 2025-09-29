@@ -151,6 +151,16 @@ export function attachDnD(editor) {
       this.addLog("Source node already has an output connection");
       return;
     }
+    const fromNode = this.nodes.find((n) => n.id === from);
+    const toNode = this.nodes.find((n) => n.id === to);
+    const gate = this.allowedEdge?.(fromNode, toNode);
+    if (gate && gate.ok === false) {
+      this.addLog?.(`Blocked connection: ${gate.reason}`);
+      // optional: flash the yellow banner by calling validate
+      this.validateWorkflow?.();
+      return; // don’t create the edge
+    }
+
     this.connections.push({
       id: `conn_${Date.now()}`,
       from: fromNode.id,

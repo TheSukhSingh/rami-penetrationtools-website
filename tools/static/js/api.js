@@ -1,88 +1,149 @@
-function toQS(params = {}) {
-  const q = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v === undefined || v === null || v === "") return;
-    if (Array.isArray(v)) v.forEach(x => q.append(k, x));
-    else q.append(k, v);
-  });
-  const s = q.toString();
-  return s ? `?${s}` : "";
-}
+/* tools/static/js/api.js */
 
+(function (global) {
+  function getMetaCSRF() {
+    const t = document.querySelector('meta[name="csrf-token"]');
+    return t ? t.getAttribute("content") : "";
+  }
+  function getCookie(name) {
+    if (window && typeof window.getCookie === "function" && window.getCookie !== getCookie) {
+      return window.getCookie(name);
+    }
+    const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+  function haveRefreshCSRF() {
+    return !!getCookie("csrf_refresh_token");
+  }
+  function needCsrf(method) {
+    method = (method || "GET").toUpperCase();
+    return !["GET", "HEAD", "OPTIONS"].includes(method);
+  }
+  function isFormData(body) {
+    return typeof FormData !== "undefined" && body instanceof FormData;
+  }
+
+  let refreshPromise = null;
+  async function refreshTokens({ silent = true } = {}) {
+    if (refreshPromise) return refreshPromise;
+    const csrf = getCookie("csrf_refresh_token");
+    if (!csrf) return { ok: false, status: 0 };
+
+    refreshPromise = fetch("/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json", "X-CSRF-TOKEN": csrf },
+    })
+      .then((res) => ({ ok: res.ok, status: res.status }))
+      .catch(() => ({ ok: false, status: 0 }))
+      .finally(() => (refreshPromise = null));
+
+    return refreshPromise;
+  }
+
+  async function authFetch(url, options = {}) {
+    const opts = { credentials: "include", ...options };
+    const method = (opts.method || "GET").toUpperCase();
+    const headers = new Headers(opts.headers || {});
+
+    if (needCsrf(method)) {
+      const which = options?.csrf === "refresh" ? "csrf_refresh_token" : "csrf_access_token";
+      const jwtCsrf = getCookie(which) || "";
+      const wtfCsrf = getMetaCSRF() || "";
+      if (jwtCsrf) headers.set("X-CSRF-TOKEN", jwtCsrf);
+      if (wtfCsrf) headers.set("X-CSRFToken", wtfCsrf);
+    }
+
+    if (opts.body && !isFormData(opts.body) && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+      if (typeof opts.body !== "string") opts.body = JSON.stringify(opts.body);
+    }
+    if (!headers.has("Accept")) headers.set("Accept", "application/json");
+    opts.headers = headers;
+
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch {
+      return new Response("", { status: 0 });
+    }
+
+    if (res.status === 401) {
+      if (options?.refresh === false) return res;
+      if (!haveRefreshCSRF()) {
+        if (!options?.silent) window.dispatchEvent(new CustomEvent("auth:required", { detail: { url } }));
+        return res;
+      }
+      const refreshed = await refreshTokens({ silent: true });
+      if (!refreshed.ok) {
+        if (!options?.silent) window.dispatchEvent(new CustomEvent("auth:required", { detail: { url } }));
+        return res;
+      }
+      if (needCsrf(method)) {
+        const which = options?.csrf === "refresh" ? "csrf_refresh_token" : "csrf_access_token";
+        const jwtCsrf = getCookie(which) || "";
+        const wtfCsrf = getMetaCSRF() || "";
+        if (jwtCsrf) headers.set("X-CSRF-TOKEN", jwtCsrf);
+        if (wtfCsrf) headers.set("X-CSRFToken", wtfCsrf);
+        opts.headers = headers;
+      }
+      res = await fetch(url, opts);
+    }
+
+    if (res.status === 403 || res.status === 422) {
+      const ct = res.headers.get("Content-Type") || "";
+      let body = null;
+      if (ct.includes("application/json")) {
+        try { body = await res.clone().json(); } catch {}
+      }
+      if (body && (String(body.msg||"").includes("csrf") || String(body.error||"").includes("csrf"))) {
+        window.dispatchEvent(new CustomEvent("auth:csrf_error", { detail: { url, status: res.status } }));
+      }
+    }
+    return res;
+  }
+
+  async function fetchJSON(url, options = {}) {
+    const res = await authFetch(url, options);
+    const ct = res.headers.get("Content-Type") || "";
+    let data = null;
+    if (ct.includes("application/json")) { try { data = await res.json(); } catch {} }
+    else if (ct.startsWith("text/")) { data = await res.text(); }
+    return { ok: res.ok, status: res.status, headers: res.headers, data, raw: res };
+  }
+  const getJSON = (url, o={}) => fetchJSON(url, { method: "GET", ...o });
+  const postJSON = (url, body, o={}) => fetchJSON(url, { method: "POST", body, ...o });
+  const putJSON = (url, body, o={}) => fetchJSON(url, { method: "PUT", body, ...o });
+  const delJSON = (url, o={}) => fetchJSON(url, { method: "DELETE", ...o });
+
+  global.authFetch = authFetch;
+  global.fetchJSON = fetchJSON;
+  global.getJSON = getJSON;
+  global.postJSON = postJSON;
+  global.putJSON = putJSON;
+  global.delJSON = delJSON;
+  global.refreshTokens = refreshTokens;
+
+  window.addEventListener("auth:required", () => window?.showAuth?.("login"));
+  window.addEventListener("auth:csrf_error", (e) => console.warn("CSRF error on", e.detail?.url, "status:", e.detail?.status));
+})(window);
+
+// ------------------------------------------------------------------
+// API surface (the rest of your code imports: import { API } from "./api.js")
+// ------------------------------------------------------------------
 export const API = {
   tools: () => getJSON("/tools/api/tools"),
-
   workflows: {
-    list:   () => getJSON("/tools/api/workflows"),
-    get:    (id) => getJSON(`/tools/api/workflows/${id}`),
+    list: () => getJSON("/tools/api/workflows"),
+    get: (id) => getJSON(`/tools/api/workflows/${encodeURIComponent(id)}`),
     create: (payload) => postJSON("/tools/api/workflows", payload),
-    update: (id, payload) => putJSON(`/tools/api/workflows/${id}`, payload),
-    remove: (id) => delJSON(`/tools/api/workflows/${id}`),
-    archive: (id) => postJSON(`/tools/api/workflows/${id}/archive`, {}),
-    run:    (id) => postJSON(`/tools/api/workflows/${id}/run`, {}),
+    update: (id, payload) => putJSON(`/tools/api/workflows/${encodeURIComponent(id)}`, payload),
+    del: (id) => delJSON(`/tools/api/workflows/${encodeURIComponent(id)}`),
   },
-
   runs: {
-    list:    (params = {}) => getJSON(`/tools/api/runs${toQS(params)}`),
-    get:     (id) => getJSON(`/tools/api/runs/${id}`),
-    summary: (id) => getJSON(`/tools/api/runs/${id}/summary`),
-    pause:   (id) => postJSON(`/tools/api/runs/${id}/pause`, {}),
-    resume:  (id) => postJSON(`/tools/api/runs/${id}/resume`, {}),
-    step: (id, step_index) => getJSON(`/tools/api/runs/${id}/steps/${step_index}`),
-    cancel:  (id) => postJSON(`/tools/api/runs/${id}/cancel`, {}),
-    retry:   (id, step_index) =>
-               postJSON(`/tools/api/runs/${id}/retry`, step_index == null ? {} : { step_index }),
+    start: (payload) => postJSON("/tools/api/run", payload),
+    list: (wfId) => getJSON(`/tools/api/runs?workflow_id=${encodeURIComponent(wfId)}`),
+    get: (runId) => getJSON(`/tools/api/runs/${encodeURIComponent(runId)}`),
   },
 };
-export async function fetchJSON(url, opts = {}) {
-  const res = await fetch(url, { credentials: "include", ...opts });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
-}
-
-export function fetchToolsFlat() {
-  return fetchJSON("/tools/api/tools-flat");
-}
-
-export function listWorkflows() {
-  return fetchJSON("/tools/api/workflows");
-}
-export function getWorkflow(wfId) {
-  return fetchJSON(`/tools/api/workflows/${wfId}`);
-}
-export function createWorkflow(payload) {
-  return fetchJSON(`/tools/api/workflows`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
-export function saveWorkflow(wfId, payload) {
-  return fetchJSON(`/tools/api/workflows/${wfId}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function saveNodeConfig(wfId, nodeId, config) {
-  const res = await fetchJSON(`/tools/api/workflows/${wfId}/nodes/${nodeId}/config`, {
-    method: "POST",
-    body: { config },
-  });
-  if (!res.ok) {
-    throw new Error(res.data?.error?.message || "Failed to save node config");
-  }
-  // Prefer backend echo if present; otherwise return what we sent.
-  return res.data?.config || config;``
-}
-
-export function runWorkflow(wfId) {
-  return fetchJSON(`/tools/api/workflows/${wfId}/run`, { method: "POST" });
-}
-export function getRun(runId) {
-  return fetchJSON(`/tools/api/runs/${runId}`);
-}
-export function openRunEvents(runId) {
-  return new EventSource(`/tools/api/runs/${runId}/events`);
-}
+export default API;

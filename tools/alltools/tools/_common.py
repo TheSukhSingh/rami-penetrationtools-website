@@ -1,110 +1,37 @@
 # tools/alltools/tools/_common.py
 from __future__ import annotations
-import os, sys, shutil, time, re, subprocess
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import time
 from pathlib import Path
-from typing import List, Tuple, Iterable, Dict, Any, Optional
+from typing import Iterable, List, Dict, Any, Optional, Tuple
 
-import redis
-_redis_client = None
-
-def ops_redis():
-    global _redis_client
-    if _redis_client is None:
-        url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
-        _redis_client = redis.Redis.from_url(url, decode_responses=True)
-    return _redis_client
-
-RUNS_MAX_ACTIVE_PER_USER = int(os.environ.get("RUNS_MAX_ACTIVE_PER_USER", "1"))
-RUN_START_DEDUP_TTL      = int(os.environ.get("RUN_START_DEDUP_TTL", "10"))  # seconds
-
-def dedupe_run_key(user_id, workflow_id):
-    return f"tools:dedupe:run:{user_id}:{workflow_id}"
-
-def active_runs_key(user_id):
-    return f"tools:active_runs:{user_id}"
-
-def active_can_start(user_id: str | int) -> bool:
-    r = ops_redis()
-    cur = int(r.get(active_runs_key(user_id)) or 0)
-    return cur < RUNS_MAX_ACTIVE_PER_USER
-
-def active_incr(user_id: str | int, ttl_seconds: int = 6*3600):
-    r = ops_redis()
-    k = active_runs_key(user_id)
-    pipe = r.pipeline()
-    pipe.incr(k)
-    pipe.expire(k, ttl_seconds)
-    pipe.execute()
-
-def active_decr(user_id: str | int):
-    r = ops_redis()
-    k = active_runs_key(user_id)
+# ---------- Clock ----------
+def now_ms() -> int:
     try:
-        if int(r.decr(k)) <= 0:
-            r.delete(k)
+        return int(time.time() * 1000)
     except Exception:
-        pass
-# ---- What buckets every adapter may emit (typed chaining relies on these) ----
+        return 0
+
+# ---------- Regex validators ----------
+URL_RE    = re.compile(r'(?i)^(?:https?://)[^\s]+$')
+DOMAIN_RE = re.compile(r'^(?=.{1,253}$)(?!-)(?:[A-Za-z0-9-]{1,63}\.)+[A-Za-z]{2,63}\.?$')
+IPV4_RE   = re.compile(r'^(?:\d{1,3}\.){3}\d{1,3}$')
+# loose IPv6 matcher (good enough for dnsx output)
+IPV6_RE   = re.compile(r'(?i)^[0-9a-f:]+$')
+PORT_RE   = re.compile(r'^(.+?):(\d{1,5})$')
+
+# Canonical buckets
 BUCKET_KEYS = (
-    "domains", "hosts", "ips", "ports", "services",
-    "urls", "endpoints", "params",
-    "tech_stack", "vulns", "exploit_results",
-    "screenshots"
-    # keep "findings" if you want as a generic catch-all, but it's cleaner to prefer typed keys
+    "domains","hosts","ips","ports","services",
+    "urls","endpoints","params",
+    "tech_stack","vulns","exploit_results","screenshots"
 )
 
-
-# ---- Regex helpers ----
-URL_RE  = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
-IPV4_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\b")
-IPV6_RE = re.compile(r"\b(?:[A-F0-9]{1,4}:){1,7}[A-F0-9]{1,4}\b", re.IGNORECASE)
-
-# Optional domain classifier: use your existing helper if available
-try:
-    # adjust path if your module lives elsewhere
-    from tools.utils.domain_classification import classify_lines as classify_domains
-except Exception:
-    def classify_domains(lines: List[str]) -> Tuple[List[str], List[str], int]:
-        """Fallback: very simple 'looks like a domain' filter; returns (valid, invalid, dup_count)."""
-        seen, dups, valid, invalid = set(), 0, [], []
-        dom_re = re.compile(r"^(?=.{1,253}$)(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$", re.IGNORECASE)
-        for s in lines:
-            if s in seen: dups += 1; continue
-            seen.add(s)
-            (valid if dom_re.match(s) else invalid).append(s)
-        return valid, invalid, dups
-
-# Optional bridge: services -> urls
-def services_to_urls(services: Iterable[str]) -> List[str]:
-    try:
-        from tools.alltools.services_to_urls import services_to_urls as _impl  # if you have it
-        return _impl(services)
-    except Exception:
-        out = []
-        for s in services or []:
-            s = str(s).strip()
-            if not s: continue
-            # accepted formats: host:port or host:port/proto
-            host, _, rest = s.partition(":")
-            port = rest.split("/", 1)[0] if rest else ""
-            try:
-                p = int(port)
-            except ValueError:
-                continue
-            if p == 443:
-                out.append(f"https://{host}:{p}")
-            elif p == 80:
-                out.append(f"http://{host}:{p}")
-            else:
-                # conservative default -> http
-                out.append(f"http://{host}:{p}")
-        # dedupe preserve order
-        seen, uniq = set(), []
-        for u in out:
-            if u not in seen: uniq.append(u); seen.add(u)
-        return uniq
-
-# ---- Small error class for parameter issues ----
+# ---------- Errors ----------
 class ValidationError(Exception):
     def __init__(self, message: str, reason: str = "INVALID_PARAMS", detail: Optional[str] = None):
         super().__init__(message)
@@ -112,109 +39,123 @@ class ValidationError(Exception):
         self.reason = reason
         self.detail = detail
 
-# ---- Common utilities ----
+# ---------- FS helpers ----------
+def ensure_work_dir(options: dict, slug: Optional[str] = None) -> Path:
+    """
+    Use options.get('work_dir') when present; else create a temp dir.
+    If run_id/step_id provided, namespace under /tmp/tools/<run>/<step>/.
+    """
+    wd = options.get("work_dir")
+    if wd:
+        p = Path(wd)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    run_id  = str(options.get("run_id") or "adhoc")
+    step_id = str(options.get("step_id") or slug or "step")
+    root = Path(tempfile.gettempdir()) / "tools" / run_id / step_id
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+def write_output_file(work_dir: Path, filename: str, content: str) -> str:
+    fp = Path(work_dir) / filename
+    fp.write_text(content or "", encoding="utf-8", errors="ignore")
+    return str(fp)
+
+# ---------- Binary resolution ----------
 def resolve_bin(*names: str) -> Optional[str]:
-    """Return first resolvable binary from names; try .exe on Windows too."""
-    for name in names:
-        p = shutil.which(name)
-        if p: return p
-        if sys.platform.startswith("win") and not name.lower().endswith(".exe"):
-            p = shutil.which(name + ".exe")
-            if p: return p
+    """
+    Return first found executable name in PATH. Accepts multiple names (unix/win).
+    """
+    for n in names:
+        if not n:
+            continue
+        path = shutil.which(n)
+        if path:
+            return path
     return None
 
-def now_ms() -> int:
-    return int(time.time() * 1000)
+# ---------- Input helpers ----------
+def _coerce_lines(val: Any) -> List[str]:
+    if val is None:
+        return []
+    if isinstance(val, (list, tuple)):
+        return [str(x).strip() for x in val if str(x).strip()]
+    if isinstance(val, str):
+        return [s.strip() for s in val.replace("\r\n", "\n").split("\n") if s.strip()]
+    return []
 
-def ensure_work_dir(options: dict) -> Path:
-    wd = Path(options.get("work_dir") or Path(os.getenv("TEMP", "/tmp")) / "hackr_runs").resolve()
-    wd.mkdir(parents=True, exist_ok=True)
-    return wd
-
-def write_output_file(work_dir: Path, name: str, content: str) -> str:
-    out_path = work_dir / name
-    out_path.write_text(content, encoding="utf-8", errors="ignore")
-    return str(out_path)
-
-def merge_dedupe(items: Iterable[str], max_items: Optional[int] = None) -> List[str]:
-    seen, out = set(), []
-    for it in items or []:
-        it = str(it).strip()
-        if not it: continue
-        if it in seen: continue
-        seen.add(it); out.append(it)
-        if max_items and len(out) >= max_items:
-            break
-    return out
-
-def ensure_file_limits(path: str, max_bytes: int) -> None:
-    if not path or not os.path.exists(path):
-        raise ValidationError("Upload file not found.", "INVALID_PARAMS", "Missing or inaccessible file")
-    try:
-        size = os.path.getsize(path)
-    except Exception:
-        raise ValidationError("Unable to read uploaded file.", "INVALID_PARAMS", "stat() failed")
-    if size > max_bytes:
-        raise ValidationError(f"Uploaded file too large ({size} bytes)", "FILE_TOO_LARGE", f"{size} > {max_bytes}")
-
-def coerce_int_range(options: dict, key: str, default: int, min_v: int, max_v: int) -> int:
-    raw = options.get(key, default)
-    try:
-        val = int(raw)
-    except Exception:
-        raise ValidationError(f"{key} must be an integer", "INVALID_PARAMS", f"got {raw!r}")
-    if not (min_v <= val <= max_v):
-        raise ValidationError(f"{key} must be between {min_v}-{max_v}", "INVALID_PARAMS", f"got {val}")
-    return val
-
-def read_injected(options: dict, accept_keys: Iterable[str]) -> List[str]:
-    buf: List[str] = []
-    for key in accept_keys:
-        v = options.get(key)
-        if isinstance(v, list) and v:
-            buf.extend(str(x).strip() for x in v if str(x).strip())
-    return merge_dedupe(buf)
-
-def read_targets(options: dict,
-                 accept_keys: Iterable[str],
-                 file_max_bytes: int = 200_000,
-                 manual_split_re: str = r"[\s,]+",
-                 cap: Optional[int] = None) -> Tuple[List[str], str]:
+def read_targets(options: dict, *, accept_keys: Iterable[str], cap: int = 100) -> Tuple[List[str], List[str]]:
     """
-    Prefer injected typed lists; else file (validated); else manual 'value'.
-    Returns (targets, source) where source is 'injected' | 'file:<path>' | 'value' | 'empty'
+    Read potential targets from multiple common shapes in options. Returns (raw, extras_dropped).
     """
-    # 1) injected lists from previous steps
-    inj = read_injected(options, accept_keys)
-    if inj:
-        return (merge_dedupe(inj, cap), "injected")
-    # 2) file method
-    im = (options or {}).get("input_method", "").lower()
-    if im == "file" and options.get("file_path"):
-        ensure_file_limits(options["file_path"], file_max_bytes)
-        with open(options["file_path"], "r", encoding="utf-8", errors="ignore") as fh:
-            lines = [ln.strip() for ln in fh if ln.strip()]
-        return (merge_dedupe(lines, cap), f"file:{options['file_path']}")
-    # 3) manual value
-    val = (options or {}).get("value", "")
-    if isinstance(val, str) and val.strip():
-        parts = re.split(manual_split_re, val.strip())
-        return (merge_dedupe(parts, cap), "value")
-    return ([], "empty")
+    accept = tuple(accept_keys or ())
+    raw: List[str] = []
+    # direct buckets
+    for k in accept:
+        v = options.get(k)
+        raw.extend(_coerce_lines(v))
+    # common fields used by your UI
+    raw.extend(_coerce_lines(options.get("targets")))
+    raw.extend(_coerce_lines(options.get("value")))
+    raw.extend(_coerce_lines(options.get("input_text")))
+    # file handle
+    if "targets_file" in options and options["targets_file"]:
+        try:
+            txt = Path(str(options["targets_file"])).read_text("utf-8", errors="ignore")
+            raw.extend(_coerce_lines(txt))
+        except Exception:
+            pass
 
-def run_cmd(args: List[str], timeout_s: int, cwd: Optional[Path] = None, env: Optional[Dict[str, str]] = None) -> Tuple[int, str, int]:
-    if not args or not args[0]:
-        raise ValidationError("Executable not resolved", "NOT_INSTALLED", "args[0] missing")
+    # dedupe, preserve order
+    seen = set()
+    uniq: List[str] = []
+    for s in raw:
+        if s not in seen:
+            seen.add(s); uniq.append(s)
+    extras = []
+    if cap and len(uniq) > cap:
+        extras = uniq[cap:]
+        uniq = uniq[:cap]
+    return uniq, extras
+
+# ---------- Simple classifiers ----------
+def classify_domains(items: Iterable[str]) -> Tuple[List[str], List[str]]:
+    good, bad = [], []
+    for s in items or []:
+        s = (s or "").strip().lower()
+        if not s:
+            continue
+        (good if DOMAIN_RE.match(s) else bad).append(s)
+    return good, bad
+
+# ---------- Shell ----------
+def run_cmd(args: List[str], *, timeout_s: int, cwd: Path) -> Tuple[int, str, int]:
     t0 = now_ms()
     try:
-        res = subprocess.run(
-            args, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            timeout=timeout_s, cwd=str(cwd) if cwd else None, env=env
-        )
-        return res.returncode, (res.stdout or ""), now_ms() - t0
+        res = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True, timeout=timeout_s)
+        out = (res.stdout or "")
+        if res.stderr:
+            out = out + ("\n" + res.stderr)
+        return res.returncode, out, now_ms() - t0
     except subprocess.TimeoutExpired as e:
         raise ValidationError("Timed out while running the tool", "TIMEOUT", str(e))
+
+# ---------- Merge / finalize ----------
+def _merge_dedupe(values: Iterable[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for v in values or []:
+        s = str(v).strip()
+        if not s:
+            continue
+        # normalize domains/urls/endpoints to lowercase
+        key = s.lower() if (s.startswith("http") or DOMAIN_RE.match(s)) else s
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(s)
+    return out
 
 def finalize(status: str,
              message: str,
@@ -227,16 +168,17 @@ def finalize(status: str,
              error_detail: Optional[str] = None,
              **buckets) -> dict:
     """
-    Standardize manifest shape. Buckets are lists keyed by BUCKET_KEYS.
-    Adds counts{} and optional error_reason/error_detail.
+    Standard tool manifest for your runner.
+    Buckets should be lists using keys from BUCKET_KEYS.
     """
     out: Dict[str, Any] = {
         "status": status,
         "message": message,
-        "parameters": {k: options.get(k) for k in sorted(options.keys())},
+        "options": {k:v for k,v in (options or {}).items() if k not in ("_policy","_meta")},
         "command": command,
-        "execution_ms": max(0, now_ms() - t0_ms),
-        "output": raw_out or "",
+        "started_at": t0_ms,
+        "duration_ms": max(0, now_ms() - t0_ms),
+        "stdout": raw_out or "",
     }
     if output_file:
         out["output_file"] = output_file
@@ -245,53 +187,13 @@ def finalize(status: str,
     if error_detail:
         out["error_detail"] = error_detail
 
-    counts: Dict[str, int] = {}
+    counts: Dict[str,int] = {}
     for k in BUCKET_KEYS:
-        v = buckets.get(k)
-        if v:
-            uniq = merge_dedupe(v)
+        vals = buckets.get(k)
+        if vals:
+            uniq = _merge_dedupe(vals)
             out[k] = uniq
             counts[k] = len(uniq)
     if counts:
         out["counts"] = counts
     return out
-
-
-IP_RE = re.compile(rf"(?:{IPV4_RE.pattern})|(?:{IPV6_RE.pattern})")
-
-def read_targets_from_options(options: dict, *, cap: Optional[int] = None):
-    # default acceptable keys; adapters can still call read_targets(...) directly if they need custom sets
-    return read_targets(options, accept_keys=("domains","hosts","urls"), cap=cap)
-# in _common.py
-def read_domains_validated(options: dict, *, cap:int=50, file_max_bytes:int=100_000):
-    """
-    Returns (domains, diag) or raises ValidationError with error_reason set.
-    diag includes the same counters old adapters used to return.
-    """
-    targets, src = read_targets(options, accept_keys=("domains","hosts"), file_max_bytes=file_max_bytes, cap=None)
-
-    # old behavior: require something
-    if not targets:
-        raise ValidationError("At least one domain is required.", "INVALID_PARAMS", "No domains submitted")
-
-    # classify + dedupe
-    try:
-        from tools.utils.domain_classification import classify_lines
-        valid, invalid, dup_count = classify_lines(targets)
-    except Exception:
-        # fallback: accept everything & no dup count
-        valid, invalid, dup_count = (list(dict.fromkeys(targets)), [], 0)
-
-    if invalid:
-        raise ValidationError(f"{len(invalid)} invalid domains found", "INVALID_PARAMS", ", ".join(invalid[:10]))
-    if len(valid) > cap:
-        raise ValidationError(f"Too many domains: {len(valid)} (max {cap})", "TOO_MANY_DOMAINS", f"{len(valid)} > {cap} limit")
-
-    diag = {
-        "total_domain_count": len(targets),
-        "valid_domain_count": len(valid),
-        "invalid_domain_count": len(invalid),
-        "duplicate_domain_count": dup_count,
-        "file_size_b": (os.path.getsize(options["file_path"]) if (options.get("input_method")=="file" and options.get("file_path") and os.path.exists(options["file_path"])) else None),
-    }
-    return (valid, diag)
