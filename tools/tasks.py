@@ -95,7 +95,6 @@ def advance_run(self, run_id: int):
 
 BUCKET_KEYS = ("domains", "hosts", "ips", "ports", "services", "urls", "endpoints", "findings")
 
-
 def _ensure_run_manifest(run):
     """
     Ensure a consistent dict structure on run.run_manifest.
@@ -132,7 +131,7 @@ def _aggregate_run_manifest(db, run, step_index, tool_slug, step_manifest):
         if not vals:
             # also accept *_count, but don't need to recalc
             continue
-
+        
         # Merge items
         bucket = manifest["buckets"].get(key, {"count": 0, "items": []})
         merged = _merge_items(bucket.get("items", []), vals)

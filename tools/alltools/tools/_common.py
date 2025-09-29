@@ -45,7 +45,14 @@ def active_decr(user_id: str | int):
     except Exception:
         pass
 # ---- What buckets every adapter may emit (typed chaining relies on these) ----
-BUCKET_KEYS = ("domains", "hosts", "ips", "ports", "services", "urls", "endpoints", "findings")
+BUCKET_KEYS = (
+    "domains", "hosts", "ips", "ports", "services",
+    "urls", "endpoints", "params",
+    "tech_stack", "vulns", "exploit_results",
+    "screenshots"
+    # keep "findings" if you want as a generic catch-all, but it's cleaner to prefer typed keys
+)
+
 
 # ---- Regex helpers ----
 URL_RE  = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)

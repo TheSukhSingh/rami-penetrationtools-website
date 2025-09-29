@@ -1,4 +1,3 @@
-# admin/routes.py
 from flask import render_template, abort, redirect, request, url_for
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db

@@ -101,7 +101,6 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - link user dashboard
 - link billing and plan
 - link help
-
 ## ACCOUNT SETTINGS PAGE    
 - redesigning of the page (page design available)
 - email change delivery
@@ -136,6 +135,8 @@ ending   (sep 28 - 31) : AI Chatbot, Bugs and other fixes
 - complete set up
 ## HELP PAGE
 - complete set up
+## FRONTEND
+- Auth section - update field names so browser is compatible for understanding the field names (like password or email or username) - currently it enters some of those, and does not enter the rest of those
 
 
 

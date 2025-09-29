@@ -17,7 +17,7 @@ from tools.models import (
     WorkflowRunStatus, WorkflowStepStatus,
 )
 from extensions import db, limiter
-from tools.policies import get_effective_policy
+from tools.policies import get_effective_policy, get_global_specs
 from . import tools_bp
 from importlib import import_module
 from sqlalchemy.orm import joinedload, selectinload
@@ -29,7 +29,6 @@ from celery_app import celery
 from sqlalchemy.exc import IntegrityError
 from .settings import get_setting, get_rate_limit
 from .validation import validate_step_input
-from tools.policies import get_effective_policy
 
 utcnow = lambda: datetime.now(timezone.utc)
 
@@ -143,6 +142,9 @@ def api_tools():
 
     return jsonify(payload)
 
+@tools_bp.get("/api/specs")
+def api_specs():
+    return jsonify(get_global_specs())
 
 @tools_bp.route('/api/scan', methods=['POST'])
 @jwt_required()

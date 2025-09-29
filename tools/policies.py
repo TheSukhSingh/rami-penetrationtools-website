@@ -30,6 +30,85 @@ BASELINE = {
     # add other tools here similarly…
 }
 
+# ---- Global, source-of-truth specs (Task 1) ----
+BUCKETS = (
+    "domains", "hosts", "ips", "ports", "services",
+    "urls", "endpoints", "params",
+    "tech_stack", "vulns", "exploit_results", "screenshots",
+)
+
+EXECUTION_ORDER = [
+    # discovery → validation → enrichment → prep → scanning → exploitation → reporting
+    "discovery", "validation", "enrichment", "prep", "scanning", "exploitation", "reporting",
+]
+
+WORDLIST_TIERS = ["small", "medium", "large", "ultra"]
+
+# Compatibility (consumes/emits) for each tool slug we ship
+# NOTE: Keep slugs in sync with your Tool rows + adapter filenames.
+IO_BASELINE = {
+    # ---- Discovery / Recon ----
+    "subfinder":         {"consumes": ["domains"],                      "emits": ["domains"]},
+    "github-subdomains": {"consumes": ["domains"],                      "emits": ["domains"]},
+    "crt.sh":            {"consumes": ["domains"],                      "emits": ["domains"]},
+    "theharvester":      {"consumes": ["domains"],                      "emits": ["domains"]},
+
+    # ---- Validation / Surface ----
+    "dnsx":              {"consumes": ["domains","hosts"],              "emits": ["domains","ips"]},
+    "naabu":             {"consumes": ["hosts","ips","domains"],        "emits": ["services","ports"]},
+    "services-to-urls":  {"consumes": ["services"],                     "emits": ["urls"]},
+    "httpx":             {"consumes": ["urls","hosts","domains"],       "emits": ["urls"]},
+
+    # ---- Enrichment / Crawl / Params ----
+    "katana":            {"consumes": ["urls","domains"],               "emits": ["urls","endpoints"]},
+    "gospider":          {"consumes": ["urls","domains"],               "emits": ["urls"]},
+    "hakrawler":         {"consumes": ["urls","domains"],               "emits": ["urls"]},
+    "gau":               {"consumes": ["domains","hosts"],              "emits": ["urls"]},
+    "linkfinder":        {"consumes": ["urls"],                         "emits": ["endpoints"]},
+    "paramspider":       {"consumes": ["urls","domains"],               "emits": ["params"]},
+    "arjun":             {"consumes": ["urls","endpoints"],             "emits": ["params"]},
+
+    # ---- Tech / WAF / CMS ----
+    "whatweb":           {"consumes": ["urls"],                         "emits": ["tech_stack"]},
+    "wafw00f":           {"consumes": ["urls"],                         "emits": ["tech_stack"]},
+    "retire-js":         {"consumes": ["urls"],                         "emits": ["tech_stack","vulns"]},
+    "wpscan":            {"consumes": ["urls"],                         "emits": ["tech_stack","vulns"]},
+
+    # ---- Scanners ----
+    "nuclei":            {"consumes": ["urls"],                         "emits": ["vulns"]},
+    "nikto":             {"consumes": ["urls"],                         "emits": ["vulns"]},
+    "zap":               {"consumes": ["urls"],                         "emits": ["vulns","endpoints","params"]},
+    "dalfox":            {"consumes": ["urls","params","endpoints"],    "emits": ["vulns"]},
+    "xsstrike":          {"consumes": ["urls","params"],                "emits": ["vulns"]},
+    "s3scanner":         {"consumes": ["urls","domains"],               "emits": ["vulns"]},
+
+    # ---- Fuzz / Brute ----
+    "ffuf":              {"consumes": ["urls","hosts","domains"],       "emits": ["endpoints","params"]},
+    "gobuster":          {"consumes": ["urls","hosts","domains"],       "emits": ["endpoints"]},
+
+    # ---- Exploitation / Creds ----
+    "hydra":             {"consumes": ["services","urls"],              "emits": ["exploit_results"]},
+    "sqlmap":            {"consumes": ["urls","params"],                "emits": ["exploit_results","vulns"]},
+    "commix":            {"consumes": ["urls","params"],                "emits": ["exploit_results","vulns"]},
+    "dotdotpwn":         {"consumes": ["urls","endpoints"],             "emits": ["exploit_results","vulns"]},
+    "fuxploider":        {"consumes": ["urls","endpoints"],             "emits": ["exploit_results"]},
+    "ssrfmap":           {"consumes": ["urls","params"],                "emits": ["exploit_results","domains","ips"]},
+
+    # ---- Evidence / Reporting ----
+    "gowitness":         {"consumes": ["urls"],                         "emits": ["screenshots"]},
+    "jwt-crack":         {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
+    "john":              {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
+    "qlgraph":           {"consumes": ["urls","endpoints","vulns"],     "emits": []},
+}
+
+def get_global_specs() -> dict:
+    """Expose global specs to FE (buckets, exec order, wordlists)."""
+    return {
+        "buckets": BUCKETS,
+        "execution_order": EXECUTION_ORDER,
+        "wordlist_tiers": WORDLIST_TIERS,
+    }
+
 def _clamp_num(v, lo, hi):
     try:
         fv = float(v)
@@ -145,12 +224,13 @@ def get_effective_policy(tool_slug: str) -> dict:
             }
 
     schema_fields.sort(key=lambda x: (x.get("group") or "", x.get("order_index") or 0, x["name"]))
-
+    io_policy = deepcopy(base.get("io_policy") or IO_BASELINE.get(tool_slug) or DEFAULT_IO)
     return {
         "input_policy": input_policy,
         "binaries": binaries,
         "runtime_constraints": runtime_constraints,
         "schema_fields": schema_fields,
+        "io_policy": io_policy,
     }
 
 def clamp_from_constraints(options: dict, name: str, constraints: Optional[dict], default: Any=None, *, kind="int"):
