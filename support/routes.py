@@ -9,6 +9,8 @@ from extensions import db
 from support.models import (
     SupportTicket,
     SupportMessage,
+    SupportAttachment,
+    SupportSnippet,
     STATUS_VALUES,
     PRIORITY_VALUES,
     VISIBILITY_VALUES,
@@ -80,6 +82,29 @@ def _ci_like(column, needle: str):
     return func.lower(column).like(f"%{needle.lower()}%")
 
 
+def _normalize_tags_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    # if stored as other type, attempt to treat as empty
+    return []
+
+
+def _add_tags(ticket: SupportTicket, add_list):
+    add = set(_normalize_tags_list(add_list))
+    tags = set(_normalize_tags_list(ticket.tags))
+    tags |= add
+    ticket.tags = sorted(tags)
+
+
+def _remove_tags(ticket: SupportTicket, rem_list):
+    rem = set(_normalize_tags_list(rem_list))
+    tags = set(_normalize_tags_list(ticket.tags))
+    tags -= rem
+    ticket.tags = sorted(tags)
+
+
 # ---------- existing endpoints ------------------------------------------------
 
 @support_bp.get("/")
@@ -102,7 +127,7 @@ def support_admin_home():
     return jsonify({
         "ok": True,
         "message": "Admin Support Console (Solo Mode) ready.",
-        "next": ["/support (user view)", "/support/admin (this)", "Ticket CRUD in Task 5+"]
+        "next": ["/support (user view)", "/support/admin (this)"]
     })
 
 
@@ -241,6 +266,7 @@ def support_ticket_detail(ticket_id: int):
             "created_at": t.created_at.isoformat(),
             "updated_at": t.updated_at.isoformat(),
             "meta": t.meta or {},
+            "tags": t.tags or [],
         },
         "messages": messages
     })
@@ -255,10 +281,6 @@ def support_ticket_reply(ticket_id: int):
       - body (str, required, <=10000)
       - internal (bool, optional; admin_owner only; default False)
       - set_status (str, optional; admin_owner only)
-          one of: new|open|pending_user|on_hold|solved|closed
-    Behavior:
-      - User (requester): public-only; on reply, auto-reopen to 'open' if status in pending_user/solved/closed.
-      - Admin: can post public or internal; if ticket was 'new', default to 'open' unless set_status provided.
     """
     me_user, is_admin = current_user_and_admin()
     payload = request.get_json(silent=True) or {}
@@ -354,48 +376,31 @@ def support_ticket_set_status(ticket_id: int):
     })
 
 
-# ---------- NEW: Task 5 — Admin Inbox & Filters ------------------------------
+# ---------- Task 5: Admin Inbox & Filters (unchanged from previous step) -----
 
 @support_bp.get("/admin/tickets")
 @admin_required
 def support_admin_tickets():
     """
     List tickets with filters, sorting, pagination + status counters.
-    Query params (all optional):
-      - status: one of STATUS_VALUES
-      - priority: one of PRIORITY_VALUES
-      - requester_email: substring match, case-insensitive
-      - assignee_id: int
-      - tool: string (searched in meta)
-      - category: string (searched in meta)
-      - search: free text (subject/description, or exact id if numeric)
-      - date_from, date_to: ISO dates (YYYY-MM-DD) on created_at
-      - sort: one of created_at|updated_at|priority|status (default=created_at)
-      - order: asc|desc (default=desc for created_at/updated_at, asc otherwise)
-      - page: 1-based (default 1)
-      - per_page: default 20, max 100
     """
     args = request.args
 
     q = SupportTicket.query
 
-    # status
     status = (args.get("status") or "").strip().lower()
     if status and status in STATUS_VALUES:
         q = q.filter(SupportTicket.status == status)
 
-    # priority
     priority = (args.get("priority") or "").strip().lower()
     if priority and priority in PRIORITY_VALUES:
         q = q.filter(SupportTicket.priority == priority)
 
-    # requester_email
     requester_email = (args.get("requester_email") or "").strip()
     if requester_email:
         q = (q.join(User, User.id == SupportTicket.requester_user_id)
                .filter(_ci_like(User.email, requester_email)))
 
-    # assignee_id
     assignee_id = args.get("assignee_id")
     if assignee_id:
         try:
@@ -404,7 +409,6 @@ def support_admin_tickets():
         except Exception:
             pass
 
-    # tool / category (meta search; portable fallback using string match)
     tool = (args.get("tool") or "").strip()
     if tool:
         q = q.filter(_ci_like(cast(SupportTicket.meta, String), tool))
@@ -412,15 +416,13 @@ def support_admin_tickets():
     if category:
         q = q.filter(_ci_like(cast(SupportTicket.meta, String), category))
 
-    # date range
-    date_from = (args.get("date_from") or "").strip()
-    date_to   = (args.get("date_to") or "").strip()
-    # Accept YYYY-MM-DD; if provided, build inclusive range [from, to 23:59:59]
     def _parse_date(d):
         try:
             return datetime.strptime(d, "%Y-%m-%d")
         except Exception:
             return None
+    date_from = (args.get("date_from") or "").strip()
+    date_to   = (args.get("date_to") or "").strip()
     df = _parse_date(date_from)
     dt = _parse_date(date_to)
     if df and dt:
@@ -431,7 +433,6 @@ def support_admin_tickets():
     elif dt:
         q = q.filter(SupportTicket.created_at < (dt.replace(hour=23, minute=59, second=59)))
 
-    # search
     search = (args.get("search") or "").strip()
     if search:
         if search.isdigit():
@@ -446,7 +447,6 @@ def support_admin_tickets():
                 _ci_like(SupportTicket.description, search),
             ))
 
-    # sort
     sort = (args.get("sort") or "created_at").strip()
     sort_map = {
         "created_at": SupportTicket.created_at,
@@ -458,7 +458,6 @@ def support_admin_tickets():
 
     order = (args.get("order") or "").strip().lower()
     if not order:
-        # sensible defaults: time fields desc, others asc
         order = "desc" if sort in ("created_at", "updated_at") else "asc"
 
     if order == "asc":
@@ -466,17 +465,12 @@ def support_admin_tickets():
     else:
         q = q.order_by(sort_col.desc(), SupportTicket.id.desc())
 
-    # pagination
     page = _safe_int(args.get("page"), default=1, min_=1, max_=100000)
     per_page = _safe_int(args.get("per_page"), default=20, min_=1, max_=100)
     total = q.count()
     rows = q.limit(per_page).offset((page - 1) * per_page).all()
 
-    # counters by status (unfiltered except for global filters that should apply?)
-    # We’ll compute counters with *the same* filters except status itself,
-    # so that counters reflect other active filters.
     q_counters = SupportTicket.query
-    # re-apply everything except exact 'status' filter to reflect current view
     if priority and priority in PRIORITY_VALUES:
         q_counters = q_counters.filter(SupportTicket.priority == priority)
     if requester_email:
@@ -525,6 +519,7 @@ def support_admin_tickets():
         "created_at": t.created_at.isoformat(),
         "updated_at": t.updated_at.isoformat(),
         "meta": t.meta or {},
+        "tags": t.tags or [],
     } for t in rows]
 
     return jsonify({
@@ -547,4 +542,264 @@ def support_admin_tickets():
         "counts": counts,
         "total": total,
         "tickets": items,
+    })
+
+
+# ---------- NEW: Task 6 — Quick edits, bulk actions, snippets ----------------
+
+@support_bp.patch("/t/<int:ticket_id>/priority")
+@admin_required
+def support_ticket_set_priority(ticket_id: int):
+    payload = request.get_json(silent=True) or {}
+    new_priority = (payload.get("priority") or "").strip().lower()
+    if new_priority not in PRIORITY_VALUES:
+        abort(400, description="invalid priority")
+    t = SupportTicket.query.filter_by(id=ticket_id).first()
+    if not t:
+        abort(404, description="ticket not found")
+    t.priority = new_priority
+    t.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True, "ticket": {"id": t.id, "priority": t.priority, "updated_at": t.updated_at.isoformat()}})
+
+
+@support_bp.patch("/t/<int:ticket_id>/assign")
+@admin_required
+def support_ticket_assign(ticket_id: int):
+    payload = request.get_json(silent=True) or {}
+    assignee_user_id = payload.get("assignee_user_id", None)
+
+    t = SupportTicket.query.filter_by(id=ticket_id).first()
+    if not t:
+        abort(404, description="ticket not found")
+
+    if assignee_user_id is None:
+        t.assignee_user_id = None
+    else:
+        try:
+            uid = int(assignee_user_id)
+        except Exception:
+            abort(400, description="assignee_user_id must be int or null")
+        # Optional: enforce admin_owner-only assignees in Solo Mode
+        ok = (db.session.query(User.id)
+              .join(User.roles)
+              .filter(User.id == uid, Role.name == "admin_owner")
+              .first())
+        if not ok:
+            abort(400, description="assignee must be an admin_owner in Solo Mode")
+        t.assignee_user_id = uid
+
+    t.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True, "ticket": {"id": t.id, "assignee_user_id": t.assignee_user_id, "updated_at": t.updated_at.isoformat()}})
+
+
+@support_bp.post("/admin/bulk")
+@admin_required
+def support_admin_bulk_actions():
+    """
+    Bulk actions on tickets.
+    Body JSON:
+      {
+        "ticket_ids": [1,2,3],                 # required
+        "set_status": "pending_user",          # optional
+        "set_priority": "high",                # optional
+        "assign_to_user_id": 1,                # optional (admin_owner only)
+        "add_tags": ["billing", "httpx"],      # optional
+        "remove_tags": ["legacy"]              # optional
+      }
+    """
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get("ticket_ids") or []
+    if not isinstance(ids, list) or not ids:
+        abort(400, description="ticket_ids list is required")
+
+    q = SupportTicket.query.filter(SupportTicket.id.in_(ids))
+    rows = q.all()
+    if not rows:
+        return jsonify({"ok": True, "updated": 0, "found": 0})
+
+    # validate incoming fields
+    set_status = (payload.get("set_status") or "").strip().lower()
+    if set_status and set_status not in STATUS_VALUES:
+        abort(400, description="invalid set_status")
+
+    set_priority = (payload.get("set_priority") or "").strip().lower()
+    if set_priority and set_priority not in PRIORITY_VALUES:
+        abort(400, description="invalid set_priority")
+
+    assign_to_user_id = payload.get("assign_to_user_id", None)
+    if assign_to_user_id is not None:
+        try:
+            assign_to_user_id = int(assign_to_user_id)
+        except Exception:
+            abort(400, description="assign_to_user_id must be int")
+        ok = (db.session.query(User.id)
+              .join(User.roles)
+              .filter(User.id == assign_to_user_id, Role.name == "admin_owner")
+              .first())
+        if not ok:
+            abort(400, description="assignee must be an admin_owner in Solo Mode")
+
+    add_tags = payload.get("add_tags")
+    remove_tags = payload.get("remove_tags")
+
+    updated = 0
+    now = datetime.utcnow()
+    for t in rows:
+        touched = False
+        if set_status:
+            _set_status(t, set_status)
+            touched = True
+        if set_priority:
+            t.priority = set_priority
+            touched = True
+        if assign_to_user_id is not None:
+            t.assignee_user_id = assign_to_user_id
+            touched = True
+        if add_tags:
+            _add_tags(t, add_tags)
+            touched = True
+        if remove_tags:
+            _remove_tags(t, remove_tags)
+            touched = True
+        if touched:
+            t.updated_at = now
+            updated += 1
+
+    db.session.commit()
+    return jsonify({"ok": True, "found": len(rows), "updated": updated})
+
+
+# -------- Snippets: CRUD + apply --------------------------------------------
+
+@support_bp.get("/admin/snippets")
+@admin_required
+def support_snippets_list():
+    """
+    List snippets. Query: ?active_only=1 to filter.
+    """
+    active_only = str(request.args.get("active_only", "0")).lower() in ("1", "true", "yes")
+    q = SupportSnippet.query
+    if active_only:
+        q = q.filter(SupportSnippet.is_active.is_(True))
+    rows = q.order_by(SupportSnippet.title.asc()).all()
+    return jsonify({"ok": True, "snippets": [{
+        "id": s.id, "title": s.title, "is_active": s.is_active,
+        "updated_at": s.updated_at.isoformat(), "created_at": s.created_at.isoformat()
+    } for s in rows]})
+
+
+@support_bp.post("/admin/snippets")
+@admin_required
+def support_snippets_create():
+    """
+    Body: { title: str<=80, body: str<=5000, is_active?: bool }
+    """
+    payload = request.get_json(silent=True) or {}
+    title = (payload.get("title") or "").strip()
+    body = (payload.get("body") or "").strip()
+    if not title or len(title) > 80:
+        abort(400, description="title is required (<=80 chars)")
+    if not body or len(body) > 5000:
+        abort(400, description="body is required (<=5000 chars)")
+
+    s = SupportSnippet(
+        title=title,
+        body=body,
+        is_active=bool(payload.get("is_active", True)),
+    )
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({"ok": True, "snippet": {"id": s.id, "title": s.title, "is_active": s.is_active}}), 201
+
+
+@support_bp.patch("/admin/snippets/<int:snippet_id>")
+@admin_required
+def support_snippets_update(snippet_id: int):
+    payload = request.get_json(silent=True) or {}
+    s = SupportSnippet.query.filter_by(id=snippet_id).first()
+    if not s:
+        abort(404, description="snippet not found")
+
+    if "title" in payload:
+        title = (payload.get("title") or "").strip()
+        if not title or len(title) > 80:
+            abort(400, description="invalid title")
+        s.title = title
+
+    if "body" in payload:
+        body = (payload.get("body") or "").strip()
+        if not body or len(body) > 5000:
+            abort(400, description="invalid body")
+        s.body = body
+
+    if "is_active" in payload:
+        s.is_active = bool(payload.get("is_active"))
+
+    db.session.commit()
+    return jsonify({"ok": True, "snippet": {"id": s.id, "title": s.title, "is_active": s.is_active}})
+
+
+@support_bp.delete("/admin/snippets/<int:snippet_id>")
+@admin_required
+def support_snippets_delete(snippet_id: int):
+    s = SupportSnippet.query.filter_by(id=snippet_id).first()
+    if not s:
+        abort(404, description="snippet not found")
+    db.session.delete(s)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@support_bp.post("/t/<int:ticket_id>/apply-snippet")
+@admin_required
+def support_ticket_apply_snippet(ticket_id: int):
+    """
+    Apply a snippet by posting it as a message on the ticket.
+    Body: { snippet_id: int, internal?: bool, set_status?: str }
+    """
+    payload = request.get_json(silent=True) or {}
+    sid = payload.get("snippet_id")
+    if not sid:
+        abort(400, description="snippet_id required")
+
+    t = SupportTicket.query.filter_by(id=ticket_id).first()
+    if not t:
+        abort(404, description="ticket not found")
+
+    s = SupportSnippet.query.filter_by(id=int(sid), is_active=True).first()
+    if not s:
+        abort(404, description="snippet not found or inactive")
+
+    internal = bool(payload.get("internal", False))
+    visibility = "internal" if internal else "public"
+
+    # Post message
+    me_user, _ = current_user_and_admin()
+    msg = SupportMessage(
+        ticket_id=t.id,
+        author_user_id=(me_user.id if me_user else None),
+        visibility=visibility,
+        body=s.body,
+    )
+    db.session.add(msg)
+
+    # Optional status change
+    requested = (payload.get("set_status") or "").strip().lower()
+    if requested:
+        _set_status(t, requested)
+    else:
+        # if snippet is public and ticket is new, open it
+        if t.status == "new" and visibility == "public":
+            _set_status(t, "open")
+        else:
+            t.updated_at = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "message": {"id": msg.id, "visibility": visibility, "created_at": msg.created_at.isoformat()},
+        "ticket": {"id": t.id, "status": t.status, "updated_at": t.updated_at.isoformat()}
     })

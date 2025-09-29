@@ -103,3 +103,17 @@ class SupportAttachment(db.Model):
             f"scan_status IN {SCAN_STATUS_VALUES}", name="ck_support_attachments_scan_status"
         ),
     )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Snippets (tiny canned responses for solo mode)
+# ─────────────────────────────────────────────────────────────────────────────
+class SupportSnippet(db.Model):
+    __tablename__ = "support_snippets"
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    title = db.Column(db.String(80), nullable=False)
+    body = db.Column(db.Text, nullable=False)  # keep small-ish; UX will paginate list
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
