@@ -99,6 +99,10 @@ IO_BASELINE = {
     "jwt-crack":         {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
     "john":              {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
     "qlgraph":           {"consumes": ["urls","endpoints","vulns"],     "emits": []},
+    "report-collate": {
+        "consumes": ["domains","ips","urls","endpoints","params","services","tech_stack","vulns","exploit_results","screenshots"],
+        "emits": []
+    },
 }
 
 def get_global_specs() -> dict:

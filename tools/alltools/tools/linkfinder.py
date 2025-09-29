@@ -1,94 +1,77 @@
 # tools/alltools/tools/linkfinder.py
 from __future__ import annotations
 from pathlib import Path
-from typing import List, Tuple
-from urllib.parse import urlsplit, parse_qsl
-from ._common import (
-    resolve_bin, ensure_work_dir, read_targets,
-    run_cmd, write_output_file, finalize, ValidationError, now_ms
-)
-from tools.policies import get_effective_policy, clamp_from_constraints
+from typing import List
+from urllib.parse import urlsplit
 
-HARD_TIMEOUT = 900  # seconds
+try:
+    from ._common import (
+        resolve_bin, ensure_work_dir, read_targets,
+        run_cmd, write_output_file, finalize, ValidationError, now_ms
+    )
+except ImportError:
+    from _common import *
 
-def _derive_params_from_endpoints(eps: List[str]) -> List[str]:
-    params: List[str] = []
-    seen = set()
-    for e in eps or []:
-        # try to parse as URL to extract query keys
+try:
+    from tools.policies import get_effective_policy
+except ImportError:
+    from policies import get_effective_policy
+
+
+HARD_TIMEOUT = 3600
+
+def _derive_endpoints(urls: List[str]) -> List[str]:
+    out, seen = [], set()
+    for u in urls or []:
         try:
-            sp = urlsplit(e)
-            if sp.query:
-                for k, _v in parse_qsl(sp.query, keep_blank_values=True):
-                    if k not in seen:
-                        seen.add(k); params.append(k)
+            p = urlsplit(u).path or "/"
         except Exception:
-            # fallback: treat "?a=b&c=d" in raw strings
-            if "?" in e:
-                for kv in e.split("?", 1)[1].split("&"):
-                    if "=" in kv:
-                        k = kv.split("=",1)[0]
-                        if k and k not in seen:
-                            seen.add(k); params.append(k)
-    return params
-
-def _parse_linkfinder(text: str) -> Tuple[List[str], List[str]]:
-    endpoints: List[str] = []
-    urls: List[str] = []
-    seen_e, seen_u = set(), set()
-    for ln in (text or "").splitlines():
-        s = (ln or "").strip()
-        if not s:
-            continue
-        # LinkFinder -o cli prints endpoints one per line, usually full or relative paths/URLs
-        # Heuristics: keep absolute http(s) in urls; keep everything in endpoints
-        if s.startswith("http://") or s.startswith("https://"):
-            if s not in seen_u:
-                seen_u.add(s); urls.append(s)
-        if s not in seen_e:
-            seen_e.add(s); endpoints.append(s)
-    return endpoints, urls
+            p = "/"
+        if p not in seen:
+            seen.add(p); out.append(p)
+    return out
 
 def run_scan(options: dict) -> dict:
     t0 = now_ms()
-    work_dir = ensure_work_dir(options, "linkfinder")
+    work = ensure_work_dir(options, "linkfinder")
     slug = options.get("tool_slug", "linkfinder")
-    policy = options.get("_policy") or get_effective_policy(slug)
-    ipol = policy.get("input_policy", {}) or {}
+    pol  = options.get("_policy") or get_effective_policy(slug)
 
-    exe = resolve_bin("linkfinder", "linkfinder.exe")
-    if not exe:
-        # sometimes installed as python module only: python3 -m linkfinder
-        exe = resolve_bin("python3", "python")
-        if not exe:
-            return finalize("error", "LinkFinder not installed", options, "linkfinder", t0, "", error_reason="NOT_INSTALLED")
+    # linkfinder is a python module; try binary name then python -m
+    exe = resolve_bin("linkfinder")
+    py  = resolve_bin("python3", "python")
 
-    targets, _ = read_targets(options, accept_keys=("urls",), cap=ipol.get("max_targets") or 1000)
-    if not targets:
-        raise ValidationError("Provide URLs to scan for endpoints (JS).", "INVALID_PARAMS", "no input")
+    if not exe and not py:
+        return finalize("error", "linkfinder not installed", options, "linkfinder", t0, "", error_reason="NOT_INSTALLED")
 
-    timeout_s = clamp_from_constraints(options, "timeout_s", policy.get("runtime_constraints", {}).get("timeout_s"), default=30, kind="int") or 30
+    seeds, _ = read_targets(options, accept_keys=("urls",), cap=5000)
+    if not seeds:
+        raise ValidationError("Provide JS/page URLs for linkfinder.", "INVALID_PARAMS", "no input")
 
-    # LinkFinder accepts a single -i; run per target
-    out_all = []
+    found_urls: List[str] = []
+    all_raw = []
     used_cmd = ""
-    for u in targets:
-        if "linkfinder" in exe:
+
+    for u in seeds:
+        if exe:
             args = [exe, "-i", u, "-o", "cli"]
         else:
-            args = [exe, "-m", "linkfinder", "-i", u, "-o", "cli"]
-        used_cmd = " ".join(args[:2] + ["..."])  # short echo
-        rc, out, _ms = run_cmd(args, timeout_s=min(HARD_TIMEOUT, timeout_s + 30), cwd=work_dir)
-        if out:
-            out_all.append(out)
+            args = [py, "-m", "linkfinder", "-i", u, "-o", "cli"]
+        used_cmd = " ".join(args[:3] + ["..."])
+        rc, out, _ms = run_cmd(args, timeout_s=HARD_TIMEOUT, cwd=work)
+        all_raw.append(out or "")
+        for ln in (out or "").splitlines():
+            s = (ln or "").strip()
+            if s.startswith("http://") or s.startswith("https://"):
+                found_urls.append(s)
 
-    out = "\n".join(out_all)
-    outfile = write_output_file(work_dir, "linkfinder_output.txt", out or "")
+    raw = "\n".join(all_raw)
+    outfile = write_output_file(work, "linkfinder_output.txt", raw or "")
 
-    endpoints, abs_urls = _parse_linkfinder(out)
-    params = _derive_params_from_endpoints(endpoints)
+    # de-dup
+    seen = set(); found_urls = [x for x in found_urls if not (x in seen or seen.add(x))]
+    endpoints = _derive_endpoints(found_urls)
 
-    status = "ok"
-    msg = f"{len(endpoints)} endpoints, {len(params)} params"
-    return finalize(status, msg, options, used_cmd or "linkfinder", t0, out, output_file=outfile,
-                    endpoints=endpoints, params=params, urls=abs_urls)
+    msg = f"{len(found_urls)} urls, {len(endpoints)} endpoints"
+    return finalize("ok", msg, options, used_cmd or "linkfinder", t0, raw, output_file=outfile,
+                    urls=found_urls, endpoints=endpoints)

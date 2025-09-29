@@ -1,86 +1,79 @@
 # tools/alltools/tools/dnsx.py
 from __future__ import annotations
 from pathlib import Path
-from typing import List, Tuple
-from ._common import (
-    resolve_bin, ensure_work_dir, read_targets,
-    DOMAIN_RE, IPV4_RE, IPV6_RE, run_cmd, write_output_file,
-    finalize, ValidationError, now_ms
-)
-from tools.policies import get_effective_policy, clamp_from_constraints
+from typing import List
+import json
 
-HARD_TIMEOUT = 300  # seconds
+try:
+    from ._common import (
+        resolve_bin, ensure_work_dir, read_targets,
+        run_cmd, write_output_file, finalize, ValidationError, now_ms, DOMAIN_RE, IPV4_RE, IPV6_RE
+    )
+except ImportError:
+    from _common import *
 
-def _parse_dnsx_lines(text: str) -> Tuple[List[str], List[str]]:
-    """
-    dnsx lines look like:
-      sub.example.com A 1.2.3.4
-      api.example.org AAAA 2606:4700:...:abcd
-    We'll:
-      - collect left token as a domain if it looks like one
-      - collect any IPv4/6 tokens as ips
-    """
-    domains: List[str] = []
-    ips: List[str] = []
-    seen_d = set(); seen_i = set()
-    for raw in (text or "").splitlines():
-        ln = (raw or "").strip()
-        if not ln:
+try:
+    from tools.policies import get_effective_policy, clamp_from_constraints
+except ImportError:
+    from policies import get_effective_policy, clamp_from_constraints
+
+
+HARD_TIMEOUT = 1800
+
+def _parse_dnsx_jsonl(blob: str) -> (List[str], List[str]):
+    alive, ips = [], []
+    sa, si = set(), set()
+    for ln in (blob or "").splitlines():
+        s = (ln or "").strip()
+        if not s: continue
+        try:
+            obj = json.loads(s)
+        except Exception:
+            # fallback plain line: "domain ip"
+            parts = s.split()
+            if parts:
+                d = parts[0].lower().strip(".")
+                if DOMAIN_RE.match(d) and d not in sa:
+                    sa.add(d); alive.append(d)
+                for p in parts[1:]:
+                    if IPV4_RE.match(p) or IPV6_RE.match(p):
+                        if p not in si:
+                            si.add(p); ips.append(p)
             continue
-        # first token (leftmost) is usually the fqdn
-        first = ln.split()[0]
-        if DOMAIN_RE.match(first):
-            d = first.lower()
-            if d not in seen_d:
-                seen_d.add(d); domains.append(d)
-        # collect any IP tokens
-        for tok in ln.split():
-            t = tok.strip("[]()")
-            if IPV4_RE.match(t) or IPV6_RE.match(t):
-                if t not in seen_i:
-                    seen_i.add(t); ips.append(t)
-    return domains, ips
+        host = (obj.get("host") or obj.get("input") or "").lower().strip(".")
+        if host and DOMAIN_RE.match(host) and host not in sa:
+            sa.add(host); alive.append(host)
+        for a in obj.get("a", []) + obj.get("ips", []):
+            ip = str(a).strip()
+            if (IPV4_RE.match(ip) or IPV6_RE.match(ip)) and ip not in si:
+                si.add(ip); ips.append(ip)
+    return alive, ips
 
 def run_scan(options: dict) -> dict:
     t0 = now_ms()
-    work_dir = ensure_work_dir(options, "dnsx")
+    work = ensure_work_dir(options, "dnsx")
     slug = options.get("tool_slug", "dnsx")
-    policy = options.get("_policy") or get_effective_policy(slug)
-    ipol = policy.get("input_policy", {}) or {}
+    pol  = options.get("_policy") or get_effective_policy(slug)
+    ipol = pol.get("input_policy", {}) or {}
 
     exe = resolve_bin("dnsx", "dnsx.exe")
     if not exe:
         return finalize("error", "dnsx not installed", options, "dnsx", t0, "", error_reason="NOT_INSTALLED")
 
-    # inputs: domains or hosts (we treat hosts as domains for resolution)
-    raw, _ = read_targets(options, accept_keys=("domains", "hosts"), cap=ipol.get("max_targets") or 100)
-    if not raw:
-        raise ValidationError("At least one domain/host is required.", "INVALID_PARAMS", "no input")
+    # accepts domains/hosts (strings)
+    doms, _ = read_targets(options, accept_keys=("domains","hosts"), cap=ipol.get("max_targets") or 100000)
+    if not doms:
+        raise ValidationError("Provide domains/hosts for dnsx.", "INVALID_PARAMS", "no input")
 
-    # threads / timeout
-    threads   = clamp_from_constraints(options, "threads",   policy.get("runtime_constraints", {}).get("threads"),   default=50, kind="int") or 50
-    timeout_s = clamp_from_constraints(options, "timeout_s", policy.get("runtime_constraints", {}).get("timeout_s"), default=60, kind="int") or 60
-    retries   = clamp_from_constraints(options, "retries",   policy.get("runtime_constraints", {}).get("retries"),   default=2,  kind="int") or 2
-    silent    = bool(options.get("silent", True))
+    timeout_s = clamp_from_constraints(options, "timeout_s", pol.get("runtime_constraints",{}).get("timeout_s"), default=30, kind="int") or 30
 
-    # write input list
-    fp = Path(work_dir) / "dnsx_targets.txt"
-    fp.write_text("\n".join(raw), encoding="utf-8")
+    fp = Path(work) / "targets.txt"
+    fp.write_text("\n".join(doms), encoding="utf-8")
 
-    # args
-    args: List[str] = [exe, "-l", str(fp), "-a", "-retries", str(retries), "-t", str(threads)]
-    if silent:
-        args.append("-silent")
+    args = [exe, "-l", str(fp), "-a", "-resp", "-json", "-silent", "-rtime", str(timeout_s)]
+    rc, out, _ms = run_cmd(args, timeout_s=min(HARD_TIMEOUT, timeout_s + 60), cwd=work)
+    outfile = write_output_file(work, "dnsx_output.jsonl", out or "")
 
-    # run
-    timeout = min(HARD_TIMEOUT, max(timeout_s, 5) + 30)
-    rc, out, _ms = run_cmd(args, timeout_s=timeout, cwd=work_dir)
-    outfile = write_output_file(work_dir, "dnsx_output.txt", out or "")
-
-    # parse → domains + ips
-    domains, ips = _parse_dnsx_lines(out)
-
-    status = "ok" if rc == 0 else "error"
-    msg = f"{len(domains)} domains, {len(ips)} ips"
-    return finalize(status, msg, options, " ".join(args), t0, out, output_file=outfile,
-                    domains=domains, ips=ips, error_reason=None if rc == 0 else "OTHER")
+    alive, ips = _parse_dnsx_jsonl(out or "")
+    msg = f"{len(alive)} alive, {len(ips)} ips"
+    return finalize("ok", msg, options, " ".join(args), t0, out, output_file=outfile, domains=alive, ips=ips)
