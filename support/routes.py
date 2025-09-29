@@ -1,6 +1,6 @@
 from datetime import datetime
 import os
-from flask import jsonify, current_app, request, abort, send_file
+from flask import jsonify, current_app, request, abort, send_file, Response
 from . import support_bp
 from .authz import admin_required, auth_required, current_user_and_admin
 
@@ -21,6 +21,9 @@ from werkzeug.datastructures import FileStorage
 
 # Uses your existing auth models
 from auth.models import User, Role
+import csv, io, os
+from support.audit import log_action
+from support.settings import get_effective_settings, upsert_settings, ALLOWED_SETTING_KEYS
 
 # NEW: notifications
 from support.notify import (
@@ -192,6 +195,13 @@ def support_new_ticket():
             notify_new_ticket(ticket, requester, admin_user=admin_user)
     except Exception:
         current_app.logger.exception("[support] notify_new_ticket failed")
+    try:
+        log_action(actor_user_id=requester_id, action="ticket_create",
+                   resource_type="ticket", resource_id=ticket.id,
+                   before=None, after={"subject": ticket.subject, "priority": ticket.priority})
+        db.session.commit()  # commit the audit row after notifying (same txn ok)
+    except Exception:
+        current_app.logger.exception("[support.audit] ticket_create audit failed")
 
     return jsonify({
         "ok": True,
@@ -328,6 +338,18 @@ def support_ticket_reply(ticket_id: int):
             t.updated_at = now
 
     db.session.commit()
+    try:
+        log_action(actor_user_id=(me_user.id if me_user else None), action="message_post",
+                   resource_type="message", resource_id=msg.id,
+                   before=None, after={"ticket_id": t.id, "visibility": visibility})
+        # If status changed in this call, also log it
+        if status_before != t.status:
+            log_action(actor_user_id=(me_user.id if me_user else None), action="status_set",
+                       resource_type="ticket", resource_id=t.id,
+                       before={"status": status_before}, after={"status": t.status})
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("[support.audit] reply audit failed")
 
     # ── Notifications
     try:
@@ -439,6 +461,13 @@ def support_ticket_upload(ticket_id: int):
     )
     db.session.add(att)
     db.session.commit()
+    try:
+        log_action(actor_user_id=(me_user.id if me_user else None), action="upload",
+                   resource_type="attachment", resource_id=att.id,
+                   before=None, after={"ticket_id": t.id, "message_id": msg.id, "filename": att.filename, "scan_status": att.scan_status})
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("[support.audit] upload audit failed")
 
     # Synchronous scan (placeholder)
     try:
@@ -509,6 +538,13 @@ def support_attachment_download(attachment_id: int):
     path = att.storage_url
     if not path or not os.path.exists(path):
         abort(404, description="file not found on storage")
+    try:
+        log_action(actor_user_id=(me_user.id if me_user else None), action="download",
+                   resource_type="attachment", resource_id=att.id,
+                   before=None, after={"ticket_id": t.id, "filename": att.filename})
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("[support.audit] download audit failed")
 
     try:
         return send_file(path, as_attachment=True, download_name=att.filename, mimetype=att.mime or None, max_age=0)
@@ -534,6 +570,14 @@ def support_ticket_set_status(ticket_id: int):
     prev = t.status
     _set_status(t, new_status)
     db.session.commit()
+    try:
+        reason = (payload.get("reason") or None)
+        log_action(actor_user_id=get_jwt_identity(), action="status_set",
+                   resource_type="ticket", resource_id=t.id,
+                   before={"status": prev}, after={"status": t.status}, reason=reason)
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("[support.audit] status_set audit failed")
 
     # ── Notifications on solved/closed
     try:
@@ -738,6 +782,14 @@ def support_ticket_set_priority(ticket_id: int):
     t.priority = new_priority
     t.updated_at = datetime.utcnow()
     db.session.commit()
+    try:
+        log_action(actor_user_id=get_jwt_identity(), action="priority_set",
+                   resource_type="ticket", resource_id=t.id,
+                   before=None, after={"priority": t.priority})
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("[support.audit] priority_set audit failed")
+
     return jsonify({"ok": True, "ticket": {"id": t.id, "priority": t.priority, "updated_at": t.updated_at.isoformat()}})
 
 @support_bp.patch("/t/<int:ticket_id>/assign")
@@ -763,10 +815,20 @@ def support_ticket_assign(ticket_id: int):
               .first())
         if not ok:
             abort(400, description="assignee must be an admin_owner in Solo Mode")
+        before_id = t.assignee_user_id
         t.assignee_user_id = uid
 
     t.updated_at = datetime.utcnow()
     db.session.commit()
+    try:
+        log_action(actor_user_id=get_jwt_identity(), action="assign",
+                   resource_type="ticket", resource_id=t.id,
+                   before={"assignee_user_id": before_id},
+                   after={"assignee_user_id": t.assignee_user_id})
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("[support.audit] assign audit failed")
+
     return jsonify({"ok": True, "ticket": {"id": t.id, "assignee_user_id": t.assignee_user_id, "updated_at": t.updated_at.isoformat()}})
 
 @support_bp.post("/admin/bulk")
@@ -830,6 +892,22 @@ def support_admin_bulk_actions():
             updated += 1
 
     db.session.commit()
+    try:
+        actor = get_jwt_identity()
+        for t in rows:
+            delta = {}
+            if set_status:    delta["status"] = set_status
+            if set_priority:  delta["priority"] = set_priority
+            if assign_to_user_id is not None: delta["assignee_user_id"] = assign_to_user_id
+            if add_tags:      delta["add_tags"] = add_tags
+            if remove_tags:   delta["remove_tags"] = remove_tags
+            log_action(actor_user_id=actor, action="bulk_update",
+                       resource_type="ticket", resource_id=t.id,
+                       before=None, after=delta)
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("[support.audit] bulk audit failed")
+
     return jsonify({"ok": True, "found": len(rows), "updated": updated})
 
 @support_bp.get("/admin/snippets")
@@ -954,3 +1032,4 @@ def support_ticket_apply_snippet(ticket_id: int):
         "message": {"id": msg.id, "visibility": visibility, "created_at": msg.created_at.isoformat()},
         "ticket": {"id": t.id, "status": t.status, "updated_at": t.updated_at.isoformat()}
     })
+

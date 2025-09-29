@@ -117,3 +117,30 @@ class SupportSnippet(db.Model):
 
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Audit log for sensitive/support actions
+# ─────────────────────────────────────────────────────────────────────────────
+class SupportAudit(db.Model):
+    __tablename__ = "support_audits"
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    actor_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    action = db.Column(db.String(64), nullable=False)              # e.g., status_set, priority_set, assign, upload, download
+    resource_type = db.Column(db.String(32), nullable=False)       # ticket|message|attachment|settings
+    resource_id = db.Column(db.BigInteger, nullable=False, index=True)
+    before = db.Column(db.JSON, nullable=True)
+    after = db.Column(db.JSON, nullable=True)
+    reason = db.Column(db.String(255), nullable=True)
+    ip = db.Column(db.String(64), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin-editable settings (DB overrides runtime defaults)
+# ─────────────────────────────────────────────────────────────────────────────
+class SupportSetting(db.Model):
+    __tablename__ = "support_settings"
+
+    key = db.Column(db.String(64), primary_key=True)   # e.g., SUPPORT_AUTO_CLOSE_DAYS
+    value = db.Column(db.JSON, nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

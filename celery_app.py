@@ -1,7 +1,6 @@
 from celery import Celery
 import os, sys, pathlib, importlib, importlib.util
 from celery.schedules import crontab
-import support.tasks
 
 # ── Robust project root locator ───────────────────────────────────────────
 def _find_project_root():
