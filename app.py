@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 from datetime import timedelta
 from flask_jwt_extended import JWTManager
 from flask import current_app
+
+
+load_dotenv()
+
 from auth import auth_bp
 from tools import tools_bp
 from admin import admin_bp
@@ -11,13 +15,14 @@ from blog import blog_bp
 from admin.api import admin_api_bp
 from account import account_bp
 from support import support_bp
+from credits import credits_bp
+from billing import billing_webhooks_bp, billing_bp
 import secrets
 from extensions import db, bcrypt, migrate, limiter, csrf
 from user_dashboard import user_dashboard_bp
 
 from auth.utils import init_mail, init_jwt_manager
 
-load_dotenv()
 
 def create_app():
     app = Flask(
@@ -65,6 +70,14 @@ def create_app():
 
         SUPPORT_PENDING_REMINDER_DAYS=int(os.getenv("SUPPORT_PENDING_REMINDER_DAYS", "3")),
         SUPPORT_AUTO_CLOSE_DAYS=int(os.getenv("SUPPORT_AUTO_CLOSE_DAYS", "7")),
+
+
+        STRIPE_SECRET_KEY=os.getenv("STRIPE_SECRET_KEY"),
+        STRIPE_WEBHOOK_SECRET=os.getenv("STRIPE_WEBHOOK_SECRET"),
+        STRIPE_PRICE_PRO_MONTHLY=os.getenv("STRIPE_PRICE_PRO_MONTHLY"),
+        STRIPE_PRICE_TOPUP_100=os.getenv("STRIPE_PRICE_TOPUP_100"),
+        STRIPE_PRICE_TOPUP_200=os.getenv("STRIPE_PRICE_TOPUP_200"),
+        STRIPE_PRICE_TOPUP_500=os.getenv("STRIPE_PRICE_TOPUP_500"),
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
@@ -144,6 +157,9 @@ def create_app():
     app.register_blueprint(blog_bp)
     app.register_blueprint(user_dashboard_bp)
     app.register_blueprint(support_bp)
+    app.register_blueprint(credits_bp)
+    app.register_blueprint(billing_bp)
+    app.register_blueprint(billing_webhooks_bp)
 
     init_jwt_manager(app, jwt)
 
