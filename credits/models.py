@@ -33,8 +33,11 @@ class LedgerEntry(db.Model):
 
 
     __table_args__ = (
-        UniqueConstraint("user_id", "ref", name="uq_credit_ledger_user_ref"),
+        db.UniqueConstraint('user_id', 'type', 'ref', name='uq_ledger_user_type_ref'),
+        db.Index('ix_ledger_user_created', 'user_id', 'created_at'),
+        db.Index('ix_ledger_type_created', 'type', 'created_at'),
     )
+
 
 
 class BalanceSnapshot(db.Model):

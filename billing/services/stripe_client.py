@@ -52,3 +52,19 @@ def create_customer(user_id: int, email: str | None = None):
         email=email,
         metadata={"user_id": str(user_id)},
     )
+
+def list_invoices(customer_id: str, limit: int = 10, status: str | None = None):
+    params = {"customer": customer_id, "limit": limit}
+    if status:
+        params["status"] = status
+    return stripe.Invoice.list(**params)
+
+def latest_paid_invoice(customer_id: str):
+    # Stripe doesn’t guarantee sort by created desc unless we use 'limit=1' and rely on API ordering.
+    invs = stripe.Invoice.list(customer=customer_id, limit=1, status="paid")
+    data = invs.get("data") or []
+    return data[0] if data else None
+
+
+
+

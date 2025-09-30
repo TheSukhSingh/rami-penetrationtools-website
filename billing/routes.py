@@ -11,6 +11,8 @@ from .services.stripe_client import (
     create_checkout_session_topup,
     create_billing_portal_session,
     create_customer,
+    list_invoices,
+    latest_paid_invoice,
 )
 from plans.catalog import TOPUP_PACKS
 from credits.models import CreditUserState
@@ -222,3 +224,73 @@ def dev_simulate_topup(pack_code: str):
         ev.on_checkout_completed(event_id=f"evt_csc_{int(now.timestamp())}", session=fake_session)
 
     return jsonify({"ok": True, "note": "checkout.session.completed simulated", "pack_code": pack_code})
+
+
+@billing_bp.get("/invoices/latest")
+@jwt_required()
+def get_latest_invoice():
+    user_id = get_jwt_identity()
+    bc = db.session.get(BillingCustomer, user_id)
+    if not bc:
+        return jsonify({"ok": False, "error": "NO_STRIPE_CUSTOMER"}), 400
+
+    try:
+        inv = latest_paid_invoice(bc.stripe_customer_id)
+        if not inv:
+            return jsonify({"ok": True, "invoice": None})
+        out = {
+            "id": inv.get("id"),
+            "status": inv.get("status"),
+            "total": inv.get("total"),
+            "currency": inv.get("currency"),
+            "created": inv.get("created"),
+            "hosted_invoice_url": inv.get("hosted_invoice_url"),
+            "invoice_pdf": inv.get("invoice_pdf"),
+            "number": inv.get("number"),
+        }
+        return jsonify({"ok": True, "invoice": out})
+    except Exception as e:
+        return jsonify({"ok": False, "error": "stripe_error", "message": str(e)}), 400
+
+
+@billing_bp.get("/invoices")
+@jwt_required()
+def get_invoices():
+    """
+    List recent invoices (default 10). Optional ?status=paid|open|void|draft|uncollectible
+    """
+    user_id = get_jwt_identity()
+    bc = db.session.get(BillingCustomer, user_id)
+    if not bc:
+        return jsonify({"ok": False, "error": "NO_STRIPE_CUSTOMER"}), 400
+
+    status = request.args.get("status") or None
+    limit = max(1, min(int(request.args.get("limit", 10)), 50))
+    try:
+        invs = list_invoices(bc.stripe_customer_id, limit=limit, status=status)
+        items = []
+        for inv in invs.get("data") or []:
+            items.append({
+                "id": inv.get("id"),
+                "status": inv.get("status"),
+                "total": inv.get("total"),
+                "currency": inv.get("currency"),
+                "created": inv.get("created"),
+                "hosted_invoice_url": inv.get("hosted_invoice_url"),
+                "invoice_pdf": inv.get("invoice_pdf"),
+                "number": inv.get("number"),
+                "subscription": inv.get("subscription"),
+            })
+        return jsonify({"ok": True, "items": items})
+    except Exception as e:
+        return jsonify({"ok": False, "error": "stripe_error", "message": str(e)}), 400
+
+@billing_bp.get("/config")
+@jwt_required()
+def billing_config():
+    # Only expose safe info; price IDs are fine in client-side apps, but we already use server routes to create sessions.
+    from plans.catalog import TOPUP_PACKS
+    packs = [{"code": code, "credits_mic": pack.credits_mic} for code, pack in TOPUP_PACKS.items()]
+    return jsonify({"ok": True, "packs": packs})
+
+
