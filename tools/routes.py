@@ -18,7 +18,7 @@ from tools.models import (
     WorkflowRunStatus, WorkflowStepStatus,
 )
 from extensions import db, limiter
-from tools.policies import get_effective_policy, get_global_specs
+from tools.policies import IO_BASELINE, TOOL_STAGE, get_effective_policy, get_global_specs
 from . import tools_bp
 from importlib import import_module
 from sqlalchemy.orm import joinedload, selectinload
@@ -145,7 +145,12 @@ def api_tools():
 
 @tools_bp.get("/api/specs")
 def api_specs():
-    return jsonify(get_global_specs())
+    specs = get_global_specs()
+    return jsonify({
+        **specs,
+        "io_baseline": IO_BASELINE,
+        "tool_stage_map": TOOL_STAGE,
+    })
 
 @tools_bp.patch("/api/tools/<slug>/enabled")
 @jwt_required()

@@ -151,3 +151,42 @@ export function attachValidate(editor) {
     return warnings;
   };
 }
+
+
+export async function getSpecs() {
+  const res = await fetch("/tools/api/specs");
+  if (!res.ok) return null;
+  return await res.json();
+}
+
+export function computeStageViolations(nodes, edges, stageMap) {
+  // Very simple linear pass like backend’s _order_nodes_linear
+  const incoming = {};
+  const forward = {};
+  const ids = nodes.map(n => n.id);
+  ids.forEach(id => incoming[id] = 0);
+  (edges || []).forEach(e => {
+    if (e.from != null && e.to != null) {
+      incoming[e.to] = (incoming[e.to] || 0) + 1;
+      forward[e.from] = e.to;
+    }
+  });
+  let start = ids.find(id => (incoming[id] || 0) === 0) || (ids[0] || null);
+  const order = [];
+  const seen = new Set();
+  while (start && !seen.has(start)) {
+    order.push(start); seen.add(start); start = forward[start];
+  }
+  // check monotonic stage
+  let last = 0, errs = [];
+  for (const id of order) {
+    const node = nodes.find(n => n.id === id);
+    const slug = node?.tool_slug || node?.slug || "";
+    const stage = stageMap?.[slug] || 3; // default Enrichment
+    if (stage < last) {
+      errs.push(`Stage order violation: ${slug} appears after a later stage.`);
+    }
+    last = Math.max(last, stage);
+  }
+  return errs;
+}

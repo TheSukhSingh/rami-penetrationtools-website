@@ -9,10 +9,18 @@ from tools.alltools.tools._common import (
     URL_RE, IPV4_RE, IPV6_RE, ValidationError
 )
 
-def normalize_item(bucket: str, it: str) -> str:
-    res = _apply_normalization({bucket: [it]})
-    arr = res.get(bucket) or []
-    return arr[0] if arr else None
+def normalize_item(bucket: str, val: str) -> str | None:
+    """Return a minimally-normalized value for a single item by bucket."""
+    if not val:
+        return None
+    try:
+        normed = _apply_normalization({bucket: [val]})
+        arr = normed.get(bucket) or []
+        return arr[0] if arr else None
+    except Exception:
+        s = str(val).strip()
+        return s or None
+
 
 # ---------- small utilities ----------
 def post_step_merge_and_normalize(run, step, produced_typed: dict) -> dict:

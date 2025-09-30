@@ -14,6 +14,14 @@ except ImportError:
 HARD_TIMEOUT = 7200
 
 def run_scan(options: dict) -> dict:
+    from ._common import resolve_wordlist_path
+    wordlist = (options.get("wordlist") or "").strip()
+    if not wordlist:
+        wl_tier = options.get("wordlist_tier") or "large"
+        wordlist = resolve_wordlist_path(wl_tier)
+    if wordlist:
+        args += ["--wordlist=" + str(wordlist)]
+
     t0 = now_ms()
     work_dir = ensure_work_dir(options, "john")
     slug = options.get("tool_slug", "john")

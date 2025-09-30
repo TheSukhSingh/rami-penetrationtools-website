@@ -12,7 +12,7 @@ from .models import (
 )
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from .runner import create_run_from_definition
+from .runner import create_run_from_definition, preflight_validate_workflow
 from flask import current_app
 from .events import publish_run_event
 from tools import ingest
@@ -124,8 +124,20 @@ def advance_run(self, run_id: int):
         })
         return {'status': 'paused'}
 
-    # Only QUEUED can transition to RUNNING here
     if run.status == WorkflowRunStatus.QUEUED:
+        # validate stage ordering of current steps
+        if not preflight_validate_workflow(run, list(run.steps)):
+            run.status = WorkflowRunStatus.FAILED
+            run.finished_at = utcnow()
+            db.session.commit()
+            publish_run_event(run.id, "run", {
+                "status": run.status.name,
+                "progress_pct": run.progress_pct,
+                "current_step_index": run.current_step_index,
+                "note": getattr(run, "status_note", None),
+            })
+            return {'status': 'preflight_failed', 'note': run.status_note}
+
         run.status = WorkflowRunStatus.RUNNING
         run.started_at = run.started_at or utcnow()
         db.session.commit()

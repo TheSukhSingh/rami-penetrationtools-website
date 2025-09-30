@@ -102,7 +102,7 @@ IO_BASELINE = {
     # ---- Validation / Surface ----
     "dnsx":              {"consumes": ["domains","hosts"],              "emits": ["domains","ips"]},
     "naabu":             {"consumes": ["hosts","ips","domains"],        "emits": ["services","ports"]},
-    "services-to-urls":  {"consumes": ["services"],                     "emits": ["urls"]},
+    "services_to_urls":  {"consumes": ["services"],                     "emits": ["urls"]},
     "httpx":             {"consumes": ["urls","hosts","domains"],       "emits": ["urls"]},
 
     # ---- Enrichment / Crawl / Params ----
@@ -142,7 +142,7 @@ IO_BASELINE = {
 
     # ---- Evidence / Reporting ----
     "gowitness":         {"consumes": ["urls"],                         "emits": ["screenshots"]},
-    "jwt-crack":         {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
+    "jwt_crack":         {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
     "john":              {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
     "qlgraph":           {"consumes": ["urls","endpoints","vulns"],     "emits": []},
     "report_collate": {

@@ -139,8 +139,11 @@ def resolve_bin(*names: str) -> Optional[str]:
 def now_ms() -> int:
     return int(time.time() * 1000)
 
-def ensure_work_dir(options: dict) -> Path:
-    wd = Path(options.get("work_dir") or Path(os.getenv("TEMP", "/tmp")) / "hackr_runs").resolve()
+from typing import Optional
+def ensure_work_dir(options: dict, subdir: Optional[str] = None) -> Path:
+    base = Path(options.get("work_dir") or Path(os.getenv("TEMP", "/tmp")) / "hackr_runs")
+    wd = (base / subdir) if subdir else base
+    wd = wd.resolve()
     wd.mkdir(parents=True, exist_ok=True)
     return wd
 

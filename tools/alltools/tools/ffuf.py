@@ -52,6 +52,14 @@ def _parse_ffuf_json(blob: str) -> List[str]:
     return [x for x in urls if not (x in seen or seen.add(x))]
 
 def run_scan(options: dict) -> dict:
+    from ._common import resolve_wordlist_path
+    wordlist = (options.get("wordlist") or "").strip()
+    if not wordlist:
+        wl_tier = (options.get("wordlist_tier")
+                or (policy.get("runtime_constraints",{}).get("_hints",{}) or {}).get("wordlist_default")
+                or "medium")
+        wordlist = resolve_wordlist_path(wl_tier)
+
     t0 = now_ms()
     work_dir = ensure_work_dir(options, "ffuf")
     slug = options.get("tool_slug", "ffuf")

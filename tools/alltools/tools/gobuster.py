@@ -33,6 +33,14 @@ def _parse_gobuster(text: str, base_url: str) -> List[str]:
     return eps
 
 def run_scan(options: dict) -> dict:
+    from ._common import resolve_wordlist_path
+    wordlist = (options.get("wordlist") or "").strip()
+    if not wordlist:
+        wl_tier = (options.get("wordlist_tier")
+                or (policy.get("runtime_constraints",{}).get("_hints",{}) or {}).get("wordlist_default")
+                or "medium")
+        wordlist = resolve_wordlist_path(wl_tier)
+
     t0 = now_ms()
     work_dir = ensure_work_dir(options, "gobuster")
     slug = options.get("tool_slug", "gobuster")

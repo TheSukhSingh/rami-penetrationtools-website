@@ -33,6 +33,15 @@ def _parse_hydra(text: str) -> List[str]:
     return [x for x in creds if not (x in seen or seen.add(x))]
 
 def run_scan(options: dict) -> dict:
+    from ._common import resolve_wordlist_path
+    passw = (options.get("passlist") or options.get("P") or options.get("passwords") or "").strip()
+    if not passw:
+        wl_tier = (options.get("wordlist_tier")
+                or (policy.get("runtime_constraints",{}).get("_hints",{}) or {}).get("wordlist_default")
+                or "small")
+        passw = resolve_wordlist_path(wl_tier)
+    # later include: (["-P", passw] if passw else [])
+
     t0 = now_ms()
     work_dir = ensure_work_dir(options, "hydra")
     slug = options.get("tool_slug", "hydra")
