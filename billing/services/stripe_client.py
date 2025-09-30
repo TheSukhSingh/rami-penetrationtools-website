@@ -36,7 +36,7 @@ def create_checkout_session_topup(customer_id: str, pack_code: str, success_url:
         success_url=success_url + "?session_id={CHECKOUT_SESSION_ID}",
         cancel_url=cancel_url,
         automatic_tax={"enabled": False},
-        metadata={"pack_code": pack_code},  # <-- required for webhook
+        metadata={"pack_code": pack_code},  # required for webhook handler
     )
 
 def create_billing_portal_session(customer_id: str, return_url: str):
@@ -46,17 +46,9 @@ def construct_event_from_request(payload: bytes, sig_header: str):
     secret = os.getenv("STRIPE_WEBHOOK_SECRET")
     return stripe.Webhook.construct_event(payload, sig_header, secret)
 
-
 def create_customer(user_id: int, email: str | None = None):
-    """
-    Create a Stripe Customer for this user. Email is optional.
-    We always tag user_id in metadata for support/debug.
-    """
+    # Always tag user_id in metadata for support/debug
     return stripe.Customer.create(
         email=email,
         metadata={"user_id": str(user_id)},
     )
-
-
-
-

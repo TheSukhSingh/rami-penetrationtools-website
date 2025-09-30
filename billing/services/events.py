@@ -1,12 +1,14 @@
+from __future__ import annotations
 from datetime import datetime, timezone
-from credits.services.entitlements import apply_entitlements
 from extensions import db
 from ..models import BillingCustomer, SubscriptionSnapshot, ProcessedStripeEvent
 from credits.models import CreditUserState
 from credits.services.ledger import grant_monthly, grant_topup, expire_all_monthly
+from credits.services.entitlements import apply_entitlements
 from plans.catalog import PRO_MONTHLY_CREDITS, TOPUP_PACKS
 
 def _mark_event(event_id: str) -> bool:
+    """Idempotency guard: record event_id and return True if first time."""
     if db.session.query(ProcessedStripeEvent).filter_by(event_id=event_id).first():
         return False
     db.session.add(ProcessedStripeEvent(event_id=event_id))
@@ -18,7 +20,7 @@ def _user_id_by_customer(customer_id: str) -> int | None:
 
 def on_invoice_paid(event_id: str, invoice: dict):
     """
-    Idempotent monthly renewal handler.
+    Monthly renewal handler (idempotent).
     Policy: no carry-over of unused monthly credits -> expire then grant.
     """
     if not _mark_event(event_id):
@@ -43,10 +45,8 @@ def on_invoice_paid(event_id: str, invoice: dict):
 
     # enforce zero carry-over
     expire_all_monthly(user_id, ref=f"expire_before_{invoice.get('id')}")
-
     # grant monthly allotment
     grant_monthly(user_id, PRO_MONTHLY_CREDITS, ref=f"inv_{invoice.get('id')}")
-
     apply_entitlements(user_id, "pro")
 
     db.session.add(SubscriptionSnapshot(
@@ -58,9 +58,11 @@ def on_invoice_paid(event_id: str, invoice: dict):
     ))
 
 def on_subscription_updated(event_id: str, subscription: dict):
-    if not _mark_event(event_id): return
+    if not _mark_event(event_id):
+        return
     user_id = _user_id_by_customer(subscription.get("customer"))
-    if not user_id: return
+    if not user_id:
+        return
     state = db.session.get(CreditUserState, user_id) or CreditUserState(user_id=user_id)
     state.billing_status = subscription.get("status")
     state.pro_active = 1 if subscription.get("status") == "active" else 0
@@ -71,9 +73,11 @@ def on_subscription_updated(event_id: str, subscription: dict):
     db.session.add(state)
 
 def on_subscription_deleted(event_id: str, subscription: dict):
-    if not _mark_event(event_id): return
+    if not _mark_event(event_id):
+        return
     user_id = _user_id_by_customer(subscription.get("customer"))
-    if not user_id: return
+    if not user_id:
+        return
     state = db.session.get(CreditUserState, user_id) or CreditUserState(user_id=user_id)
     state.billing_status = "canceled"
     state.pro_active = 0
@@ -82,42 +86,35 @@ def on_subscription_deleted(event_id: str, subscription: dict):
     apply_entitlements(user_id, "free")
 
 def on_checkout_completed(event_id: str, session: dict):
-    if not _mark_event(event_id): return
-    if session.get("mode") != "payment":  # we only grant packs here
+    """Grant top-up packs after a successful one-off Checkout session."""
+    if not _mark_event(event_id):
+        return
+    if session.get("mode") != "payment":
         return
     user_id = _user_id_by_customer(session.get("customer"))
-    if not user_id: return
+    if not user_id:
+        return
     pack_code = ((session.get("metadata") or {}).get("pack_code")) or ""
     pack = TOPUP_PACKS.get(pack_code)
-    if not pack: return
+    if not pack:
+        return
     grant_topup(user_id, pack.credits_mic, ref=f"cs_{session.get('id')}")
 
 def on_invoice_payment_failed(event_id: str, invoice: dict):
-    """
-    Mark the subscription 'past_due' on failed payment.
-    We also set CreditUserState.past_due_since to now (UTC).
-    Idempotent via _mark_event().
-    """
+    """Mark state as past_due; do not grant."""
     if not _mark_event(event_id):
         return
     user_id = _user_id_by_customer(invoice.get("customer"))
     if not user_id:
         return
-
-    sub_id = invoice.get("subscription")
-    now = datetime.now(timezone.utc)
-
     state = db.session.get(CreditUserState, user_id) or CreditUserState(user_id=user_id)
     state.billing_status = "past_due"
     state.pro_active = 0
-    state.past_due_since = now
-    state.stripe_subscription_id = sub_id or state.stripe_subscription_id
+    state.stripe_subscription_id = invoice.get("subscription") or state.stripe_subscription_id
     db.session.add(state)
-
-    # snapshot for history
     db.session.add(SubscriptionSnapshot(
         user_id=user_id,
-        stripe_subscription_id=sub_id,
+        stripe_subscription_id=invoice.get("subscription"),
         status="past_due",
         current_period_start=state.current_period_start,
         current_period_end=state.current_period_end,

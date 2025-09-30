@@ -1,20 +1,22 @@
 from __future__ import annotations
 import os
-from flask import Blueprint, request, jsonify, current_app
+from datetime import datetime, timezone, timedelta
+from flask import request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import stripe
-from credits.models import CreditUserState
 from extensions import db
-from plans.catalog import TOPUP_PACKS
-from .models import BillingCustomer
+from .models import BillingCustomer, SubscriptionSnapshot
 from .services.stripe_client import (
-create_checkout_session_subscription,
-create_checkout_session_topup,
-create_billing_portal_session, create_customer,
+    create_checkout_session_subscription,
+    create_checkout_session_topup,
+    create_billing_portal_session,
+    create_customer,
 )
+from plans.catalog import TOPUP_PACKS
+from credits.models import CreditUserState
 from . import billing_bp
+from .services import events as ev
 
-# NEW: helper to guarantee a mapping exists
 def _ensure_customer_for_user(user_id: int) -> str:
     bc = db.session.get(BillingCustomer, user_id)
     if bc:
@@ -58,7 +60,6 @@ def open_portal():
         portal = create_billing_portal_session(customer_id, return_url)
         return jsonify({"ok": True, "portal_url": portal.get("url")})
     except stripe.error.StripeError as e:
-        # surface real Stripe error instead of an HTML 500
         return jsonify({
             "ok": False,
             "error": "stripe_error",
@@ -68,11 +69,9 @@ def open_portal():
     except Exception as e:
         return jsonify({"ok": False, "error": "server_error", "message": str(e)}), 500
 
-
 @billing_bp.post("/dev/create-customer")
 @jwt_required()
 def dev_create_customer():
-    # guard: only allow when FEATURE_BILLING and not production
     if not current_app.config.get("FEATURE_BILLING"):
         return jsonify({"ok": False, "error": "BILLING_DISABLED"}), 400
     if os.getenv("APP_ENV", "development") == "production":
@@ -81,11 +80,7 @@ def dev_create_customer():
     user_id = get_jwt_identity()
     if db.session.get(BillingCustomer, user_id):
         return jsonify({"ok": True, "note": "already_exists"})
-
-    stripe.api_key = current_app.config["STRIPE_SECRET_KEY"]
-    customer = stripe.Customer.create(
-        metadata={"user_id": str(user_id)},
-    )
+    customer = create_customer(user_id=user_id)
     db.session.add(BillingCustomer(user_id=user_id, stripe_customer_id=customer["id"]))
     db.session.commit()
     return jsonify({"ok": True, "customer_id": customer["id"]})
@@ -97,6 +92,11 @@ def billing_status():
     with db.session.begin():
         state = db.session.get(CreditUserState, user_id)
         bc = db.session.get(BillingCustomer, user_id)
+        period_start = state.current_period_start if state and state.current_period_start else None
+        period_end   = state.current_period_end   if state and state.current_period_end   else None
+        now = datetime.now(timezone.utc)
+        seconds_to_renewal = int((period_end - now).total_seconds()) if period_end else None
+        days_to_renewal = (seconds_to_renewal // 86400) if seconds_to_renewal and seconds_to_renewal > 0 else None
         resp = {
             "ok": True,
             "customer_id": bc.stripe_customer_id if bc else None,
@@ -104,8 +104,10 @@ def billing_status():
             "pro_active": bool(state and state.pro_active),
             "subscription_id": state.stripe_subscription_id if state else None,
             "period": {
-                "start": state.current_period_start.isoformat() if state and state.current_period_start else None,
-                "end":   state.current_period_end.isoformat()   if state and state.current_period_end   else None,
+                "start": period_start.isoformat() if period_start else None,
+                "end":   period_end.isoformat()   if period_end   else None,
+                "seconds_to_renewal": seconds_to_renewal,
+                "days_to_renewal": days_to_renewal,
             },
         }
     return jsonify(resp)
@@ -116,3 +118,48 @@ def list_packs():
     items = [{"code": code, "credits_mic": pack.credits_mic} for code, pack in TOPUP_PACKS.items()]
     return jsonify({"ok": True, "packs": items})
 
+@billing_bp.get("/history")
+@jwt_required()
+def billing_history():
+    user_id = get_jwt_identity()
+    with db.session.begin():
+        snaps = (db.session.query(SubscriptionSnapshot)
+                 .filter(SubscriptionSnapshot.user_id == user_id)
+                 .order_by(SubscriptionSnapshot.created_at.desc())
+                 .limit(20).all())
+        items = [{
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "status": s.status,
+            "subscription_id": s.stripe_subscription_id,
+            "period_start": s.current_period_start.isoformat() if s.current_period_start else None,
+            "period_end": s.current_period_end.isoformat() if s.current_period_end else None,
+        } for s in snaps]
+    return jsonify({"ok": True, "items": items})
+
+@billing_bp.post("/dev/simulate-invoice-paid")
+@jwt_required()
+def dev_simulate_invoice_paid():
+    if not current_app.config.get("FEATURE_BILLING"):
+        return jsonify({"ok": False, "error": "BILLING_DISABLED"}), 400
+    if os.getenv("APP_ENV", "development") == "production":
+        return jsonify({"ok": False, "error": "DISALLOWED_IN_PROD"}), 400
+
+    user_id = get_jwt_identity()
+    bc = db.session.get(BillingCustomer, user_id)
+    if not bc:
+        return jsonify({"ok": False, "error": "NO_STRIPE_CUSTOMER"}), 400
+
+    now = datetime.now(timezone.utc)
+    fake_invoice = {
+        "id": f"inv_sim_{int(now.timestamp())}",
+        "customer": bc.stripe_customer_id,
+        "subscription": "sub_simulated",
+        "lines": {"data": [{"period": {
+            "start": int(now.timestamp()),
+            "end": int((now + timedelta(days=30)).timestamp())
+        }}]},
+    }
+    with db.session.begin():
+        ev.on_invoice_paid(event_id=f"evt_sim_{int(now.timestamp())}", invoice=fake_invoice)
+
+    return jsonify({"ok": True, "note": "monthly grant simulated", "invoice_id": fake_invoice["id"]})
