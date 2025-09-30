@@ -4,7 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from credits.services.entitlements import list_entitlements
 from extensions import db
 from .services.ledger import ensure_daily_grant, debit, InsufficientCredits
-from .models import BalanceSnapshot, CreditUserState
+from .models import BalanceSnapshot, CreditUserState, LedgerEntry  
 from . import credits_bp
 
 @credits_bp.get("/balance")
@@ -49,3 +49,27 @@ def get_entitlements():
     user_id = get_jwt_identity()
     data = list_entitlements(user_id)
     return jsonify({ "ok": True, "entitlements": data })
+
+@credits_bp.get("/activity")
+@jwt_required()
+def get_activity():
+    user_id = get_jwt_identity()
+    limit = int(request.args.get("limit", 50))
+    q = (
+        db.session.query(LedgerEntry)
+        .filter(LedgerEntry.user_id == user_id)
+        .order_by(LedgerEntry.created_at.desc())
+        .limit(min(limit, 200))
+    )
+    items = []
+    for row in q.all():
+        items.append({
+            "id": row.id,
+            "type": row.type,
+            "bucket": row.bucket,
+            "amount_mic": row.amount_mic,
+            "ref": row.ref,
+            "meta": row.meta or {},
+            "created_at": row.created_at.isoformat(),
+        })
+    return jsonify({"ok": True, "items": items})
