@@ -16,7 +16,11 @@ class InsufficientCredits(CreditError):
     pass
 
 def _lock_snapshot(user_id: int) -> BalanceSnapshot:
-    snap = db.session.get(BalanceSnapshot, user_id, with_for_update=True)
+    snap = db.session.execute(
+        select(BalanceSnapshot)
+        .where(BalanceSnapshot.user_id == user_id)
+        .with_for_update()
+    ).scalar_one_or_none()
     if not snap:
         snap = BalanceSnapshot(user_id=user_id, daily_mic=0, monthly_mic=0, topup_mic=0, version=0)
         db.session.add(snap)
@@ -26,11 +30,16 @@ def _lock_snapshot(user_id: int) -> BalanceSnapshot:
 def ensure_daily_grant(user_id: int, grant_mic: int = DAILY_FREE_CREDITS, ref_prefix: str = "daily_") -> None:
     today_utc = datetime.now(timezone.utc).date()
 
-    state = db.session.get(CreditUserState, user_id, with_for_update=True)
+    state = db.session.execute(
+        select(CreditUserState)
+        .where(CreditUserState.user_id == user_id)
+        .with_for_update()
+    ).scalar_one_or_none()
     if not state:
         state = CreditUserState(user_id=user_id)
         db.session.add(state)
         db.session.flush()
+
     if state.last_daily_grant_utc == today_utc:
         return
     # grant
