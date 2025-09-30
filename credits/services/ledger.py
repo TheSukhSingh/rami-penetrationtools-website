@@ -7,6 +7,12 @@ from extensions import db
 from credits.models import LedgerEntry, BalanceSnapshot, CreditUserState, CreditBucket, LedgerType
 from plans.catalog import DAILY_FREE_CREDITS
 
+def _supports_for_update() -> bool:
+    try:
+        # SQLite doesn’t support SELECT ... FOR UPDATE
+        return (db.session.bind.dialect.name or "").lower() not in ("sqlite",)
+    except Exception:
+        return False
 
 class CreditError(Exception):
     pass
@@ -16,11 +22,10 @@ class InsufficientCredits(CreditError):
     pass
 
 def _lock_snapshot(user_id: int) -> BalanceSnapshot:
-    snap = db.session.execute(
-        select(BalanceSnapshot)
-        .where(BalanceSnapshot.user_id == user_id)
-        .with_for_update()
-    ).scalar_one_or_none()
+    stmt = select(BalanceSnapshot).where(BalanceSnapshot.user_id == user_id)
+    if _supports_for_update():
+        stmt = stmt.with_for_update()
+    snap = db.session.execute(stmt).scalar_one_or_none()
     if not snap:
         snap = BalanceSnapshot(user_id=user_id, daily_mic=0, monthly_mic=0, topup_mic=0, version=0)
         db.session.add(snap)
@@ -29,27 +34,50 @@ def _lock_snapshot(user_id: int) -> BalanceSnapshot:
 
 def ensure_daily_grant(user_id: int, grant_mic: int = DAILY_FREE_CREDITS, ref_prefix: str = "daily_") -> None:
     today_utc = datetime.now(timezone.utc).date()
+    ref = f"{ref_prefix}{today_utc.isoformat()}"
 
-    state = db.session.execute(
-        select(CreditUserState)
-        .where(CreditUserState.user_id == user_id)
-        .with_for_update()
-    ).scalar_one_or_none()
+    # Lock/read user state (portable; FOR UPDATE only on real DBs)
+    stmt = select(CreditUserState).where(CreditUserState.user_id == user_id)
+    if _supports_for_update():
+        stmt = stmt.with_for_update()
+    state = db.session.execute(stmt).scalar_one_or_none()
     if not state:
         state = CreditUserState(user_id=user_id)
         db.session.add(state)
         db.session.flush()
 
+    # Fast-path: already granted today
     if state.last_daily_grant_utc == today_utc:
         return
-    # grant
+
+    # Idempotency guard: if a ledger row with today's ref exists, just mark state and return
+    already = db.session.query(LedgerEntry.id).filter_by(user_id=user_id, ref=ref).first()
+    if already:
+        state.last_daily_grant_utc = today_utc
+        return
+
+    # Grant
     snap = _lock_snapshot(user_id)
     snap.daily_mic += grant_mic
     snap.version += 1
     snap.updated_at = datetime.now(timezone.utc)
-    db.session.add(LedgerEntry(user_id=user_id, type=LedgerType.GRANT, bucket=CreditBucket.DAILY, amount_mic=grant_mic, ref=f"{ref_prefix}{today_utc.isoformat()}"))
-    state.last_daily_grant_utc = today_utc
 
+    try:
+        db.session.add(LedgerEntry(
+            user_id=user_id,
+            type=LedgerType.GRANT,
+            bucket=CreditBucket.DAILY,
+            amount_mic=grant_mic,
+            ref=ref
+        ))
+        state.last_daily_grant_utc = today_utc
+        # no commit here; caller's transaction handles it
+    except IntegrityError:
+        # If a concurrent request inserted the same daily ref, rollback the add,
+        # re-mark the state, and move on (idempotent)
+        db.session.rollback()
+        state = db.session.get(CreditUserState, user_id) or state
+        state.last_daily_grant_utc = today_utc
 
 def grant_monthly(user_id: int, amount_mic: int, ref: str) -> None:
     try:

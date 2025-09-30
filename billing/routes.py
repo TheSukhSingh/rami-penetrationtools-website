@@ -17,7 +17,6 @@ def _ensure_customer_for_user(user_id: int) -> str:
     bc = db.session.get(BillingCustomer, user_id)
     if bc:
         return bc.stripe_customer_id
-    # create a new Stripe customer and map it
     cust = create_customer(user_id=user_id)
     bc = BillingCustomer(user_id=user_id, stripe_customer_id=cust["id"])
     db.session.add(bc)

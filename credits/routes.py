@@ -15,17 +15,20 @@ def get_balance():
         ensure_daily_grant(user_id)
         snap = db.session.get(BalanceSnapshot, user_id)
         state = db.session.get(CreditUserState, user_id)
-    return jsonify({
-        "daily_mic": snap.daily_mic if snap else 0,
-        "monthly_mic": snap.monthly_mic if snap else 0,
-        "topup_mic": snap.topup_mic if snap else 0,
-        "next_daily_reset_utc": "00:00:00", # client can compute exact countdown
-        "pro_active": bool(state and state.pro_active),
-        "period": {
-        "start": state.current_period_start.isoformat() if state and state.current_period_start else None,
-        "end": state.current_period_end.isoformat() if state and state.current_period_end else None,
+
+        resp = {
+            "daily_mic": snap.daily_mic if snap else 0,
+            "monthly_mic": snap.monthly_mic if snap else 0,
+            "topup_mic": snap.topup_mic if snap else 0,
+            "next_daily_reset_utc": "00:00:00",  # client can compute countdown to 00:00 UTC
+            "pro_active": bool(state and state.pro_active),
+            "period": {
+                "start": state.current_period_start.isoformat() if state and state.current_period_start else None,
+                "end": state.current_period_end.isoformat() if state and state.current_period_end else None,
+            },
         }
-        })
+
+    return jsonify(resp)
 
 
 @credits_bp.post("/debit")
