@@ -21,7 +21,7 @@ def _dedupe_domains(names: List[str]) -> List[str]:
             s = part.strip().lower()
             if not s: 
                 continue
-            # crt.sh name_value may have wildcard or multiple entries separated by newlines
+            # crt_sh name_value may have wildcard or multiple entries separated by newlines
             s = s.lstrip("*.").strip()
             if DOMAIN_RE.match(s) and s not in seen:
                 seen.add(s); out.append(s)
@@ -30,16 +30,16 @@ def _dedupe_domains(names: List[str]) -> List[str]:
 def run_scan(options: dict) -> dict:
     t0 = now_ms()
     work_dir = ensure_work_dir(options, "crt_sh")
-    slug = options.get("tool_slug", "crt.sh")
+    slug = options.get("tool_slug", "crt_sh")
     # note: no special policy needs beyond max_targets
 
     curl = resolve_bin("curl")
     if not curl:
-        return finalize("error", "curl not installed (required for crt.sh API)", options, "crt.sh", t0, "", error_reason="NOT_INSTALLED")
+        return finalize("error", "curl not installed (required for crt_sh API)", options, "crt_sh", t0, "", error_reason="NOT_INSTALLED")
 
     domains, _ = read_targets(options, accept_keys=("domains",), cap=50)
     if not domains:
-        raise ValidationError("Provide root domain(s) for crt.sh.", "INVALID_PARAMS", "no input")
+        raise ValidationError("Provide root domain(s) for crt_sh.", "INVALID_PARAMS", "no input")
 
     all_raw = []
     found: List[str] = []
@@ -47,7 +47,7 @@ def run_scan(options: dict) -> dict:
 
     for d in domains:
         # %25 = '%', query all subdomains of domain
-        url = f"https://crt.sh/?q=%25.{d}&output=json"
+        url = f"https://crt_sh/?q=%25.{d}&output=json"
         args = [curl, "-fsSL", url]
         used_cmd = " ".join(args[:2] + ["..."])
         rc, out, _ms = run_cmd(args, timeout_s=HARD_TIMEOUT, cwd=work_dir)
@@ -72,5 +72,5 @@ def run_scan(options: dict) -> dict:
 
     status = "ok"
     msg = f"{len(found)} subdomains"
-    return finalize(status, msg, options, used_cmd or "crt.sh", t0, raw, output_file=outfile,
+    return finalize(status, msg, options, used_cmd or "crt_sh", t0, raw, output_file=outfile,
                     domains=found)

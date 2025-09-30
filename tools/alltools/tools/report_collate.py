@@ -89,4 +89,4 @@ def run_scan(options: dict) -> dict:
     blob = json.dumps(report, indent=2)
     outfp = write_output_file(work_dir, "report.json", blob)
     msg = "report.json created"
-    return finalize("ok", msg, options, "report-collate(py)", t0, blob, output_file=outfp)
+    return finalize("ok", msg, options, "report_collate(py)", t0, blob, output_file=outfp)

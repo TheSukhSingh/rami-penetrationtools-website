@@ -1,4 +1,3 @@
-# tools/ingest.py
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -10,7 +9,31 @@ from tools.alltools.tools._common import (
     URL_RE, IPV4_RE, IPV6_RE, ValidationError
 )
 
+def normalize_item(bucket: str, it: str) -> str:
+    res = _apply_normalization({bucket: [it]})
+    arr = res.get(bucket) or []
+    return arr[0] if arr else None
+
 # ---------- small utilities ----------
+def post_step_merge_and_normalize(run, step, produced_typed: dict) -> dict:
+    """
+    Merge the current step outputs into the run's running totals per bucket,
+    apply normalization + dedupe, and return the updated typed map.
+    """
+    # Load existing rollup from run context (or init)
+    rollup = run.context or {}
+    for bucket, items in (produced_typed or {}).items():
+        current = set(rollup.get(bucket, []))
+        for it in items or []:
+            if not it:
+                continue
+            # minimal normalization per bucket
+            val = normalize_item(bucket, it)   # reuse your existing normalizers
+            if val:
+                current.add(val)
+        rollup[bucket] = sorted(current)
+    run.context = rollup  # persist on the model/session
+    return rollup
 
 def _stable_union(*iterables: Iterable[str]) -> List[str]:
     seen, out = set(), []

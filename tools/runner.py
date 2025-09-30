@@ -6,10 +6,66 @@ from .models import (
     WorkflowRunStatus, WorkflowStepStatus, Tool
 )
 from datetime import datetime, timezone
-from tools.policies import get_effective_policy
+from tools.policies import get_effective_policy, IO_BASELINE, get_tool_stage  # IO matrix for stage gating
 
+ALL_BUCKETS = (
+    "domains","hosts","ips","ports","services",
+    "urls","endpoints","params",
+    "tech_stack","vulns","exploit_results","screenshots"
+)
 utcnow = lambda: datetime.now(timezone.utc)
 
+from tools.policies import (
+    STAGE_DISCOVERY, STAGE_VALIDATION, STAGE_ENRICHMENT, STAGE_PREP,
+    STAGE_SCANNING, STAGE_EXPLOIT, STAGE_REPORTING, get_tool_stage
+)
+
+STAGE_NAME = {
+    STAGE_DISCOVERY: "Discovery",
+    STAGE_VALIDATION: "Validation",
+    STAGE_ENRICHMENT: "Enrichment",
+    STAGE_PREP: "Prep",
+    STAGE_SCANNING: "Scanning",
+    STAGE_EXPLOIT: "Exploitation",
+    STAGE_REPORTING: "Reporting",
+}
+
+def preflight_validate_workflow(run, steps):
+    """
+    Enforce canonical stage order and basic readiness before scheduling.
+    - Blocks obviously invalid order (e.g., Scanning before Validation).
+    - Records soft warnings for borderline cases (e.g., Prep before Enrichment).
+    """
+    violations = []
+    last_stage = 0
+    for s in steps:
+        stage = get_tool_stage(s.tool_name)
+        if stage < last_stage:
+            violations.append(
+                f"Stage order violation: {s.tool_name} ({STAGE_NAME[stage]}) appears "
+                f"after a later stage ({STAGE_NAME[last_stage]})."
+            )
+        last_stage = max(last_stage, stage)
+
+    if violations:
+        run.status_note = "\n".join(violations)
+        # Hard-fail preflight; UI should surface run.status_note
+        return False
+    return True
+
+def has_required_inputs_for_step(run, step):
+    """
+    If step consumes certain buckets, ensure the run context (rollup) has them.
+    If missing, the step will be marked SKIPPED with reason 'no_input'.
+    """
+    consumes = (step.policy or {}).get("consumes", [])
+    if not consumes:
+        return True
+    rollup = (run.context or {})
+    for bucket in consumes:
+        if rollup.get(bucket):
+            return True
+    return False
 def _order_nodes_linear(graph: dict) -> List[str]:
     """
     Given graph {"nodes":[{id,...}], "edges":[{"from":A,"to":B},...]}
@@ -68,6 +124,13 @@ def create_run_from_definition(workflow_id: int, user_id: Optional[int]) -> Work
     )
     db.session.add(run); db.session.flush()
 
+    run.run_manifest = {
+        "buckets": {k: {"count": 0, "items": []} for k in ALL_BUCKETS},
+        "provenance": {k: {} for k in ALL_BUCKETS},   # e.g., {"urls": {"httpx":[...], "katana":[...]}}
+        "steps": {},                                   # per-step snapshots/notes if you want
+        "last_updated": utcnow().isoformat(),
+    }
+
     for idx, node in enumerate(ordered_nodes):
         # Resolve tool
         tool_slug = node.get("tool_slug") or node.get("slug")
@@ -79,6 +142,9 @@ def create_run_from_definition(workflow_id: int, user_id: Optional[int]) -> Work
         # SNAPSHOT POLICY HERE (from ToolConfigField-derived policies)
         policy_ss = get_effective_policy(tool_slug)
         node_cfg["_policy"] = policy_ss
+        io_snapshot = (policy_ss.get("io_policy") or IO_BASELINE.get(tool_slug) or {})
+        node_cfg["_io_policy"] = io_snapshot
+        node_cfg["io_bucket_consumes"] = (io_snapshot.get("consumes") or [])
 
         # Store the snapshot with options in the step's input_manifest (or wherever you keep per-step opts)
         step = WorkflowRunStep(

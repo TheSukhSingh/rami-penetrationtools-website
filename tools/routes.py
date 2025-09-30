@@ -3,6 +3,7 @@ import os
 from flask import current_app, render_template, request, jsonify, abort, Response, send_from_directory, stream_with_context
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy import or_
+from tools.alltools.envcheck import check_env
 from tools.alltools.tools._common import active_decr
 from tools.models import (
     ToolCategory,
@@ -1115,3 +1116,8 @@ def set_user_tool_defaults(slug):
         row.values = values
     db.session.commit()
     return jsonify({"ok": True, "values": row.values})
+
+@tools_bp.get("/api/envcheck")
+@jwt_required()
+def api_envcheck():
+    return jsonify(check_env())

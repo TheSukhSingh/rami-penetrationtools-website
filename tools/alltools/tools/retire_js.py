@@ -57,7 +57,7 @@ def _parse_retire_json(blob: str) -> (List[str], List[str]):
 def run_scan(options: dict) -> dict:
     t0 = now_ms()
     work_dir = ensure_work_dir(options, "retire_js")
-    slug = options.get("tool_slug", "retire-js")
+    slug = options.get("tool_slug", "retire_js")
     policy = options.get("_policy") or get_effective_policy(slug)
     ipol = policy.get("input_policy", {}) or {}
 

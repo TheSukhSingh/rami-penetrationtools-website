@@ -47,7 +47,7 @@ def seed_tools():
         {"slug":"linkfinder",        "name":"linkfinder",        "type":"discovery", "time":"~20s", "desc":"Find JS endpoints",                    "cat":"discovery"},
         # Vuln
         {"slug":"naabu",             "name":"naabu",             "type":"vuln",      "time":"~30s", "desc":"Fast port scanner",                   "cat":"vuln"},
-        {"slug":"github-subdomains", "name":"github-subdomains", "type":"vuln",      "time":"~15s", "desc":"Find subdomains via code search",     "cat":"vuln"},
+        {"slug":"github_subdomains", "name":"github_subdomains", "type":"vuln",      "time":"~15s", "desc":"Find subdomains via code search",     "cat":"vuln"},
     ]
 
     tool_by_slug = {}

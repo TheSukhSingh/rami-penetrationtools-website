@@ -5,6 +5,54 @@ from extensions import db
 from tools.models import Tool, ToolConfigField, ToolConfigFieldType, ToolConfigFieldOverlay
 from copy import deepcopy
 from sqlalchemy.orm import selectinload
+# ---- Stage model (canonical order) ----
+STAGE_DISCOVERY   = 1
+STAGE_VALIDATION  = 2
+STAGE_ENRICHMENT  = 3
+STAGE_PREP        = 4
+STAGE_SCANNING    = 5
+STAGE_EXPLOIT     = 6
+STAGE_REPORTING   = 7
+
+# Wordlist tiers (global)
+WORDLIST_TIERS = ("small", "medium", "large", "ultra")
+DEFAULT_WORDLIST_TIER = "medium"
+
+# Minimal stage precedence map for all tools
+TOOL_STAGE = {
+    # Discovery
+    "subfinder": STAGE_DISCOVERY, "crt_sh": STAGE_DISCOVERY, "theharvester": STAGE_DISCOVERY,
+    "github_subdomains": STAGE_DISCOVERY,
+
+    # Validation
+    "dnsx": STAGE_VALIDATION, "naabu": STAGE_VALIDATION, "httpx": STAGE_VALIDATION,
+
+    # Enrichment
+    "katana": STAGE_ENRICHMENT, "gospider": STAGE_ENRICHMENT, "hakrawler": STAGE_ENRICHMENT,
+    "gau": STAGE_ENRICHMENT, "paramspider": STAGE_ENRICHMENT, "arjun": STAGE_ENRICHMENT,
+    "linkfinder": STAGE_ENRICHMENT, "whatweb": STAGE_ENRICHMENT, "wafw00f": STAGE_ENRICHMENT,
+
+    # Prep (fuzz/enum)
+    "ffuf": STAGE_PREP, "gobuster": STAGE_PREP, "dotdotpwn": STAGE_PREP,
+
+    # Scanning
+    "nuclei": STAGE_SCANNING, "nikto": STAGE_SCANNING, "zap": STAGE_SCANNING,
+    "dalfox": STAGE_SCANNING, "xsstrike": STAGE_SCANNING, "retire_js": STAGE_SCANNING,
+    "wpscan": STAGE_SCANNING, "s3scanner": STAGE_SCANNING,
+
+    # Exploit / cracking
+    "sqlmap": STAGE_EXPLOIT, "commix": STAGE_EXPLOIT, "fuxploider": STAGE_EXPLOIT,
+    "ssrfmap": STAGE_EXPLOIT, "hydra": STAGE_EXPLOIT, "jwt_crack": STAGE_EXPLOIT, "john": STAGE_EXPLOIT,
+
+    # Reporting / evidence / graph
+    "gowitness": STAGE_REPORTING, "report_collate": STAGE_REPORTING, "qlgraph": STAGE_REPORTING,
+}
+
+def get_tool_stage(name: str) -> int:
+    return TOOL_STAGE.get(name, STAGE_ENRICHMENT)  # safe default
+
+def is_wordlist_tool(name: str) -> bool:
+    return name in {"ffuf", "gobuster", "hydra", "arjun", "dalfox", "xsstrike", "john"}
 
 DEFAULT_INPUT   = {"accepts": [], "max_targets": 50, "file_max_bytes": 100_000}
 DEFAULT_IO      = {"consumes": [], "emits": []}
@@ -42,15 +90,13 @@ EXECUTION_ORDER = [
     "discovery", "validation", "enrichment", "prep", "scanning", "exploitation", "reporting",
 ]
 
-WORDLIST_TIERS = ["small", "medium", "large", "ultra"]
-
 # Compatibility (consumes/emits) for each tool slug we ship
 # NOTE: Keep slugs in sync with your Tool rows + adapter filenames.
 IO_BASELINE = {
     # ---- Discovery / Recon ----
     "subfinder":         {"consumes": ["domains"],                      "emits": ["domains"]},
-    "github-subdomains": {"consumes": ["domains"],                      "emits": ["domains"]},
-    "crt.sh":            {"consumes": ["domains"],                      "emits": ["domains"]},
+    "github_subdomains": {"consumes": ["domains"],                      "emits": ["domains"]},
+    "crt_sh":            {"consumes": ["domains"],                      "emits": ["domains"]},
     "theharvester":      {"consumes": ["domains"],                      "emits": ["domains"]},
 
     # ---- Validation / Surface ----
@@ -71,7 +117,7 @@ IO_BASELINE = {
     # ---- Tech / WAF / CMS ----
     "whatweb":           {"consumes": ["urls"],                         "emits": ["tech_stack"]},
     "wafw00f":           {"consumes": ["urls"],                         "emits": ["tech_stack"]},
-    "retire-js":         {"consumes": ["urls"],                         "emits": ["tech_stack","vulns"]},
+    "retire_js":         {"consumes": ["urls"],                         "emits": ["tech_stack","vulns"]},
     "wpscan":            {"consumes": ["urls"],                         "emits": ["tech_stack","vulns"]},
 
     # ---- Scanners ----
@@ -99,7 +145,7 @@ IO_BASELINE = {
     "jwt-crack":         {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
     "john":              {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
     "qlgraph":           {"consumes": ["urls","endpoints","vulns"],     "emits": []},
-    "report-collate": {
+    "report_collate": {
         "consumes": ["domains","ips","urls","endpoints","params","services","tech_stack","vulns","exploit_results","screenshots"],
         "emits": []
     },

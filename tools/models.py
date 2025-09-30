@@ -470,3 +470,31 @@ class WorkflowRunStep(db.Model, TimestampMixin):
     run                  = relationship("WorkflowRun", back_populates="steps")
     tool                 = relationship("Tool", passive_deletes=True)
     tool_scan_history    = relationship("ToolScanHistory", passive_deletes=True)
+
+class HistoryRun(db.Model):
+    __tablename__ = "history_runs"
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    preset = db.Column(db.String(128), nullable=False)
+    status = db.Column(db.String(32), default="ok", nullable=False)
+    message = db.Column(db.Text, default="", nullable=False)
+
+    # inputs/outputs/manifests
+    targets_json = db.Column(JSONB, default=dict)
+    buckets_json = db.Column(JSONB, default=dict)     # final agg
+    tools_json   = db.Column(JSONB, default=list)     # list of tool manifests
+    duration_ms  = db.Column(db.Integer, default=0)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "created_at": self.created_at.isoformat() + "Z",
+            "preset": self.preset,
+            "status": self.status,
+            "message": self.message,
+            "targets": self.targets_json,
+            "buckets": self.buckets_json,
+            "tools": self.tools_json,
+            "duration_ms": self.duration_ms,
+        }

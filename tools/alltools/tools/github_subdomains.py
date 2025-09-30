@@ -20,13 +20,13 @@ HARD_TIMEOUT = 1800
 def run_scan(options: dict) -> dict:
     t0 = now_ms()
     work_dir = ensure_work_dir(options, "github_subdomains")
-    slug = options.get("tool_slug", "github-subdomains")
+    slug = options.get("tool_slug", "github_subdomains")
     policy = options.get("_policy") or get_effective_policy(slug)
     ipol = policy.get("input_policy", {}) or {}
 
-    exe = resolve_bin("github-subdomains", "github_subdomains")
+    exe = resolve_bin("github_subdomains", "github_subdomains")
     if not exe:
-        return finalize("error", "github-subdomains not installed", options, "github-subdomains", t0, "", error_reason="NOT_INSTALLED")
+        return finalize("error", "github_subdomains not installed", options, "github_subdomains", t0, "", error_reason="NOT_INSTALLED")
 
     token = options.get("github_token") or os.environ.get("GITHUB_TOKEN")
     if not token:
@@ -60,5 +60,5 @@ def run_scan(options: dict) -> dict:
 
     status = "ok"
     msg = f"{len(subdomains)} subdomains"
-    return finalize(status, msg, options, used_cmd or "github-subdomains", t0, raw, output_file=outfile,
+    return finalize(status, msg, options, used_cmd or "github_subdomains", t0, raw, output_file=outfile,
                     domains=subdomains)

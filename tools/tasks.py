@@ -4,8 +4,9 @@ import tempfile
 from celery.utils.log import get_task_logger
 from celery_app import celery
 from extensions import db
+from tools.policies import get_effective_policy
 from .models import (
-    ErrorReason, ScanDiagnostics, ScanStatus, WorkflowRun, WorkflowRunStatus,
+    ErrorReason, ScanDiagnostics, ScanStatus, Tool, WorkflowRun, WorkflowRunStatus,
     WorkflowRunStep, WorkflowStepStatus,
     ToolScanHistory,  # existing audit trail for each tool exec
 )
@@ -21,7 +22,80 @@ import shutil
 utcnow = lambda: datetime.now(timezone.utc)
 log = get_task_logger(__name__)
 
+# --- Global normalization for buckets (lightweight) -------------
+def _norm_domain(s): 
+    s = (s or "").strip().lower()
+    if s.startswith("*."): s = s[2:]
+    return s.strip(".")
+def _norm_url(u): return (u or "").strip()
+def _norm_endpoint(p):
+    p = (p or "").strip()
+    return p if p.startswith("/") else ("/" + p) if p else p
+def _norm_param(p): return (p or "").strip()
+def _norm_ip(ip):   return (ip or "").strip()
+def _norm_service(s): return (s or "").strip().lower()
+def _norm_text(t):  return (t or "").strip()
 
+NORMALIZERS = {
+    "domains": _norm_domain,
+    "urls": _norm_url,
+    "endpoints": _norm_endpoint,
+    "params": _norm_param,
+    "ips": _norm_ip,
+    "services": _norm_service,
+    "tech_stack": _norm_text,
+    "vulns": _norm_text,
+    "exploit_results": _norm_text,
+    "screenshots": _norm_text,
+    "ports": _norm_text,
+    "hosts": _norm_text,
+}
+
+def _can_run_step_by_inputs(run, step) -> tuple[bool, str]:
+    """Stage gate: if ALL required buckets empty, skip."""
+    cfg = (step.input_manifest or {}).get("options") or {}
+    consumes = cfg.get("io_bucket_consumes") or []
+    if not consumes:
+        return True, "no inputs required"
+    manifest = run.run_manifest or {}
+    buckets = manifest.get("buckets") or {}
+    for b in consumes:
+        bstate = buckets.get(b) or {}
+        if (bstate.get("count") or 0) > 0:
+            return True, f"has {b}"
+    return False, f"missing inputs: {consumes}"
+
+def _merge_outputs_into_manifest(run, step, result: dict):
+    """Normalize + dedupe outputs into run.run_manifest and record provenance."""
+    manifest = run.run_manifest or {
+        "buckets": {}, "provenance": {}, "steps": {}, "last_updated": None
+    }
+    buckets = manifest.setdefault("buckets", {})
+    prov    = manifest.setdefault("provenance", {})
+    step_slug = (step.input_manifest or {}).get("options", {}).get("tool_slug") or "unknown"
+
+    for bucket, normalizer in NORMALIZERS.items():
+        vals = result.get(bucket)
+        if not vals: 
+            continue
+        b = buckets.setdefault(bucket, {"count": 0, "items": []})
+        existing = b["items"]
+        seen = set(existing)
+        pv = prov.setdefault(bucket, {})
+        per_tool = pv.setdefault(step_slug, [])
+
+        for v in vals:
+            nv = normalizer(v)
+            if not nv or nv in seen:
+                continue
+            seen.add(nv)
+            existing.append(nv)
+            per_tool.append(nv)
+
+        b["count"] = len(existing)
+
+    manifest["last_updated"] = datetime.utcnow().isoformat()
+    run.run_manifest = manifest
 
 @celery.task(name='tools.tasks.ping')
 def ping(msg='ok'):
@@ -42,6 +116,7 @@ def advance_run(self, run_id: int):
             "current_step_index": run.current_step_index
         })
         return {'status': 'canceled'}
+
     if run.status == WorkflowRunStatus.PAUSED:
         publish_run_event(run.id, "run", {
             "status": run.status.name, "progress_pct": run.progress_pct,
@@ -59,39 +134,78 @@ def advance_run(self, run_id: int):
             "current_step_index": run.current_step_index
         })
 
-    # Next step: ONLY QUEUED (no auto-retry of FAILED/CANCELED)
-    steps = list(run.steps)  # ordered
-    next_step = next((s for s in steps if s.status == WorkflowStepStatus.QUEUED), None)
+    # Helper to recompute progress (count COMPLETED + SKIPPED as "done")
+    def _recompute_progress():
+        done = sum(1 for s in run.steps if s.status in (WorkflowStepStatus.COMPLETED, WorkflowStepStatus.SKIPPED))
+        total = max(1, run.total_steps or len(run.steps))
+        run.progress_pct = round(100.0 * done / total, 2)
 
-    if not next_step:
-        run.status = WorkflowRunStatus.COMPLETED
-        run.finished_at = utcnow()
-        run.progress_pct = 100.0
+    # Find next queued step and apply stage gating.
+    # If a step has no required inputs (per IO policy), mark SKIPPED and move on.
+    advanced_any = False
+    while True:
+        steps = list(run.steps)  # ordered
+        next_step = next((s for s in steps if s.status == WorkflowStepStatus.QUEUED), None)
+
+        if not next_step:
+            # No more queued steps -> complete the run
+            run.status = WorkflowRunStatus.COMPLETED
+            run.finished_at = utcnow()
+            run.progress_pct = 100.0
+            db.session.commit()
+            publish_run_event(run.id, "run", {
+                "status": run.status.name, "progress_pct": run.progress_pct,
+                "current_step_index": run.current_step_index
+            })
+            log.info(f'advance_run: run {run_id} completed')
+            try:
+                active_decr(run.user_id)
+            except Exception:
+                pass
+            try:
+                _promote_queued()
+            except Exception:
+                pass
+            return {'status': 'completed'}
+
+        # ---- Stage gate (requires helper _can_run_step_by_inputs) ----
+        ok, why = _can_run_step_by_inputs(run, next_step)
+        if ok:
+            # Dispatch this step to Celery worker
+            publish_run_event(run.id, "dispatch", {"step_index": next_step.step_index})
+            queue_name = current_app.config.get("CELERY_QUEUE", "tools_default")
+            res = run_step.apply_async(args=[run_id, next_step.step_index], queue=queue_name)
+            # record Celery task id for cancel/revoke
+            next_step.celery_task_id = res.id
+            # Set current step index for UI
+            run.current_step_index = next_step.step_index
+            db.session.commit()
+            return {'status': 'dispatched', 'task_id': res.id}
+
+        # Gate says "skip": mark step SKIPPED and loop to the next one
+        next_step.status = WorkflowStepStatus.SKIPPED
+        next_step.started_at = utcnow()
+        next_step.finished_at = utcnow()
+        # Keep a small note for debugging/UX
+        next_step.output_manifest = {"status": "skipped", "message": why}
+        advanced_any = True
+
+        # Advance the pointer and progress
+        run.current_step_index = next_step.step_index + 1
+        _recompute_progress()
         db.session.commit()
+
+        # Notify FE about this step & run status
+        publish_run_event(run.id, "step", {
+            "index": next_step.step_index,
+            "status": "SKIPPED",
+            "message": why
+        })
         publish_run_event(run.id, "run", {
             "status": run.status.name, "progress_pct": run.progress_pct,
             "current_step_index": run.current_step_index
         })
-        log.info(f'advance_run: run {run_id} completed')
-
-        try:
-            active_decr(run.user_id)
-        except Exception:
-            pass
-        # (Optional) try to promote a queued run now; see helper below
-        try:
-            _promote_queued()
-        except Exception:
-            pass
-        return {'status': 'completed'}
-
-    publish_run_event(run.id, "dispatch", {"step_index": next_step.step_index})
-    queue_name = current_app.config.get("CELERY_QUEUE", "tools_default")
-    res = run_step.apply_async(args=[run_id, next_step.step_index], queue=queue_name)
-    # record Celery task id for cancel/revoke
-    next_step.celery_task_id = res.id
-    db.session.commit()
-    return {'status': 'dispatched', 'task_id': res.id}
+        # continue the while-loop to evaluate the next queued step
 
 BUCKET_KEYS = (
     "domains", "hosts", "ips", "ports", "services",
@@ -190,6 +304,10 @@ def _stage_artifact(run_id: int, step_index: int, slug: str, source_path: str) -
 
 @celery.task(name='tools.tasks.run_step', bind=True)
 def run_step(self, run_id: int, step_index: int):
+    from importlib import import_module
+    import os, shutil, time
+    from flask import current_app
+
     run = db.session.get(WorkflowRun, run_id)
     if not run:
         log.warning(f'run_step: run {run_id} not found')
@@ -197,170 +315,185 @@ def run_step(self, run_id: int, step_index: int):
 
     step = next((s for s in run.steps if s.step_index == step_index), None)
     if not step:
-        log.warning(f'run_step: step {step_index} not found for run {run_id}')
-        return {'status': 'not_found'}
+        log.warning(f'run_step: step {step_index} not found in run {run_id}')
+        return {'status': 'step_not_found'}
 
-    # If run paused/canceled while we were queued, don't run
-    if run.status == WorkflowRunStatus.CANCELED:
-        step.status = WorkflowStepStatus.CANCELED
-        step.finished_at = utcnow()
-        db.session.commit()
-        publish_run_event(run.id, "step", {"step_index": step_index, "status": "CANCELED"})
-        publish_run_event(run.id, "run", {
-            "status": run.status.name, "progress_pct": run.progress_pct,
-            "current_step_index": run.current_step_index
-        })
-        return {'status': 'canceled'}
+    # Only run from QUEUED
+    if step.status != WorkflowStepStatus.QUEUED:
+        return {'status': 'ignored', 'reason': f'step status is {step.status.name}'}
 
-    if run.status == WorkflowRunStatus.PAUSED:
-        # put it back to QUEUED and exit; coordinator won't dispatch while paused
-        step.status = WorkflowStepStatus.QUEUED
-        db.session.commit()
-        publish_run_event(run.id, "step", {"step_index": step_index, "status": "QUEUED"})
-        return {'status': 'paused'}
-
-    # mark running and publish
+    # Flip status → RUNNING
     step.status = WorkflowStepStatus.RUNNING
     step.started_at = utcnow()
+    run.current_step_index = step.step_index
     db.session.commit()
     publish_run_event(run.id, "step", {
-        "step_index": step_index, "status": "RUNNING"
+        "index": step.step_index,
+        "status": "RUNNING",
     })
 
-    if run.status == WorkflowRunStatus.QUEUED:
-        run.status = WorkflowRunStatus.RUNNING
-        if not run.started_at:
-            run.started_at = utcnow()
-        db.session.commit()
-        publish_run_event(run.id, "run", {
-            "status": run.status.name,
-            "progress_pct": run.progress_pct,
-            "current_step_index": run.current_step_index
-        })
+    # ---------- Compose adapter options ----------
+    options = ((step.input_manifest or {}).get("options") or {}).copy()
+    tool_slug = options.get("tool_slug")
+    tool = db.session.get(Tool, step.tool_id) if step.tool_id else None
+    if not tool_slug and tool:
+        tool_slug = tool.slug
+        options["tool_slug"] = tool_slug
 
-    prev_output = {}
-    if step_index > 0:
-        prev = next((ps for ps in run.steps if ps.step_index == step_index - 1), None)
-        prev_output = (prev.output_manifest or {}) if prev else {}
+    # Ensure policy snapshot
+    policy = options.get("_policy") or get_effective_policy(tool_slug or "")
+    options["_policy"] = policy
 
+    # Attach a snapshot of current buckets (typed inputs) from run.run_manifest
+    manifest = run.run_manifest or {}
+    buckets = manifest.get("buckets") or {}
+    ALL_BUCKETS = (
+        "domains","hosts","ips","ports","services",
+        "urls","endpoints","params",
+        "tech_stack","vulns","exploit_results","screenshots"
+    )
+    for b in ALL_BUCKETS:
+        options[b] = (buckets.get(b) or {}).get("items") or []
+
+    # ---------- Call adapter ----------
+    mod_name = (tool_slug or "").replace('-', '_').replace('.', '_')
     try:
-        tool = step.tool
-        if not tool or not tool.enabled:
-            raise RuntimeError("tool disabled or missing")
-        slug = tool.slug
-
-        # load adapter + prepare options
-        mod_name = slug.replace('-', '_')
-        adapter = import_module(f".alltools.tools.{mod_name}", package="tools")
-
-        # Create step work dir FIRST (so ingest can write inbox file if needed)
-        base = current_app.config.get(
-            "TOOLS_WORK_DIR",
-            current_app.config.get("ARTIFACTS_DIR", "/tmp/hackr_runs"),
-        )
-        step_dir = Path(base) / f"run_{run.id}" / f"step_{step_index:02d}_{tool.slug}"
-        step_dir.mkdir(parents=True, exist_ok=True)
-
-        # Build options via ingest (DB-driven; upstream + config + seeds; normalize/dedupe/cap)
-        options = ingest.build_inputs_for_step(run, step, step_dir, current_app.config, slug=slug)
-        
-        # Inject the per-step policy snapshot captured by the runner
-        base_opts = ((step.input_manifest or {}).get("options") or {})
-        snap = base_opts.get("_policy")
-        if snap:
-            options["_policy"] = snap
-
-        # Always provide tool_slug for adapters that rely on it
-        options.setdefault("tool_slug", slug)
-        options["work_dir"] = str(step_dir)
-
-        # Execute tool
-        result = adapter.run_scan(options) or {}
-        # Normalize/stage artifact(s) for download
-        try:
-            of = result.get("output_file")
-            if of and os.path.isfile(of):
-                rel = _stage_artifact(run.id, step_index, slug, of)
-                if rel:
-                    result["artifact_relpath"] = rel
-                    result["download_url"] = f"/tools/api/runs/{run.id}/artifacts/{rel}"
-        except Exception:
-            pass
-
-        success = (result.get("status") in ("success","ok"))
-
-        # Persist scan + diagnostics
-        command_hint = f"{slug} (workflow step {step_index})"
-        scan = _persist_scan_result(db, ToolScanHistory, ScanDiagnostics, ScanStatus, ErrorReason,
-                                    tool=tool, user_id=run.user_id, result=result, command_hint=command_hint)
-
-        step.tool_scan_history_id = scan.id
-        step.output_manifest = result
-        step.status = WorkflowStepStatus.COMPLETED if success else WorkflowStepStatus.FAILED
-        step.finished_at = utcnow()
-        db.session.commit()
-        # Update the run-level manifest with typed buckets for the summary panel
-        try:
-            _aggregate_run_manifest(db, run, step_index, slug, result)
-        except Exception as e:
-            log.warning("aggregate failed for run %s step %s: %r", run.id, step_index, e)
-
-        # progress
-        total = max(1, run.total_steps or len(run.steps))
-        done = sum(1 for x in run.steps if x.status == WorkflowStepStatus.COMPLETED)
-        run.current_step_index = min(step_index + 1, total - 1)
-        if not success:
-            run.status = WorkflowRunStatus.FAILED
-        run.progress_pct = round(100.0 * done / total, 2)
-        db.session.commit()
-        # If the run failed, free the user's active slot and try to promote a queued run
-        if not success:
-            try:
-                active_decr(run.user_id)
-                _promote_queued()
-            except Exception:
-                pass
-        # publish state after commit
-        publish_run_event(run.id, "step", {
-            "step_index": step_index,
-            "status": step.status.name,
-            "tool_id": step.tool_id,
-            "tool_scan_history_id": step.tool_scan_history_id,
-        })
-        publish_run_event(run.id, "run", {
-            "status": run.status.name,
-            "progress_pct": run.progress_pct,
-            "current_step_index": run.current_step_index
-        })
-
+        adapter = import_module(f"tools.alltools.tools.{mod_name}")
     except Exception as e:
-        db.session.rollback()
+        # Adapter import failure
         step.status = WorkflowStepStatus.FAILED
         step.finished_at = utcnow()
+        step.output_manifest = {"status": "error", "message": f"import failed: {e}"}
         db.session.commit()
-        run.status = WorkflowRunStatus.FAILED
-        db.session.commit()
-        publish_run_event(run.id, "step", {"step_index": step_index, "status": "FAILED"})
-        publish_run_event(run.id, "run", {
-            "status": run.status.name, "progress_pct": run.progress_pct,
-            "current_step_index": run.current_step_index
-        })
-        log.exception(f'run_step: failed step {step_index} on run {run_id}: {e}')
-        return {'status': 'failed', 'error': str(e)}
-
-    # guard re-advance if paused/canceled right after commit
-    db.session.refresh(run)
-    if run.status in (WorkflowRunStatus.PAUSED, WorkflowRunStatus.CANCELED):
-        log.info(f'run_step: not advancing (run {run_id} is {run.status.name})')
-        return {'status': 'ok'}
-
-    if step.status == WorkflowStepStatus.COMPLETED:
+        publish_run_event(run.id, "step", {"index": step.step_index, "status": "FAILED"})
+        # Promote next step
         advance_run.delay(run.id)
-    return {'status': 'ok' if step.status == WorkflowStepStatus.COMPLETED else 'failed'}
+        return {'status': 'error', 'message': f'import failed: {e}'}
 
+    start = time.time()
+    try:
+        result = adapter.run_scan(options) or {}
+    except Exception as e:
+        result = {"status": "error", "message": "adapter_crash", "error_reason": "ADAPTER_CRASH", "output": str(e)}
+    duration_ms = int((time.time() - start) * 1000)
+
+    success = (result.get("status") in ("ok", "success"))
+    message = result.get("message") or result.get("output") or ""
+
+    # ---------- Persist ToolScanHistory (+ diagnostics) ----------
+    # (Mirrors your /api/scan path so all usage metrics stay consistent.)
+    scan = None
+    try:
+        tool_rec = db.session.query(Tool).filter_by(slug=tool_slug).first() if tool_slug else None
+        scan = ToolScanHistory(
+            user_id            = run.user_id,
+            tool_id            = (tool_rec.id if tool_rec else None),
+            parameters         = (options or {}),
+            command            = None,
+            raw_output         = (result.get('output') or result.get('message') or ''),
+            scan_success_state = bool(success),
+            filename_by_user   = None,
+            filename_by_be     = None,
+        )
+        db.session.add(scan); db.session.flush()
+
+        er_val  = (result.get('error_reason') or '')
+        er_enum = ErrorReason[er_val] if er_val in ErrorReason.__members__ else None
+
+        diag = ScanDiagnostics(
+            scan_id                = scan.id,
+            status                 = (ScanStatus.SUCCESS if success else ScanStatus.FAILURE),
+            total_domain_count     = result.get('total_domain_count'),
+            valid_domain_count     = result.get('valid_domain_count'),
+            invalid_domain_count   = result.get('invalid_domain_count'),
+            duplicate_domain_count = result.get('duplicate_domain_count'),
+            file_size_b            = result.get('file_size_b'),
+            execution_ms           = duration_ms,
+            error_reason           = er_enum,
+            error_detail           = result.get('error_detail'),
+            value_entered          = result.get('value_entered'),
+        )
+        db.session.add(diag)
+    except Exception as e:
+        log.warning(f'run_step: failed to record ToolScanHistory for run {run_id} step {step_index}: {e}')
+
+    # ---------- Save artifact copy (if adapter produced one) ----------
+    artifact_rel = None
+    try:
+        out_file = result.get("output_file")
+        if out_file and os.path.isfile(out_file):
+            base_dir = current_app.config.get(
+                "ARTIFACTS_DIR",
+                os.path.join(current_app.instance_path, "tools_artifacts"),
+            )
+            run_dir = os.path.join(base_dir, str(run.id))
+            os.makedirs(run_dir, exist_ok=True)
+            fname = os.path.basename(out_file)
+            # Prefix with step & tool for clarity
+            dest_name = f"{step_index:02d}_{(tool_slug or 'tool')}_{fname}"
+            dest = os.path.join(run_dir, dest_name)
+            shutil.copy2(out_file, dest)
+            artifact_rel = dest_name  # download via /api/runs/<run_id>/artifacts/<relpath>
+    except Exception as e:
+        log.warning(f'run_step: artifact copy failed for run {run_id} step {step_index}: {e}')
+
+    # ---------- Global merge: normalize + dedupe + provenance ----------
+    try:
+        _merge_outputs_into_manifest(run, step, result or {})
+    except Exception as e:
+        # Do not fail the step for merge issues—just note it
+        result = {**(result or {}), "merge_warning": str(e)}
+
+    # ---------- Finalize step ----------
+    step.output_manifest = {
+        "status": result.get("status"),
+        "message": message,
+        "artifact": artifact_rel,
+        "counts": {k: len(result.get(k) or []) for k in (
+            "domains","hosts","ips","ports","services","urls","endpoints","params",
+            "tech_stack","vulns","exploit_results","screenshots"
+        )},
+        "raw_tail": (result.get("output") or "")[-5000:],  # small tail for UI
+        "error_reason": result.get("error_reason"),
+    }
+    if scan:
+        step.tool_scan_history_id = scan.id
+
+    step.finished_at = utcnow()
+    step.status = WorkflowStepStatus.COMPLETED if success else WorkflowStepStatus.FAILED
+
+    # Recompute progress (COMPLETED + SKIPPED are “done”)
+    done = sum(1 for s in run.steps if s.status in (WorkflowStepStatus.COMPLETED, WorkflowStepStatus.SKIPPED))
+    total = max(1, run.total_steps or len(run.steps))
+    run.progress_pct = round(100.0 * done / total, 2)
+
+    db.session.commit()
+
+    # ---------- Events ----------
+    publish_run_event(run.id, "step", {
+        "index": step.step_index,
+        "status": step.status.name,
+        "artifact": artifact_rel,
+        "message": message[:300],
+    })
+    publish_run_event(run.id, "run", {
+        "status": run.status.name,
+        "progress_pct": run.progress_pct,
+        "current_step_index": run.current_step_index,
+    })
+
+    # Kick the coordinator to move to the next queued step (stage gating already handled there)
+    advance_run.delay(run.id)
+
+    return {
+        "status": step.status.name.lower(),
+        "duration_ms": duration_ms,
+        "success": bool(success),
+        "artifact": artifact_rel,
+    }
 
 def _load_adapter_for_slug(slug: str):
-    """Slug 'github-subdomains' -> module tools.alltools.github_subdomains"""
+    """Slug 'github_subdomains' -> module tools.alltools.github_subdomains"""
     mod_name = slug.replace('-', '_')
     return import_module(f".alltools.tools.{mod_name}", package="tools")
 
