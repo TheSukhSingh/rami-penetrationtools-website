@@ -66,4 +66,5 @@ class CreditUserState(db.Model):
     stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(64))
     stripe_subscription_id: Mapped[Optional[str]] = mapped_column(String(64))
     billing_status: Mapped[Optional[str]] = mapped_column(String(32)) # active, past_due, canceled
+    past_due_since: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
