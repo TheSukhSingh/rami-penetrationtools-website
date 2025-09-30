@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime, timezone
 from typing import Iterable
 from extensions import db
 from credits.models import Entitlement
@@ -13,12 +14,16 @@ def apply_entitlements(user_id: int, plan: str) -> None:
     """
     Idempotently set entitlements for a plan.
     - Marks plan features active=1
-    - Optionally deactivates features not in plan (keeps record for audit)
+    - Deactivates features not in plan (keeps record for audit)
     """
-    desired = set(PLAN_FEATURES.get(plan, []))
-    # Fetch existing rows
+    if plan not in PLAN_FEATURES:
+        raise ValueError(f"Unknown plan: {plan}")
+
+    now = datetime.now(timezone.utc)
+    desired = set(PLAN_FEATURES[plan])
+
     rows = db.session.query(Entitlement).filter(Entitlement.user_id == user_id).all()
-    existing = { (r.feature): r for r in rows }
+    existing = {r.feature: r for r in rows}
 
     # Upsert desired -> active=1
     for feat in desired:
@@ -26,14 +31,16 @@ def apply_entitlements(user_id: int, plan: str) -> None:
         if row:
             if row.active != 1:
                 row.active = 1
+                row.updated_at = now
                 db.session.add(row)
         else:
-            db.session.add(Entitlement(user_id=user_id, feature=feat, active=1))
+            db.session.add(Entitlement(user_id=user_id, feature=feat, active=1, updated_at=now))
 
-    # Deactivate others
+    # Deactivate everything else
     for feat, row in existing.items():
         if feat not in desired and row.active != 0:
             row.active = 0
+            row.updated_at = now
             db.session.add(row)
 
 def has_feature(user_id: int, feature: str) -> bool:

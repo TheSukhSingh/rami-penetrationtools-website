@@ -101,17 +101,22 @@ def on_checkout_completed(event_id: str, session: dict):
     grant_topup(user_id, pack.credits_mic, ref=f"cs_{session.get('id')}")
 
 def on_invoice_payment_failed(event_id: str, invoice: dict):
-    """Mark state as past_due; do not grant."""
+    """Mark state past_due, expire monthly credits immediately, and downgrade entitlements."""
     if not _mark_event(event_id):
         return
     user_id = _user_id_by_customer(invoice.get("customer"))
     if not user_id:
         return
+
     state = db.session.get(CreditUserState, user_id) or CreditUserState(user_id=user_id)
     state.billing_status = "past_due"
     state.pro_active = 0
     state.stripe_subscription_id = invoice.get("subscription") or state.stripe_subscription_id
     db.session.add(state)
+
+    expire_all_monthly(user_id, ref=f"inv_fail_{invoice.get('id')}")
+    apply_entitlements(user_id, "free")
+
     db.session.add(SubscriptionSnapshot(
         user_id=user_id,
         stripe_subscription_id=invoice.get("subscription"),
@@ -119,6 +124,7 @@ def on_invoice_payment_failed(event_id: str, invoice: dict):
         current_period_start=state.current_period_start,
         current_period_end=state.current_period_end,
     ))
+
 
 def on_subscription_created(event_id: str, subscription: dict):
     """

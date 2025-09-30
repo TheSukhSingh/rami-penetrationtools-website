@@ -161,6 +161,7 @@ def create_app():
     app.register_blueprint(billing_bp)
     app.register_blueprint(billing_webhooks_bp)
 
+    csrf.exempt(billing_webhooks_bp)
     init_jwt_manager(app, jwt)
 
     @app.context_processor
