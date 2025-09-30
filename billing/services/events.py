@@ -27,6 +27,7 @@ def on_invoice_paid(event_id: str, invoice: dict):
 
     state = db.session.get(CreditUserState, user_id) or CreditUserState(user_id=user_id)
     state.pro_active = 1
+    state.past_due_since = None
     state.current_period_start = start
     state.current_period_end = end
     state.stripe_subscription_id = invoice.get("subscription")
@@ -77,3 +78,18 @@ def on_checkout_completed(event_id: str, session: dict):
     pack = TOPUP_PACKS.get(pack_code)
     if not pack: return
     grant_topup(user_id, pack.credits_mic, ref=f"cs_{session.get('id')}")
+
+def on_invoice_payment_failed(event_id: str, invoice: dict):
+    if not _mark_event(event_id):
+        return
+    user_id = _user_id_by_customer(invoice.get("customer"))
+    if not user_id:
+        return
+    state = db.session.get(CreditUserState, user_id) or CreditUserState(user_id=user_id)
+    state.billing_status = "past_due"
+    # keep Pro active during grace
+    if state.pro_active != 1:
+        state.pro_active = 1
+    if not state.past_due_since:
+        state.past_due_since = datetime.now(timezone.utc)
+    db.session.add(state)
