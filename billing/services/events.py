@@ -80,16 +80,40 @@ def on_checkout_completed(event_id: str, session: dict):
     grant_topup(user_id, pack.credits_mic, ref=f"cs_{session.get('id')}")
 
 def on_invoice_payment_failed(event_id: str, invoice: dict):
+    """
+    Mark the subscription 'past_due' on failed payment.
+    We also set CreditUserState.past_due_since to now (UTC).
+    Idempotent via _mark_event().
+    """
     if not _mark_event(event_id):
         return
     user_id = _user_id_by_customer(invoice.get("customer"))
     if not user_id:
         return
+
+    sub_id = invoice.get("subscription")
+    now = datetime.now(timezone.utc)
+
     state = db.session.get(CreditUserState, user_id) or CreditUserState(user_id=user_id)
     state.billing_status = "past_due"
-    # keep Pro active during grace
-    if state.pro_active != 1:
-        state.pro_active = 1
-    if not state.past_due_since:
-        state.past_due_since = datetime.now(timezone.utc)
+    state.pro_active = 0
+    state.past_due_since = now
+    state.stripe_subscription_id = sub_id or state.stripe_subscription_id
     db.session.add(state)
+
+    # snapshot for history
+    db.session.add(SubscriptionSnapshot(
+        user_id=user_id,
+        stripe_subscription_id=sub_id,
+        status="past_due",
+        current_period_start=state.current_period_start,
+        current_period_end=state.current_period_end,
+    ))
+
+def on_subscription_created(event_id: str, subscription: dict):
+    """
+    Alias if you ever want to register customer.subscription.created separately.
+    For now, just reuse the update handler which already persists status + periods.
+    """
+    return on_subscription_updated(event_id, subscription)
+

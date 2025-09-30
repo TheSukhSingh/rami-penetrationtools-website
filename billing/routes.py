@@ -52,8 +52,20 @@ def open_portal():
     data = request.get_json(force=True) if request.data else {}
     return_url = data.get("return_url", "https://hackr.gg/account/billing")
     customer_id = _ensure_customer_for_user(user_id)
-    portal = create_billing_portal_session(customer_id, return_url)
-    return jsonify({"ok": True, "portal_url": portal.get("url")})
+    try:
+        portal = create_billing_portal_session(customer_id, return_url)
+        return jsonify({"ok": True, "portal_url": portal.get("url")})
+    except stripe.error.StripeError as e:
+        # surface real Stripe error instead of an HTML 500
+        return jsonify({
+            "ok": False,
+            "error": "stripe_error",
+            "type": getattr(e, "user_message", None) or e.__class__.__name__,
+            "message": str(e)
+        }), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": "server_error", "message": str(e)}), 500
+
 
 @billing_bp.post("/dev/create-customer")
 @jwt_required()
