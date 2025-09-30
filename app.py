@@ -10,6 +10,7 @@ from admin import admin_bp
 from blog import blog_bp
 from admin.api import admin_api_bp
 from account import account_bp
+from support import support_bp
 import secrets
 from extensions import db, bcrypt, migrate, limiter, csrf
 from user_dashboard import user_dashboard_bp
@@ -57,10 +58,20 @@ def create_app():
         RATELIMIT_HEADERS_ENABLED=True,
 
         FEATURE_BILLING=os.getenv("FEATURE_BILLING", "0") == "1",
+        EXTERNAL_BASE_URL="https://hackr.gg",
         FEATURE_HELP=os.getenv("FEATURE_HELP", "0") == "1",
 
         CELERY_QUEUE="tools_default",
 
+        SUPPORT_SOLO_MODE=True,
+        # Support attachments (Task 8)
+        SUPPORT_UPLOAD_DIR=os.environ.get("SUPPORT_UPLOAD_DIR", "./var/support_uploads"),
+        SUPPORT_MAX_UPLOAD_MB=int(os.environ.get("SUPPORT_MAX_UPLOAD_MB", "15")),
+        SUPPORT_ALLOWED_MIME=os.environ.get("SUPPORT_ALLOWED_MIME", "image/png,image/jpeg,application/pdf,text/plain,application/zip").split(","),
+        SUPPORT_ALLOWED_EXT=os.environ.get("SUPPORT_ALLOWED_EXT", "png,jpg,jpeg,pdf,txt,log,zip").split(","),
+
+        SUPPORT_PENDING_REMINDER_DAYS=int(os.getenv("SUPPORT_PENDING_REMINDER_DAYS", "3")),
+        SUPPORT_AUTO_CLOSE_DAYS=int(os.getenv("SUPPORT_AUTO_CLOSE_DAYS", "7")),
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
@@ -142,6 +153,7 @@ def create_app():
     app.register_blueprint(tools_bp)
     app.register_blueprint(blog_bp)
     app.register_blueprint(user_dashboard_bp)
+    app.register_blueprint(support_bp)
 
     init_jwt_manager(app, jwt)
 

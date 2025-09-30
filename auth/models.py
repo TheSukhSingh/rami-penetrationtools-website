@@ -112,6 +112,12 @@ class User(TimestampMixin, db.Model):
         lazy="select",
         foreign_keys="UserRoleAudit.user_id",
     )
+    refresh_tokens = db.relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
 
     @staticmethod
     def _validate_username(u: str):
@@ -391,21 +397,23 @@ class LoginEvent(db.Model):
     user = db.relationship('User', back_populates='login_events')
 
 class RefreshToken(db.Model):
-    __tablename__ = 'refresh_tokens'
-    id           = db.Column(db.Integer, primary_key=True)
-    user_id      = db.Column(
-        db.Integer,
-        db.ForeignKey('users.id', ondelete='CASCADE'),
-        nullable=False,
-        index=True
-    )
-    token_hash   = db.Column(db.String(64), nullable=False, unique=True, index=True)
-    created_at   = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
-    expires_at   = db.Column(db.DateTime(timezone=True), nullable=False)
-    revoked      = db.Column(Boolean, default=False, nullable=False)
+    __tablename__ = "refresh_tokens"
 
-    # backref to user
-    user = relationship('User', back_populates='refresh_tokens')
+    id          = db.Column(db.Integer, primary_key=True)
+    user_id     = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    token_hash  = db.Column(db.String(64), nullable=False, unique=True, index=True)
+
+    created_at  = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at  = db.Column(db.DateTime(timezone=True), nullable=False)
+    revoked     = db.Column(db.Boolean, default=False, nullable=False, index=True)
+
+    # NEW: match what routes/utils already use
+    ip          = db.Column(db.String(45))         # IPv4/IPv6
+    user_agent  = db.Column(db.String(255))
+    last_used_at= db.Column(db.DateTime(timezone=True))
+    device_label= db.Column(db.String(128))
+
+    user = db.relationship("User", back_populates="refresh_tokens")
 
     def revoke(self):
         self.revoked = True
@@ -420,16 +428,23 @@ class RecoveryCode(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
 
 class TrustedDevice(db.Model):
-    __tablename__ = 'trusted_devices'
-    id           = db.Column(db.Integer, primary_key=True)
-    user_id      = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), index=True, nullable=False)
-    token_hash   = db.Column(db.String(64), unique=True, nullable=False)  
-    user_agent   = db.Column(db.String(255))
-    created_at   = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
-    last_used_at = db.Column(db.DateTime(timezone=True))
-    expires_at   = db.Column(db.DateTime(timezone=True), nullable=False)
+    __tablename__ = "trusted_devices"
 
-    user         = db.relationship('User')
+    id          = db.Column(db.Integer, primary_key=True)
+    user_id     = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    token_hash  = db.Column(db.String(64), nullable=False, unique=True, index=True)
+
+    created_at  = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    last_used_at= db.Column(db.DateTime(timezone=True))
+    expires_at  = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    # NEW: used by routes
+    label       = db.Column(db.String(128))
+    ip          = db.Column(db.String(45))
+    user_agent  = db.Column(db.String(255))
+
+    user = db.relationship("User", backref=db.backref("trusted_devices", lazy="dynamic", cascade="all, delete-orphan"))
+
 
 class SecurityEvent(db.Model):
     __tablename__ = "security_events"

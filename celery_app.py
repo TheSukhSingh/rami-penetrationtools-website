@@ -111,6 +111,14 @@ celery.conf.beat_schedule = {
         "task": "tools.tasks.prune_history",
         "schedule": crontab(hour=3, minute=0),
     },
+    "support-pending-reminders": {
+        "task": "support.tasks.pending_user_reminders",
+        "schedule": crontab(minute=5, hour="*/2"),  # every 2 hours
+    },
+    "support-auto-close-and-remind": {
+        "task": "support.tasks.auto_close_and_remind",
+        "schedule": crontab(minute=35, hour="*/2"),  # every 2 hours (staggered)
+    },
 }
 celery.conf.task_default_queue = "tools_default"
 celery.conf.task_queues = (Queue("tools_default", routing_key="tools_default"),)
