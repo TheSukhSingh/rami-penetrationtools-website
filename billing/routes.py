@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os
 from datetime import datetime, timezone, timedelta
-from flask import request, jsonify, current_app
+from flask import render_template, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import stripe
 from extensions import db
@@ -294,3 +294,7 @@ def billing_config():
     return jsonify({"ok": True, "packs": packs})
 
 
+@billing_bp.get("/ui")
+@jwt_required()
+def billing_ui():
+    return render_template("billing_page.html")
