@@ -28,12 +28,9 @@ def stripe_webhook():
         elif etype == "customer.subscription.deleted":
             ev.on_subscription_deleted(event.get("id"), data)
         elif etype == "checkout.session.completed":
-        # Note: expand line_items in webhook settings if needed
             ev.on_checkout_completed(event.get("id"), data)
         elif etype == "invoice.payment_failed":
-        # status tracking only — grace policy handled by scheduler/UI
-            ev.on_subscription_updated(event.get("id"), data.get("subscription") or {})
+            ev.on_invoice_payment_failed(event.get("id"), data)
         elif etype in ("charge.refunded", "charge.dispute.created", "charge.dispute.funds_withdrawn", "charge.dispute.funds_reinstated"):
-        # We are no-refund by policy; still acknowledge events for ledger sync if you add exceptions later
             pass
     return jsonify({"received": True})
