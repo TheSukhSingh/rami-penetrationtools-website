@@ -76,6 +76,17 @@ def expire_all_monthly(user_id: int, ref: str) -> None:
 
 
 def debit(user_id: int, cost_mic: int, ref: Optional[str] = None) -> Dict[str, int]:
+    if ref:
+        existing = db.session.query(LedgerEntry).filter_by(
+            user_id=user_id, ref=ref, type=LedgerType.DEBIT
+        ).first()
+        if existing:
+            m = existing.meta or {}
+            return {
+                "from_daily": int(m.get("from_daily", 0)),
+                "from_monthly": int(m.get("from_monthly", 0)),
+                "from_topup": int(m.get("from_topup", 0)),
+            }
     ensure_daily_grant(user_id)
     snap = _lock_snapshot(user_id)
 
