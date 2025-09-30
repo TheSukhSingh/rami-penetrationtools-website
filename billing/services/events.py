@@ -17,9 +17,17 @@ def _user_id_by_customer(customer_id: str) -> int | None:
     return row.user_id if row else None
 
 def on_invoice_paid(event_id: str, invoice: dict):
-    if not _mark_event(event_id): return
+    """
+    Idempotent monthly renewal handler.
+    Policy: no carry-over of unused monthly credits -> expire then grant.
+    """
+    if not _mark_event(event_id):
+        return
+
     user_id = _user_id_by_customer(invoice.get("customer"))
-    if not user_id: return
+    if not user_id:
+        return
+
     lines = (invoice.get("lines") or {}).get("data") or []
     period = (lines[0].get("period") if lines else {}) or {}
     start = datetime.fromtimestamp(period.get("start", 0), tz=timezone.utc)
@@ -27,15 +35,20 @@ def on_invoice_paid(event_id: str, invoice: dict):
 
     state = db.session.get(CreditUserState, user_id) or CreditUserState(user_id=user_id)
     state.pro_active = 1
-    state.past_due_since = None
     state.current_period_start = start
-    state.current_period_end = end
+    state.current_period_end   = end
     state.stripe_subscription_id = invoice.get("subscription")
     state.billing_status = "active"
     db.session.add(state)
 
+    # enforce zero carry-over
+    expire_all_monthly(user_id, ref=f"expire_before_{invoice.get('id')}")
+
+    # grant monthly allotment
     grant_monthly(user_id, PRO_MONTHLY_CREDITS, ref=f"inv_{invoice.get('id')}")
+
     apply_entitlements(user_id, "pro")
+
     db.session.add(SubscriptionSnapshot(
         user_id=user_id,
         stripe_subscription_id=invoice.get("subscription"),

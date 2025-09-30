@@ -36,7 +36,7 @@ def ensure_daily_grant(user_id: int, grant_mic: int = DAILY_FREE_CREDITS, ref_pr
     today_utc = datetime.now(timezone.utc).date()
     ref = f"{ref_prefix}{today_utc.isoformat()}"
 
-    # Lock/read user state (portable; FOR UPDATE only on real DBs)
+    # lock-ish (portable): FOR UPDATE on real DBs; no-op on SQLite
     stmt = select(CreditUserState).where(CreditUserState.user_id == user_id)
     if _supports_for_update():
         stmt = stmt.with_for_update()
@@ -46,70 +46,85 @@ def ensure_daily_grant(user_id: int, grant_mic: int = DAILY_FREE_CREDITS, ref_pr
         db.session.add(state)
         db.session.flush()
 
-    # Fast-path: already granted today
+    # fast path
     if state.last_daily_grant_utc == today_utc:
         return
 
-    # Idempotency guard: if a ledger row with today's ref exists, just mark state and return
-    already = db.session.query(LedgerEntry.id).filter_by(user_id=user_id, ref=ref).first()
-    if already:
+    # idempotency pre-check by ref
+    if db.session.query(LedgerEntry.id).filter_by(user_id=user_id, ref=ref).first():
         state.last_daily_grant_utc = today_utc
+        db.session.flush()
         return
 
-    # Grant
-    snap = _lock_snapshot(user_id)
-    snap.daily_mic += grant_mic
-    snap.version += 1
-    snap.updated_at = datetime.now(timezone.utc)
-
+    # critical section under SAVEPOINT so a duplicate insert can't abort the outer tx
     try:
-        db.session.add(LedgerEntry(
-            user_id=user_id,
-            type=LedgerType.GRANT,
-            bucket=CreditBucket.DAILY,
-            amount_mic=grant_mic,
-            ref=ref
-        ))
-        state.last_daily_grant_utc = today_utc
-        # no commit here; caller's transaction handles it
+        with db.session.begin_nested():
+            snap = _lock_snapshot(user_id)
+            snap.daily_mic += grant_mic
+            snap.version += 1
+            snap.updated_at = datetime.now(timezone.utc)
+
+            db.session.add(LedgerEntry(
+                user_id=user_id,
+                type=LedgerType.GRANT,
+                bucket=CreditBucket.DAILY,
+                amount_mic=grant_mic,
+                ref=ref
+            ))
+            state.last_daily_grant_utc = today_utc
+            db.session.flush()
     except IntegrityError:
-        # If a concurrent request inserted the same daily ref, rollback the add,
-        # re-mark the state, and move on (idempotent)
-        db.session.rollback()
-        state = db.session.get(CreditUserState, user_id) or state
+        # another request raced us; mark as granted and move on
         state.last_daily_grant_utc = today_utc
+        db.session.flush()
+
+
 
 def grant_monthly(user_id: int, amount_mic: int, ref: str) -> None:
     try:
-        db.session.add(LedgerEntry(user_id=user_id, type=LedgerType.GRANT, bucket=CreditBucket.MONTHLY, amount_mic=amount_mic, ref=ref))
-        snap = _lock_snapshot(user_id)
-        snap.monthly_mic += amount_mic
-        snap.version += 1
-        snap.updated_at = datetime.now(timezone.utc)
+        with db.session.begin_nested():
+            db.session.add(LedgerEntry(
+                user_id=user_id, type=LedgerType.GRANT, bucket=CreditBucket.MONTHLY,
+                amount_mic=amount_mic, ref=ref
+            ))
+            snap = _lock_snapshot(user_id)
+            snap.monthly_mic += amount_mic
+            snap.version += 1
+            snap.updated_at = datetime.now(timezone.utc)
+            db.session.flush()
     except IntegrityError:
-        db.session.rollback()
+        # duplicate ref or race; ignore (idempotent)
+        pass
 
 def grant_topup(user_id: int, amount_mic: int, ref: str) -> None:
     try:
-        db.session.add(LedgerEntry(user_id=user_id, type=LedgerType.GRANT, bucket=CreditBucket.TOPUP, amount_mic=amount_mic, ref=ref))
-        snap = _lock_snapshot(user_id)
-        snap.topup_mic += amount_mic
-        snap.version += 1
-        snap.updated_at = datetime.now(timezone.utc)
+        with db.session.begin_nested():
+            db.session.add(LedgerEntry(
+                user_id=user_id, type=LedgerType.GRANT, bucket=CreditBucket.TOPUP,
+                amount_mic=amount_mic, ref=ref
+            ))
+            snap = _lock_snapshot(user_id)
+            snap.topup_mic += amount_mic
+            snap.version += 1
+            snap.updated_at = datetime.now(timezone.utc)
+            db.session.flush()
     except IntegrityError:
-        db.session.rollback()
+        # duplicate ref or race; ignore
+        pass
 
 def expire_all_monthly(user_id: int, ref: str) -> None:
-    snap = _lock_snapshot(user_id)
-    if snap.monthly_mic > 0:
-        amt = snap.monthly_mic
-        snap.monthly_mic = 0
-        snap.version += 1
-        snap.updated_at = datetime.now(timezone.utc)
-        try:
-            db.session.add(LedgerEntry(user_id=user_id, type=LedgerType.EXPIRE, bucket=CreditBucket.MONTHLY, amount_mic=amt, ref=ref))
-        except IntegrityError:
-            db.session.rollback()
+    with db.session.begin_nested():
+        snap = _lock_snapshot(user_id)
+        if snap.monthly_mic > 0:
+            amt = snap.monthly_mic
+            snap.monthly_mic = 0
+            snap.version += 1
+            snap.updated_at = datetime.now(timezone.utc)
+            db.session.add(LedgerEntry(
+                user_id=user_id, type=LedgerType.EXPIRE, bucket=CreditBucket.MONTHLY,
+                amount_mic=amt, ref=ref
+            ))
+            db.session.flush()
 
 
 def debit(user_id: int, cost_mic: int, ref: Optional[str] = None) -> Dict[str, int]:
@@ -150,15 +165,15 @@ def debit(user_id: int, cost_mic: int, ref: Optional[str] = None) -> Dict[str, i
     snap.version += 1
     snap.updated_at = datetime.now(timezone.utc)
     meta = {"from_daily": from_daily, "from_monthly": from_monthly, "from_topup": from_topup}
-    try:
+
+    with db.session.begin_nested():
         db.session.add(LedgerEntry(
             user_id=user_id, type=LedgerType.DEBIT, bucket=CreditBucket.NONE,
             amount_mic=cost_mic, ref=ref, meta=meta
         ))
-    except IntegrityError:
-        db.session.rollback()
-    return meta
+        db.session.flush()
 
+    return meta
 from sqlalchemy import func
 
 

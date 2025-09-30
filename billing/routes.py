@@ -3,7 +3,9 @@ import os
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import stripe
+from credits.models import CreditUserState
 from extensions import db
+from plans.catalog import TOPUP_PACKS
 from .models import BillingCustomer
 from .services.stripe_client import (
 create_checkout_session_subscription,
@@ -88,4 +90,29 @@ def dev_create_customer():
     db.session.commit()
     return jsonify({"ok": True, "customer_id": customer["id"]})
 
+@billing_bp.get("/status")
+@jwt_required()
+def billing_status():
+    user_id = get_jwt_identity()
+    with db.session.begin():
+        state = db.session.get(CreditUserState, user_id)
+        bc = db.session.get(BillingCustomer, user_id)
+        resp = {
+            "ok": True,
+            "customer_id": bc.stripe_customer_id if bc else None,
+            "billing_status": state.billing_status if state else "free",
+            "pro_active": bool(state and state.pro_active),
+            "subscription_id": state.stripe_subscription_id if state else None,
+            "period": {
+                "start": state.current_period_start.isoformat() if state and state.current_period_start else None,
+                "end":   state.current_period_end.isoformat()   if state and state.current_period_end   else None,
+            },
+        }
+    return jsonify(resp)
+
+@billing_bp.get("/packs")
+@jwt_required()
+def list_packs():
+    items = [{"code": code, "credits_mic": pack.credits_mic} for code, pack in TOPUP_PACKS.items()]
+    return jsonify({"ok": True, "packs": items})
 
