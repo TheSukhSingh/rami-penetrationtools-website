@@ -126,3 +126,79 @@ def admin_grant_topup():
         from .services.ledger import grant_topup
         grant_topup(target_user_id, amount_mic, ref=ref)
     return jsonify({"ok": True, "granted_to": target_user_id, "amount_mic": amount_mic, "ref": ref})
+
+@credits_bp.post("/can-afford")
+@jwt_required()
+def can_afford():
+    """
+    Pure check (no debit): tell FE if user can afford a cost_mic right now,
+    and how the debit would split across buckets. Returns deficit if not.
+    """
+    user_id = get_jwt_identity()
+    body = request.get_json(force=True)
+    cost_mic = int(body.get("cost_mic", 0))
+
+    with db.session.begin():
+        # ensure daily grant is applied before reading balances
+        ensure_daily_grant(user_id)
+        snap = db.session.get(BalanceSnapshot, user_id)
+
+    daily = snap.daily_mic if snap else 0
+    monthly = snap.monthly_mic if snap else 0
+    topup = snap.topup_mic if snap else 0
+
+    remaining = cost_mic
+    from_daily = min(daily, remaining); remaining -= from_daily
+    from_monthly = min(monthly, remaining); remaining -= from_monthly
+    from_topup = min(topup, remaining); remaining -= from_topup
+
+    can = remaining <= 0
+    resp = {
+        "ok": True,
+        "cost_mic": cost_mic,
+        "can_afford": can,
+        "breakdown": {
+            "from_daily": int(from_daily),
+            "from_monthly": int(from_monthly),
+            "from_topup": int(from_topup),
+        },
+        "deficit_mic": int(remaining) if remaining > 0 else 0,
+    }
+    return jsonify(resp)
+
+@credits_bp.get("/activity.csv")
+@jwt_required()
+def activity_csv():
+    """
+    Download recent ledger as CSV for quick audits/support.
+    Query param: ?limit=1000 (default 200)
+    """
+    user_id = get_jwt_identity()
+    limit = int(request.args.get("limit", 200))
+
+    rows = (db.session.query(LedgerEntry)
+            .filter(LedgerEntry.user_id == user_id)
+            .order_by(LedgerEntry.created_at.desc())
+            .limit(limit).all())
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["created_at", "type", "bucket", "amount_mic", "ref", "meta"])
+    for le in rows:
+        w.writerow([
+            le.created_at.isoformat() if le.created_at else "",
+            le.type.value if hasattr(le.type, "value") else str(le.type),
+            le.bucket.value if hasattr(le.bucket, "value") else str(le.bucket),
+            le.amount_mic,
+            le.ref or "",
+            (le.meta or {}),
+        ])
+
+    from flask import Response
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=credits_activity.csv"
+        },
+    )

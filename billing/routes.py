@@ -163,3 +163,62 @@ def dev_simulate_invoice_paid():
         ev.on_invoice_paid(event_id=f"evt_sim_{int(now.timestamp())}", invoice=fake_invoice)
 
     return jsonify({"ok": True, "note": "monthly grant simulated", "invoice_id": fake_invoice["id"]})
+
+@billing_bp.post("/dev/simulate-invoice-failed")
+@jwt_required()
+def dev_simulate_invoice_failed():
+    """
+    Dev-only: simulate invoice.payment_failed for the current user.
+    Effect: set past_due, expire monthly, downgrade entitlements.
+    """
+    if not current_app.config.get("FEATURE_BILLING"):
+        return jsonify({"ok": False, "error": "BILLING_DISABLED"}), 400
+    if os.getenv("APP_ENV", "development") == "production":
+        return jsonify({"ok": False, "error": "DISALLOWED_IN_PROD"}), 400
+
+    user_id = get_jwt_identity()
+    bc = db.session.get(BillingCustomer, user_id)
+    if not bc:
+        return jsonify({"ok": False, "error": "NO_STRIPE_CUSTOMER"}), 400
+
+    now = datetime.now(timezone.utc)
+    fake_invoice = {
+        "id": f"inv_fail_{int(now.timestamp())}",
+        "customer": bc.stripe_customer_id,
+        "subscription": "sub_simulated",
+        # period fields aren’t strictly needed for 'failed'
+        "lines": {"data": [{"period": {"start": int(now.timestamp()), "end": int(now.timestamp())}}]},
+    }
+    with db.session.begin():
+        ev.on_invoice_payment_failed(event_id=f"evt_fail_{int(now.timestamp())}", invoice=fake_invoice)
+
+    return jsonify({"ok": True, "note": "invoice.payment_failed simulated", "invoice_id": fake_invoice["id"]})
+
+
+@billing_bp.post("/dev/simulate-topup/<pack_code>")
+@jwt_required()
+def dev_simulate_topup(pack_code: str):
+    """
+    Dev-only: simulate checkout.session.completed for a top-up purchase.
+    """
+    if not current_app.config.get("FEATURE_BILLING"):
+        return jsonify({"ok": False, "error": "BILLING_DISABLED"}), 400
+    if os.getenv("APP_ENV", "development") == "production":
+        return jsonify({"ok": False, "error": "DISALLOWED_IN_PROD"}), 400
+
+    user_id = get_jwt_identity()
+    bc = db.session.get(BillingCustomer, user_id)
+    if not bc:
+        return jsonify({"ok": False, "error": "NO_STRIPE_CUSTOMER"}), 400
+
+    now = datetime.now(timezone.utc)
+    fake_session = {
+        "id": f"cs_sim_{int(now.timestamp())}",
+        "mode": "payment",
+        "customer": bc.stripe_customer_id,
+        "metadata": {"pack_code": pack_code},
+    }
+    with db.session.begin():
+        ev.on_checkout_completed(event_id=f"evt_csc_{int(now.timestamp())}", session=fake_session)
+
+    return jsonify({"ok": True, "note": "checkout.session.completed simulated", "pack_code": pack_code})
