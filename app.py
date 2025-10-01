@@ -47,7 +47,7 @@ def create_app():
         MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
         MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
         MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
-        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=5),
+        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=3600),
         JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7),
 
         TURNSTILE_SITE_KEY=os.getenv('TURNSTILE_SITE_KEY', ''),    

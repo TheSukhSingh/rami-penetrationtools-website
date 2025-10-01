@@ -1,39 +1,30 @@
 {% extends "main.html" %}
-{% block content %}
-<h1>Account Settings</h1>
-{% include "account/_tabs.html" %}
-<form method="post" data-jwt="1">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="row">
-    <label>Name</label>
-    <input name="name" value="{{ user.name or '' }}" placeholder="Your name">
-  </div>
-  <div class="row">
-    <label>Avatar URL</label>
-    <input name="avatar_url" value="{{ prof.avatar_url or '' }}" placeholder="https://...">
-  </div>
-  <div class="row">
-    <label>Timezone</label>
-    <select name="timezone">
-      {% set tz = prof.timezone or 'UTC' %}
-      {% for opt in ['UTC','Asia/Kolkata','America/New_York','Europe/London','Asia/Dubai'] %}
-        <option value="{{opt}}" {{ 'selected' if tz==opt else '' }}>{{opt}}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="row">
-    <label>Locale</label>
-    <select name="locale">
-      {% set loc = prof.locale or 'en' %}
-      {% for opt in ['en','hi','de','fr'] %}
-        <option value="{{opt}}" {{ 'selected' if loc==opt else '' }}>{{opt}}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="row">
-    <label>Bio</label>
-    <textarea name="bio" rows="3" placeholder="Short bio...">{{ prof.bio or '' }}</textarea>
-  </div>
-  <button class="btn" type="submit">Save</button>
-</form>
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
 {% endblock %}
+
+
+{% block content %}
+
+<main id="main-content">
+    <div id="homePage" class="page active">
+
+
+        <div class="grid-bg"></div>
+        <canvas id="wireframeGlobe" class="wireframe-globe"></canvas>
+        <div class="scan-lines"></div>
+        <div class="dashboard">
+            <aside class="account-sidebar glass">
+                {% include 'account/partials/_sidebar.html' %}
+            </aside>
+
+            <main class="admin-main">
+
+                <div id="view-root" class="admin-content" role="region" aria-live="polite"></div>
+            </main>
+        </div>
+    </div>
+</main>
+
+{% endblock content %}

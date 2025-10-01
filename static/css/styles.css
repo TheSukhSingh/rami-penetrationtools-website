@@ -8,6 +8,7 @@
     --warning: #FFC857;
     --text-main: #E5F1FF;
     --text-mute: #7A8CA4;
+    --glass-border: rgba(0, 255, 224, 0.2);
 }
 
 /* Reset and Base Styles */
@@ -131,6 +132,7 @@ body {
     0% {
         transform: translate(0, 0);
     }
+
     100% {
         transform: translate(50px, 50px);
     }
@@ -221,6 +223,217 @@ body {
 .page.active {
     display: block;
 }
+
+/* Sidebar */
+.account-sidebar {
+    padding: 24px;
+    box-shadow: 0 0 20px var(--admin-glass-glow);
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    min-height: 100vh;
+    margin-top: 5em;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    /* .dashboard {
+        grid-template-columns: 1fr;
+    } */
+
+    .account-sidebar {
+        position: static;
+        height: auto;
+        border-bottom: 1px solid var(--glass-border);
+    }
+
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.sidebar-title h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.sidebar-title p {
+    font-size: 12px;
+    color: var(--text-mute);
+}
+
+.nav-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+
+@media (max-width: 768px) {
+
+    .sidebar-header {
+        flex-direction: column;
+        text-align: center;
+    }
+}
+
+.nav-tab {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: none;
+    border: none;
+    color: var(--text-mute);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    width: 100%;
+}
+
+.nav-tab:hover {
+    color: var(--cyber-cyan);
+    background: rgba(0, 255, 224, 0.1);
+}
+
+.nav-tab.active {
+    color: var(--cyber-cyan);
+    background: rgba(0, 255, 224, 0.15);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 0 12px var(--glass-glow);
+}
+
+@media (max-width: 1024px) {
+    .nav-tabs {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 8px;
+    }
+
+
+
+
+
+}
+@media (max-width: 768px) {
+    .sidebar-footer {
+        flex-direction: column;
+        gap: 16px;
+    }
+    .admin-profile {
+        justify-content: center;
+    }
+}
+.sidebar-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 24px;
+    border-top: 1px solid var(--glass-border);
+    margin-top: auto;
+}
+.user-profile {
+    flex: 1;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--glass-border);
+}
+.profile-avatar {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1b2f2e;
+    border-radius: 50%;
+    color: white;
+    flex-shrink: 0;
+}
+.profile-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.profile-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-main);
+}
+
+.profile-role {
+    font-size: 12px;
+    color: var(--text-mute);
+}
+
+.logout-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-mute);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid var(--glass-border);
+}
+
+.logout-btn:hover {
+    color: var(--hack-magenta);
+    border-color: var(--hack-magenta);
+    box-shadow: 0 0 12px rgba(255, 0, 122, 0.3);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -416,6 +629,12 @@ body {
 @media (min-width: 1024px) {
     .tools-grid {
         grid-template-columns: 1fr 1fr;
+    }
+
+    .sidebar-nav {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
     }
 }
 
@@ -1156,6 +1375,10 @@ body {
         padding: 0 16px;
     }
 
+    .account-sidebar {
+        padding: 16px;
+    }
+
     .hero-content {
         padding: 0 16px;
     }
@@ -1177,132 +1400,154 @@ body {
         padding: 24px;
     }
 
+    .sidebar-nav {
+        grid-template-columns: 1fr;
+    }
 
 }
 
 /* Read-only inline form layout */
 .readonly-form .form-row {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  align-items: center;
-  gap: 12px;
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    align-items: center;
+    gap: 12px;
 }
 
 .readonly-form .form-label {
-  font-weight: 600;
-  opacity: 0.85;
+    font-weight: 600;
+    opacity: 0.85;
 }
 
 .readonly-form .form-input {
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.04);
-  color: inherit;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: inherit;
 }
 
 .readonly-form .form-input:disabled {
-  opacity: 0.9;
-  cursor: default;
+    opacity: 0.9;
+    cursor: default;
 }
 
 /* Recent IPs table-ish */
 .ip-table {
-  display: grid;
-  grid-template-columns: 1fr 2fr 1.2fr;
-  gap: 6px 12px;
+    display: grid;
+    grid-template-columns: 1fr 2fr 1.2fr;
+    gap: 6px 12px;
 }
 
 .ip-row {
-  display: contents;
+    display: contents;
 }
 
 .ip-head .ip-cell {
-  font-weight: 600;
-  opacity: 0.8;
+    font-weight: 600;
+    opacity: 0.8;
 }
 
 .ip-cell {
-  padding: 6px 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .ip-empty {
-  opacity: 0.6;
-  padding: 6px 0;
+    opacity: 0.6;
+    padding: 6px 0;
 }
+
 /* --- Stabilize page scrolling & reserve scrollbar space --- */
 html {
-  overflow-y: scroll;
-  scrollbar-gutter: stable both-edges;
+    overflow-y: scroll;
+    scrollbar-gutter: stable both-edges;
 }
+
 .main-content {
     padding-top: 80px;
 }
+
 .tools-header {
     padding: 60px 0;
     text-align: center;
     position: relative;
 }
+
 /* --- Make the main regions positioning contexts to CLIP their background layers --- */
 .page-wrapper,
 .main-content,
 .footer,
-.tools-header {            /* tools-header is your blog header section */
-  position: relative;
-  overflow: hidden;        /* critical: clip .grid-bg / .scan-lines / .particles overflow */
+.tools-header {
+    /* tools-header is your blog header section */
+    position: relative;
+    overflow: hidden;
+    /* critical: clip .grid-bg / .scan-lines / .particles overflow */
 }
+
 @media (max-width: 480px) {
     .main-content {
         padding-top: 70px;
     }
 }
+
 /* --- Keep your backgrounds scrolling, but animate background-position (not transform) --- */
 .grid-bg {
-  position: absolute;
-  inset: 0;
-  /* remove transform-based movement if present */
-  transform: none !important;
-  background-position: 0 0, 0 0;
-  animation: grid-shift 20s linear infinite;
-  will-change: background-position;
-  pointer-events: none;
+    position: absolute;
+    inset: 0;
+    /* remove transform-based movement if present */
+    transform: none !important;
+    background-position: 0 0, 0 0;
+    animation: grid-shift 20s linear infinite;
+    will-change: background-position;
+    pointer-events: none;
 }
 
 /* Replace @keyframes grid-move → translate() with background-position shift */
 @keyframes grid-shift {
-  from { background-position: 0    0,    0    0; }
-  to   { background-position: 50px 50px, 50px 50px; } /* exactly one tile */
+    from {
+        background-position: 0 0, 0 0;
+    }
+
+    to {
+        background-position: 50px 50px, 50px 50px;
+    }
+
+    /* exactly one tile */
 }
 
 /* --- Clip other full-screen decor so they can't extend layout height --- */
 .particles,
 .scan-lines {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  /* If you animate these with translateY, they will be clipped by overflow:hidden */
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    /* If you animate these with translateY, they will be clipped by overflow:hidden */
 }
 
 /* --- Stabilize cards near the fold: isolate hover paints so they don't change layout --- */
 .blog-card {
-  contain: paint;            /* hover glow/scale won't affect layout outside the card */
-  will-change: transform;
-  transform-origin: center;
+    contain: paint;
+    /* hover glow/scale won't affect layout outside the card */
+    will-change: transform;
+    transform-origin: center;
 }
 
 /* --- Reserve cover image height to avoid grid reflow while images load --- */
-.blog-card .cover { 
-  display: block;
-  aspect-ratio: 16 / 9;      /* pick the ratio you use for covers */
-  overflow: hidden;
+.blog-card .cover {
+    display: block;
+    aspect-ratio: 16 / 9;
+    /* pick the ratio you use for covers */
+    overflow: hidden;
 }
+
 .blog-card .cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;            /* removes inline-img baseline gap */
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    /* removes inline-img baseline gap */
 }
 
 /* --- Optional: tiny guard if a 1px flicker remains at certain breakpoints --- */
