@@ -26,6 +26,8 @@ TOOL_STAGE = {
 
     # Validation
     "dnsx": STAGE_VALIDATION, "naabu": STAGE_VALIDATION, "httpx": STAGE_VALIDATION,
+    "services_to_urls": STAGE_VALIDATION,
+    "services-to-urls": STAGE_VALIDATION,
 
     # Enrichment
     "katana": STAGE_ENRICHMENT, "gospider": STAGE_ENRICHMENT, "hakrawler": STAGE_ENRICHMENT,
@@ -100,9 +102,11 @@ IO_BASELINE = {
     "theharvester":      {"consumes": ["domains"],                      "emits": ["domains"]},
 
     # ---- Validation / Surface ----
-    "dnsx":              {"consumes": ["domains","hosts"],              "emits": ["domains","ips"]},
+    "dnsx":              {"consumes": ["domains","hosts"],              "emits": ["hosts","ips"]},
     "naabu":             {"consumes": ["hosts","ips","domains"],        "emits": ["services","ports"]},
-    "services_to_urls":  {"consumes": ["services"],                     "emits": ["urls"]},
+    "services_to_urls":  {"consumes": ["services"], "emits": ["urls"]},
+    "services-to-urls":  {"consumes": ["services"], "emits": ["urls"]},
+
     "httpx":             {"consumes": ["urls","hosts","domains"],       "emits": ["urls"]},
 
     # ---- Enrichment / Crawl / Params ----
@@ -142,7 +146,8 @@ IO_BASELINE = {
 
     # ---- Evidence / Reporting ----
     "gowitness":         {"consumes": ["urls"],                         "emits": ["screenshots"]},
-    "jwt_crack":         {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
+    "jwt_crack": {"consumes": ["endpoints","urls"], "emits": ["exploit_results"]},
+    "jwt-crack": {"consumes": ["endpoints","urls"], "emits": ["exploit_results"]},
     "john":              {"consumes": ["endpoints","urls"],             "emits": ["exploit_results"]},
     "qlgraph":           {"consumes": ["urls","endpoints","vulns"],     "emits": []},
     "report_collate": {
@@ -222,7 +227,12 @@ def get_effective_policy(tool_slug: str) -> dict:
     if not tool:
         # Guarantee io_policy exists for FE even without a DB row
         if "io_policy" not in base:
-            base["io_policy"] = deepcopy(IO_BASELINE.get(tool_slug) or DEFAULT_IO)
+            base["io_policy"] = deepcopy(IO_BASELINE.get(tool_slug) or {"consumes": [], "emits": []})
+        # Also provide minimal defaults for required keys so FE doesn't break
+        base.setdefault("input_policy", {"accepts": [], "max_targets": 50, "file_max_bytes": 100_000})
+        base.setdefault("binaries", {"names": []})
+        base.setdefault("runtime_constraints", {})
+        base.setdefault("schema_fields", [])
         return base
 
     # ---- Start with baseline fields, indexed by name for merging ----

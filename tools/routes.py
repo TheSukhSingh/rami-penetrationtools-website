@@ -18,7 +18,7 @@ from tools.models import (
     WorkflowRunStatus, WorkflowStepStatus,
 )
 from extensions import db, limiter
-from tools.policies import IO_BASELINE, TOOL_STAGE, get_effective_policy, get_global_specs
+from tools.policies import DEFAULT_WORDLIST_TIER, IO_BASELINE, STAGE_DISCOVERY, STAGE_ENRICHMENT, STAGE_EXPLOIT, STAGE_PREP, STAGE_REPORTING, STAGE_SCANNING, STAGE_VALIDATION, TOOL_STAGE, get_effective_policy, get_global_specs
 from . import tools_bp
 from importlib import import_module
 from sqlalchemy.orm import joinedload, selectinload
@@ -145,11 +145,23 @@ def api_tools():
 
 @tools_bp.get("/api/specs")
 def api_specs():
-    specs = get_global_specs()
+    specs = get_global_specs()  # returns buckets, execution_order, wordlist_tiers
+    # Build int->name stage labels to help the FE
+    stage_labels = {
+        STAGE_DISCOVERY:  "discovery",
+        STAGE_VALIDATION: "validation",
+        STAGE_ENRICHMENT: "enrichment",
+        STAGE_PREP:       "prep",
+        STAGE_SCANNING:   "scanning",
+        STAGE_EXPLOIT:    "exploitation",
+        STAGE_REPORTING:  "reporting",
+    }
     return jsonify({
         **specs,
+        "wordlist_default": DEFAULT_WORDLIST_TIER,  # <— new
         "io_baseline": IO_BASELINE,
         "tool_stage_map": TOOL_STAGE,
+        "stage_labels": stage_labels,               # <— new
     })
 
 @tools_bp.patch("/api/tools/<slug>/enabled")
