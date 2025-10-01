@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <title>Billing · hackr.gg</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="wtf-csrf" content="{{ csrf_token() }}">
+
   <style>
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; background:#0b0f12; color:#e6edf3; }
     .container { max-width: 980px; margin: 24px auto; padding: 0 16px; }
@@ -96,6 +98,6 @@
 
   <!-- page script -->
   <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/requesting.js') }}"></script>
-  <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/billing.js') }}"></script>
+  <script nonce="{{ g.csp_nonce }}" src="{{ url_for('billing_bp.static', filename='js/billing.js') }}"></script>
 </body>
 </html>

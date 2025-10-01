@@ -141,7 +141,15 @@ def create_app():
 
     os.makedirs(app.instance_path, exist_ok=True)
     jwt = JWTManager(app)
-    
+    # --- Scanner defaults ---
+    app.config.setdefault("SCANNER_CACHE_TTL_DAYS", 30)
+    app.config.setdefault("CLAMAV_UNIX_SOCKET", None)     # e.g., "/var/run/clamd.scan/clamd.sock"
+    app.config.setdefault("CLAMAV_HOST", None)            # e.g., "127.0.0.1"
+    app.config.setdefault("CLAMAV_PORT", 3310)
+    app.config.setdefault("CLAMAV_TIMEOUT", 2)
+
+
+
     db.init_app(app)
     bcrypt.init_app(app)
     migrate.init_app(app, db)
@@ -162,6 +170,7 @@ def create_app():
     app.register_blueprint(billing_webhooks_bp)
 
     csrf.exempt(billing_webhooks_bp)
+    csrf.exempt(billing_bp)
     init_jwt_manager(app, jwt)
 
     @app.context_processor
