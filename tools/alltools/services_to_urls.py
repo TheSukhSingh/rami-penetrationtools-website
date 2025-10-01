@@ -1,11 +1,9 @@
 from __future__ import annotations
 from typing import List, Tuple
-from tools.alltools._manifest_utils import PORT_RE
 from tools.alltools.tools._common import (
-    ensure_work_dir, read_targets, finalize, ValidationError, now_ms,
-    services_to_urls as _bridge,
+    ensure_work_dir, read_targets, finalize, ValidationError, now_ms, PORT_RE
 )
-from tools.policies import get_effective_policy
+
 
 # Simple HTTP(S) guesser for common ports
 HTTP_PORTS  = {80, 8080, 8000, 8008, 3000, 8888}

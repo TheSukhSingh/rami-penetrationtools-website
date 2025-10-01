@@ -1,4 +1,3 @@
-# tools/alltools/tools/gobuster.py
 from __future__ import annotations
 from pathlib import Path
 from typing import List
@@ -16,6 +15,7 @@ try:
     from tools.policies import get_effective_policy, clamp_from_constraints
 except ImportError:
     from policies import get_effective_policy, clamp_from_constraints
+from ._common import resolve_wordlist_path
 
 
 HARD_TIMEOUT = 3600
@@ -33,19 +33,24 @@ def _parse_gobuster(text: str, base_url: str) -> List[str]:
     return eps
 
 def run_scan(options: dict) -> dict:
-    from ._common import resolve_wordlist_path
-    wordlist = (options.get("wordlist") or "").strip()
-    if not wordlist:
-        wl_tier = (options.get("wordlist_tier")
-                or (policy.get("runtime_constraints",{}).get("_hints",{}) or {}).get("wordlist_default")
-                or "medium")
-        wordlist = resolve_wordlist_path(wl_tier)
 
     t0 = now_ms()
     work_dir = ensure_work_dir(options, "gobuster")
     slug = options.get("tool_slug", "gobuster")
     policy = options.get("_policy") or get_effective_policy(slug)
     ipol = policy.get("input_policy", {}) or {}
+    # wordlist resolution (options > tier > policy hint > default tier)
+    wordlist = (options.get("wordlist") or "").strip()
+    if not wordlist:
+        wl_tier = (
+            options.get("wordlist_tier")
+            or ((policy.get("runtime_constraints", {}).get("_hints") or {}).get("wordlist_default"))
+            or "medium"
+        )
+        wordlist = resolve_wordlist_path(wl_tier)
+
+    if not wordlist or not Path(wordlist).exists():
+        raise ValidationError("wordlist is required for gobuster.", "INVALID_PARAMS", "missing wordlist")
 
     exe = resolve_bin("gobuster", "gobuster.exe")
     if not exe:
@@ -54,10 +59,6 @@ def run_scan(options: dict) -> dict:
     urls, _ = read_targets(options, accept_keys=("urls","hosts","domains"), cap=ipol.get("max_targets") or 10000)
     if not urls:
         raise ValidationError("Provide a URL/host/domain for gobuster.", "INVALID_PARAMS", "no input")
-
-    wordlist = options.get("wordlist")
-    if not wordlist:
-        raise ValidationError("wordlist is required for gobuster.", "INVALID_PARAMS", "missing wordlist")
 
     threads   = clamp_from_constraints(options, "threads",   policy.get("runtime_constraints", {}).get("threads"),   default=50, kind="int") or 50
     timeout_s = clamp_from_constraints(options, "timeout_s", policy.get("runtime_constraints", {}).get("timeout_s"), default=30, kind="int") or 30

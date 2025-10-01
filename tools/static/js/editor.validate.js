@@ -15,6 +15,36 @@ export function attachValidate(editor) {
     const emits = Array.isArray(io.emits) ? io.emits : [];
     return { consumes, emits };
   }
+  // Add this pre-run validator so the Run button can gate execution.
+  editor.preRunValidate = async function () {
+    // 1) do the existing structural + IO validation (also paints the banner)
+    const warnings = this.validateWorkflow() || [];
+
+    // 2) add stage-order validation using server-provided map
+    this._specs = this._specs || (await getSpecs());
+    const stageMap = this._specs?.tool_stage_map || {};
+    const stageErrs = computeStageViolations(
+      this.nodes || [],
+      this.connections || [],
+      stageMap
+    );
+
+    // If stage errs exist, append them to the yellow banner now
+    if (stageErrs.length) {
+      const banner = document.getElementById("warningBanner");
+      const text   = document.getElementById("warningText");
+      if (banner && text) {
+        banner.classList.remove("hidden");
+        const prev = text.innerHTML ? text.innerHTML + "<br>" : "";
+        // escape a bit for safety
+        const esc = (s) =>
+          String(s).replace(/[&<>]/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[m]));
+        text.innerHTML = prev + stageErrs.map(esc).join("<br>");
+      }
+    }
+
+    return { warnings, stageErrs };
+  };
 
   function bucketCompat(fromSlug, toSlug) {
     const { emits } = getIO(fromSlug);

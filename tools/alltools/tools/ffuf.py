@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Tuple
 import json
 from urllib.parse import urlsplit, parse_qsl
+from ._common import resolve_wordlist_path
 
 try:
     from ._common import (
@@ -52,19 +53,26 @@ def _parse_ffuf_json(blob: str) -> List[str]:
     return [x for x in urls if not (x in seen or seen.add(x))]
 
 def run_scan(options: dict) -> dict:
-    from ._common import resolve_wordlist_path
-    wordlist = (options.get("wordlist") or "").strip()
-    if not wordlist:
-        wl_tier = (options.get("wordlist_tier")
-                or (policy.get("runtime_constraints",{}).get("_hints",{}) or {}).get("wordlist_default")
-                or "medium")
-        wordlist = resolve_wordlist_path(wl_tier)
 
     t0 = now_ms()
     work_dir = ensure_work_dir(options, "ffuf")
     slug = options.get("tool_slug", "ffuf")
     policy = options.get("_policy") or get_effective_policy(slug)
     ipol = policy.get("input_policy", {}) or {}
+
+    # wordlist resolution (options > tier > policy hint > default tier)
+    wordlist = (options.get("wordlist") or "").strip()
+    if not wordlist:
+        wl_tier = (
+            options.get("wordlist_tier")
+            or ((policy.get("runtime_constraints", {}).get("_hints") or {}).get("wordlist_default"))
+            or "medium"
+        )
+        wordlist = resolve_wordlist_path(wl_tier)
+
+    if not wordlist or not Path(wordlist).exists():
+        raise ValidationError("wordlist is required for ffuf (-w).", "INVALID_PARAMS", "missing wordlist")
+
 
     exe = resolve_bin("ffuf", "ffuf.exe")
     if not exe:
@@ -73,11 +81,6 @@ def run_scan(options: dict) -> dict:
     urls, _ = read_targets(options, accept_keys=("urls","hosts","domains"), cap=ipol.get("max_targets") or 10000)
     if not urls:
         raise ValidationError("Provide a base URL/host/domain for ffuf.", "INVALID_PARAMS", "no input")
-
-    # wordlist
-    wordlist = options.get("wordlist")
-    if not wordlist:
-        raise ValidationError("wordlist is required for ffuf (-w).", "INVALID_PARAMS", "missing wordlist")
 
     # knobs
     threads   = clamp_from_constraints(options, "threads",   policy.get("runtime_constraints", {}).get("threads"),   default=50, kind="int") or 50

@@ -129,6 +129,7 @@ export function attachDnD(editor) {
   };
 
   editor.createConnection = function (fromNode, toNode) {
+    // basic structural guards
     if (fromNode.id === toNode.id) {
       this.addLog("Can't connect a node to itself");
       return;
@@ -151,16 +152,16 @@ export function attachDnD(editor) {
       this.addLog("Source node already has an output connection");
       return;
     }
-    const fromNode = this.nodes.find((n) => n.id === from);
-    const toNode = this.nodes.find((n) => n.id === to);
+
+    // IO policy + type safety gate (from editor.validate.js)
     const gate = this.allowedEdge?.(fromNode, toNode);
     if (gate && gate.ok === false) {
       this.addLog?.(`Blocked connection: ${gate.reason}`);
-      // optional: flash the yellow banner by calling validate
-      this.validateWorkflow?.();
-      return; // don’t create the edge
+      this.validateWorkflow?.(); // flash the yellow banner if needed
+      return;
     }
 
+    // finally create the edge
     this.connections.push({
       id: `conn_${Date.now()}`,
       from: fromNode.id,
@@ -285,9 +286,25 @@ export function attachDnD(editor) {
     });
     window.addEventListener("resize", () => this.updateConnections());
 
-    document
-      .getElementById("runBtn")
-      ?.addEventListener("click", () => this.runWorkflow?.());
+    document.getElementById("runBtn")?.addEventListener("click", async () => {
+      // Pre-run validations: structure, IO, and stage order
+      const res = (await this.preRunValidate?.()) || {};
+      const hardError =
+        (res.warnings || []).some(
+          (w) =>
+            w.includes("no compatible buckets") ||
+            w.includes("single chain") ||
+            w.includes("exactly one start") ||
+            w.includes("exactly one end")
+        ) || (res.stageErrs || []).length > 0;
+
+      if (hardError) {
+        // Banner already shows why; don’t start the run
+        return;
+      }
+      this.runWorkflow?.();
+    });
+
     document
       .getElementById("saveBtn")
       ?.addEventListener("click", () => this.savePreset?.());

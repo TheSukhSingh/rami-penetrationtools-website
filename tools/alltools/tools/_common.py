@@ -71,7 +71,17 @@ def resolve_wordlist_path(tier: str) -> str:
 URL_RE  = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 IPV4_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\b")
 IPV6_RE = re.compile(r"\b(?:[A-F0-9]{1,4}:){1,7}[A-F0-9]{1,4}\b", re.IGNORECASE)
+try:
+    # Prefer a shared definition if present
+    from tools.alltools._manifest_utils import PORT_RE as _PORT_RE
+    PORT_RE = _PORT_RE
+except Exception:
+    # Fallback: host:port or host:port/proto
+    PORT_RE = re.compile(r"^([A-Za-z0-9\.\-]+):(\d+)(?:/[A-Za-z0-9\-\+]+)?$")
 
+# Common HTTP(S) ports for URL guessing
+HTTP_PORTS  = {80, 8080, 8000, 8008, 3000, 8888}
+HTTPS_PORTS = {443, 8443, 9443, 444}
 # Optional domain classifier: use your existing helper if available
 try:
     # adjust path if your module lives elsewhere
@@ -87,35 +97,30 @@ except Exception:
             (valid if dom_re.match(s) else invalid).append(s)
         return valid, invalid, dups
 
-# Optional bridge: services -> urls
 def services_to_urls(services: Iterable[str]) -> List[str]:
-    try:
-        from tools.alltools.services_to_urls import services_to_urls as _impl  # if you have it
-        return _impl(services)
-    except Exception:
-        out = []
-        for s in services or []:
-            s = str(s).strip()
-            if not s: continue
-            # accepted formats: host:port or host:port/proto
-            host, _, rest = s.partition(":")
-            port = rest.split("/", 1)[0] if rest else ""
-            try:
-                p = int(port)
-            except ValueError:
-                continue
-            if p == 443:
-                out.append(f"https://{host}:{p}")
-            elif p == 80:
-                out.append(f"http://{host}:{p}")
-            else:
-                # conservative default -> http
-                out.append(f"http://{host}:{p}")
-        # dedupe preserve order
-        seen, uniq = set(), []
-        for u in out:
-            if u not in seen: uniq.append(u); seen.add(u)
-        return uniq
+    """
+    Accepts items like 'host:port' or 'host:port/proto'.
+    Guesses scheme from common ports and omits default port in URL.
+    """
+    out: List[str] = []
+    seen = set()
+    for s in services or []:
+        s = str(s).strip()
+        if not s:
+            continue
+        m = PORT_RE.match(s)
+        if not m:
+            continue
+        host, port = m.group(1), int(m.group(2))
+        url = None
+        if port in HTTPS_PORTS:
+            url = f"https://{host}" if port == 443 else f"https://{host}:{port}"
+        elif port in HTTP_PORTS:
+            url = f"http://{host}" if port == 80 else f"http://{host}:{port}"
+        if url and url not in seen:
+            seen.add(url); out.append(url)
+    return out
+
 
 # ---- Small error class for parameter issues ----
 class ValidationError(Exception):
