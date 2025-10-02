@@ -1,0 +1,27 @@
+{% extends "main.html" %}
+
+{% block title %}Account Settings{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+{% endblock %}
+{% block content %}
+        <div class="grid-bg"></div>
+        <canvas id="wireframeGlobe" class="wireframe-globe"></canvas>
+        <div class="scan-lines"></div>
+<div class="dashboard">
+  {# Left rail / sidebar #}
+  <aside class="account-sidebar glass">
+    {% include "account/_sidebar.html" %}
+  </aside>
+
+  {# Right: dynamic content region #}
+  <section id="view-root" class="account-content" role="region" aria-live="polite">
+    {# Server-side initial content for no-JS / first paint #}
+    {% if partial %}
+      {% include partial %}
+    {% endif %}
+  </section>
+</div>
+
+<script defer src="{{ url_for('account.static', filename='js/account.js') }}"></script>
+{% endblock %}

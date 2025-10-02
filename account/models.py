@@ -21,9 +21,35 @@ class AccountProfile(db.Model):
 
 class AccountNotificationPrefs(db.Model):
     __tablename__ = "account_notification_prefs"
-    __table_args__ = (UniqueConstraint("user_id", name="uq_account_notif_user"),)
-    id        = db.Column(db.Integer, primary_key=True)
-    user_id   = db.Column(db.Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    product_updates = db.Column(db.Boolean, default=True, nullable=False)
-    marketing_emails= db.Column(db.Boolean, default=False, nullable=False)
-    security_alerts = db.Column(db.Boolean, default=True, nullable=False)
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+
+    # GROUP FLAGS (keep for backward compatibility / grouping in UI)
+    product_updates  = db.Column(db.Boolean, nullable=False, default=True)
+    marketing_emails = db.Column(db.Boolean, nullable=False, default=False)
+    security_alerts  = db.Column(db.Boolean, nullable=False, default=True)
+
+    # NEW GRANULAR FLAGS (persist each UI toggle)
+    # Security
+    login_alerts             = db.Column(db.Boolean, nullable=False, default=True)
+    password_change_alerts   = db.Column(db.Boolean, nullable=False, default=True)
+    tfa_change_alerts        = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Product
+    new_tools_updates        = db.Column(db.Boolean, nullable=False, default=True)
+    feature_updates          = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Marketing
+    promotions               = db.Column(db.Boolean, nullable=False, default=False)
+    newsletter               = db.Column(db.Boolean, nullable=False, default=False)
+
+    # In-app (optional, now persisted too)
+    scan_completion          = db.Column(db.Boolean, nullable=False, default=True)
+    weekly_summary           = db.Column(db.Boolean, nullable=False, default=False)
+
+    # (optional) helper to recompute group flags from granular toggles
+    def recompute_groups(self):
+        self.security_alerts  = bool(self.login_alerts or self.password_change_alerts or self.tfa_change_alerts)
+        self.product_updates  = bool(self.new_tools_updates or self.feature_updates)
+        self.marketing_emails = bool(self.promotions or self.newsletter)

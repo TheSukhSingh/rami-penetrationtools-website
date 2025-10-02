@@ -5,6 +5,9 @@ from auth.models import User
 from .. import account_bp
 from ..models import AccountProfile
 
+def wants_fragment() -> bool:
+    return request.args.get("fragment") == "1" or request.headers.get("X-Fragment") == "1"
+
 @account_bp.route("/", methods=["GET"])
 @jwt_required()
 def home():
@@ -26,6 +29,11 @@ def profile():
         user.account_profile = prof
         db.session.add_all([user, prof]); db.session.commit()
         flash("Profile updated.", "success")
+        if wants_fragment():
+            return render_template("account/partials/profile.html", user=user, prof=prof)
         return redirect(url_for("account.profile"))
 
-    return render_template("account/profile.html", user=user, prof=prof)
+    if wants_fragment():
+        return render_template("account/partials/profile.html", user=user, prof=prof)
+    return render_template("account/shell.html", user=user, prof=prof,
+                           partial="account/partials/profile.html")

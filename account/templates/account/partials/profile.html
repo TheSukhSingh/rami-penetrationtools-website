@@ -1,0 +1,38 @@
+{% include "account/partials/_flash_hook.html" %}
+<div class="account-form glass">
+  <div class="tab-header">
+    <h2>Profile Information</h2>
+    <p>Update your personal information and preferences</p>
+  </div>
+
+
+
+  <form action="{{ url_for('account.profile') }}" method="post" data-ajax>
+    <div class="form-row">
+      <div class="form-group">
+        <label>
+          <span>Name</span>
+          <input type="text" name="name" value="{{ user.name or '' }}" class="form-input" autocomplete="name">
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label>
+          <span>Timezone</span>
+          <input type="text" name="timezone" value="{{ prof.timezone or 'UTC' }}" class="form-input"
+            placeholder="e.g. Asia/Kolkata">
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="bio">Bio</label>
+      <textarea name="bio" class="form-input" rows="12"
+        placeholder="Tell something about yourself…">{{ prof.bio or '' }}</textarea>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="cyber-button" type="submit">Save changes</button>
+    </div>
+  </form>
+</div>
