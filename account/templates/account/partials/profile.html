@@ -1,0 +1,80 @@
+{% include "account/partials/_flash_hook.html" %}
+<div class="account-form glass">
+  <div class="tab-header">
+    <h2>Profile Information</h2>
+    <p>Update your personal information and preferences</p>
+  </div>
+
+
+
+  <form action="{{ url_for('account.profile') }}" method="post" data-ajax>
+
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>
+          <span>Name</span>
+          <input type="text" name="name" value="{{ user.name or '' }}" class="form-input" autocomplete="name">
+        </label>
+      </div>
+
+
+
+      <label>
+        <span>Timezone</span>
+        <select name="timezone" id="timezoneSelect" class="form-input">
+          {% for region, zones in tz_groups %}
+          <optgroup label="{{ region }}">
+            {% for tz in zones %}
+            <option value="{{ tz }}" class="options-dropdown" {% if prof.timezone==tz %}selected{% endif %}>{{ tz }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+      </label>
+      <div id="tzHint" class="form-help" hidden>
+        Your device timezone appears to be <strong class="device-tz"></strong>.
+        <button id="useDeviceTz" type="button" class="account-glass-button">Use this</button>
+      </div>
+    </div>
+
+    <script nonce="{{ g.csp_nonce }}">
+      (function () {
+        var tzSel = document.getElementById('timezoneSelect');
+        var hint = document.getElementById('tzHint');
+        var btn = document.getElementById('useDeviceTz');
+
+        try {
+          var guess = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          if (guess && tzSel && tzSel.value !== guess) {
+            // show hint only if dropdown differs from device tz
+            hint.hidden = false;
+            hint.querySelector('.device-tz').textContent = guess;
+            btn.addEventListener('click', function () {
+              for (var i = 0; i < tzSel.options.length; i++) {
+                if (tzSel.options[i].value === guess) {
+                  tzSel.value = guess;
+                  break;
+                }
+              }
+              hint.hidden = true;
+            });
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
+
+
+
+
+    <div class="form-group">
+      <label for="bio">Bio</label>
+      <textarea name="bio" class="form-input" rows="12"
+        placeholder="Tell something about yourself…">{{ prof.bio or '' }}</textarea>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="cyber-button" type="submit">Save changes</button>
+    </div>
+  </form>
+</div>

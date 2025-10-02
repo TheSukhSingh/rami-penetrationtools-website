@@ -1,0 +1,28 @@
+
+  <div class="sidebar-header">
+  <div class="sidebar-title">
+    <h2>Account Settings</h2>
+    <p>Manage your profile, security, and preferences</p>
+  </div>
+  </div>
+
+  <nav class="nav-tabs">
+    <a class="nav-tab" href="{{ url_for('account.profile') }}" data-section="profile">Profile</a>
+    <a class="nav-tab" href="{{ url_for('account.security') }}" data-section="security">Security</a>
+    <a class="nav-tab" href="{{ url_for('account.sessions') }}" data-section="sessions">Sessions &amp; Devices</a>
+    <a class="nav-tab" href="{{ url_for('account.notifications') }}" data-section="notifications">Notifications</a>
+    <a class="nav-tab" href="{{ url_for('account.privacy') }}" data-section="privacy">Privacy</a>
+  </nav>
+
+<div class="sidebar-footer">
+  <div class="user-profile glass">
+    <div class="profile-avatar">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+    </div>
+    <div class="profile-info">
+      <span class="profile-name">User</span>
+      <span class="profile-role">user@email.com</span>
+    </div>
+  </div>
+
+</div>

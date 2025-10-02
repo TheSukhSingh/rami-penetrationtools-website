@@ -1,0 +1,144 @@
+{% include "account/partials/_flash_hook.html" %}
+
+<div class="tab-header">
+  <h2>Notification Preferences</h2>
+  <p>Control how and when you receive notifications</p>
+</div>
+
+<div class="notifications-form glass">
+  <form id="notificationsForm" action="{{ url_for('account.notifications') }}" method="post" data-ajax>
+    {# Master checkboxes submitted to backend (hidden). JS syncs them from sub-toggles #}
+    <input type="checkbox" id="securityMaster"   name="security_alerts"   class="visually-hidden" hidden {% if prefs.security_alerts %}checked{% endif %}>
+    <input type="checkbox" id="productMaster"    name="product_updates"   class="visually-hidden" hidden {% if prefs.product_updates %}checked{% endif %}>
+    <input type="checkbox" id="marketingMaster"  name="marketing_emails"  class="visually-hidden" hidden {% if prefs.marketing_emails %}checked{% endif %}>
+
+    <!-- Security Alerts -->
+    <div class="notification-section">
+      <h3>Security Alerts</h3>
+      <p class="section-desc">Important security notifications (recommended)</p>
+
+      <div class="notification-item">
+        <div class="notification-info">
+          <strong>Login alerts</strong>
+          <span>New sign-ins from unrecognized devices</span>
+        </div>
+        <div class="toggle-switch">
+          <input type="checkbox" id="loginAlerts" name="login_alerts" {% if prefs.login_alerts %}checked{% endif %}>
+          <label for="loginAlerts"></label>
+        </div>
+      </div>
+
+      <div class="notification-item">
+        <div class="notification-info">
+          <strong>Password changes</strong>
+          <span>When your password is changed</span>
+        </div>
+        <div class="toggle-switch">
+          <input type="checkbox" id="passwordAlerts" name="password_change_alerts"  {% if prefs.password_change_alerts  %}checked{% endif %}>
+          <label for="passwordAlerts"></label>
+        </div>
+      </div>
+
+      <div class="notification-item">
+        <div class="notification-info">
+          <strong>2FA changes</strong>
+          <span>When 2FA is enabled or disabled</span>
+        </div>
+        <div class="toggle-switch">
+          <input type="checkbox" id="tfaAlerts" name="tfa_change_alerts" {% if prefs.tfa_change_alerts %}checked{% endif %}>
+          <label for="tfaAlerts"></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Product Updates -->
+    <div class="notification-section">
+      <h3>Product Updates</h3>
+      <p class="section-desc">New features and improvements</p>
+
+      <div class="notification-item">
+        <div class="notification-info">
+          <strong>New tools</strong>
+          <span>When new reconnaissance tools are added</span>
+        </div>
+        <div class="toggle-switch">
+          <input type="checkbox" id="newTools" name="new_tools_updates"  {% if prefs.new_tools_updates  %}checked{% endif %}>
+          <label for="newTools"></label>
+        </div>
+      </div>
+
+      <div class="notification-item">
+        <div class="notification-info">
+          <strong>Feature updates</strong>
+          <span>Platform improvements and new features</span>
+        </div>
+        <div class="toggle-switch">
+          <input type="checkbox" id="featureUpdates" name="feature_updates" {% if prefs.feature_updates  %}checked{% endif %}>
+          <label for="featureUpdates"></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Marketing & Promotions -->
+    <div class="notification-section">
+      <h3>Marketing &amp; Promotions</h3>
+      <p class="section-desc">Special offers and announcements</p>
+
+      <div class="notification-item">
+        <div class="notification-info">
+          <strong>Special offers</strong>
+          <span>Discounts and promotional campaigns</span>
+        </div>
+        <div class="toggle-switch">
+          <input type="checkbox" id="promotions" name="promotions"  {% if prefs.promotions  %}checked{% endif %}>
+          <label for="promotions"></label>
+        </div>
+      </div>
+
+      <div class="notification-item">
+        <div class="notification-info">
+          <strong>Newsletter</strong>
+          <span>Monthly security tips and best practices</span>
+        </div>
+        <div class="toggle-switch">
+          <input type="checkbox" id="newsletter" name="newsletter" {% if prefs.newsletter  %}checked{% endif %}>
+          <label for="newsletter"></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- In-App (visual only for now; not persisted unless you add fields) -->
+    <div class="notification-section">
+      <h3>In-App Notifications</h3>
+      <p class="section-desc">Notifications within the platform</p>
+
+      <div class="notification-item">
+        <div class="notification-info">
+          <strong>Scan completion</strong>
+          <span>When your scans finish running</span>
+        </div>
+        <div class="toggle-switch">
+          <input type="checkbox" id="scanCompletion" name="scan_completion" {% if prefs.scan_completion %}checked{% endif %}>
+          <label for="scanCompletion"></label>
+        </div>
+      </div>
+
+      <div class="notification-item">
+        <div class="notification-info">
+          <strong>Weekly summary</strong>
+          <span>Weekly activity and usage summary</span>
+        </div>
+        <div class="toggle-switch">
+          <input type="checkbox" id="weeklySummary" name="weekly_summary" {% if prefs.weekly_summary %}checked{% endif %}>
+          <label for="weeklySummary"></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="account-glass-button">Save Preferences</button>
+      <button type="button" id="unsubscribeAllMarketingBtn" class="account-glass-button">Unsubscribe from All Marketing</button>
+    </div>
+  </form>
+</div>
+

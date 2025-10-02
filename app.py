@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 from datetime import timedelta
 from flask_jwt_extended import JWTManager
 from flask import current_app
+
+
+load_dotenv()
+
 from auth import auth_bp
 from tools import tools_bp
 from admin import admin_bp
@@ -11,6 +15,8 @@ from blog import blog_bp
 from admin.api import admin_api_bp
 from account import account_bp
 from support import support_bp
+from credits import credits_bp
+from billing import billing_webhooks_bp, billing_bp
 import secrets
 from extensions import db, bcrypt, migrate, limiter, csrf
 from user_dashboard import user_dashboard_bp
@@ -18,7 +24,6 @@ import enum
 from auth.utils import init_mail, init_jwt_manager
 from flask.json.provider import DefaultJSONProvider
 
-load_dotenv()
 
 class EnumJSONProvider(DefaultJSONProvider):
     def default(self, o):
@@ -49,7 +54,7 @@ def create_app():
         MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
         MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
         MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER'),
-        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=5),
+        JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=3600),
         JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7),
 
         TURNSTILE_SITE_KEY=os.getenv('TURNSTILE_SITE_KEY', ''),    
@@ -72,6 +77,14 @@ def create_app():
 
         SUPPORT_PENDING_REMINDER_DAYS=int(os.getenv("SUPPORT_PENDING_REMINDER_DAYS", "3")),
         SUPPORT_AUTO_CLOSE_DAYS=int(os.getenv("SUPPORT_AUTO_CLOSE_DAYS", "7")),
+
+
+        STRIPE_SECRET_KEY=os.getenv("STRIPE_SECRET_KEY"),
+        STRIPE_WEBHOOK_SECRET=os.getenv("STRIPE_WEBHOOK_SECRET"),
+        STRIPE_PRICE_PRO_MONTHLY=os.getenv("STRIPE_PRICE_PRO_MONTHLY"),
+        STRIPE_PRICE_TOPUP_100=os.getenv("STRIPE_PRICE_TOPUP_100"),
+        STRIPE_PRICE_TOPUP_200=os.getenv("STRIPE_PRICE_TOPUP_200"),
+        STRIPE_PRICE_TOPUP_500=os.getenv("STRIPE_PRICE_TOPUP_500"),
     )
     # ───────── COOKIE SETTINGS ─────────
     app.config.update({
@@ -135,7 +148,15 @@ def create_app():
 
     os.makedirs(app.instance_path, exist_ok=True)
     jwt = JWTManager(app)
-    
+    # --- Scanner defaults ---
+    app.config.setdefault("SCANNER_CACHE_TTL_DAYS", 30)
+    app.config.setdefault("CLAMAV_UNIX_SOCKET", None)     # e.g., "/var/run/clamd.scan/clamd.sock"
+    app.config.setdefault("CLAMAV_HOST", None)            # e.g., "127.0.0.1"
+    app.config.setdefault("CLAMAV_PORT", 3310)
+    app.config.setdefault("CLAMAV_TIMEOUT", 2)
+
+
+
     db.init_app(app)
     bcrypt.init_app(app)
     migrate.init_app(app, db)
@@ -154,7 +175,12 @@ def create_app():
     app.register_blueprint(blog_bp)
     app.register_blueprint(user_dashboard_bp)
     app.register_blueprint(support_bp)
+    app.register_blueprint(credits_bp)
+    app.register_blueprint(billing_bp)
+    app.register_blueprint(billing_webhooks_bp)
 
+    csrf.exempt(billing_webhooks_bp)
+    csrf.exempt(billing_bp)
     init_jwt_manager(app, jwt)
 
     @app.context_processor

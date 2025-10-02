@@ -1,0 +1,12 @@
+{
+  "IN": ["Asia/Kolkata"],
+  "US": ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"],
+  "GB": ["Europe/London"],
+  "AE": ["Asia/Dubai"],
+  "DE": ["Europe/Berlin"],
+  "FR": ["Europe/Paris"],
+  "SG": ["Asia/Singapore"],
+  "JP": ["Asia/Tokyo"],
+  "AU": ["Australia/Sydney", "Australia/Brisbane", "Australia/Perth", "Australia/Adelaide", "Australia/Melbourne", "Australia/Darwin"],
+  "CA": ["America/Toronto", "America/Winnipeg", "America/Edmonton", "America/Vancouver", "America/Halifax", "America/St_Johns"]
+}

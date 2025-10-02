@@ -16,7 +16,9 @@ from support.models import (
     PRIORITY_VALUES,
     VISIBILITY_VALUES,
 )
-from support.storage import save_upload, scan_file
+from support.storage import save_upload
+from scanner.facade import scan_file as scanner_scan_file
+
 from werkzeug.datastructures import FileStorage
 
 # Uses your existing auth models
@@ -460,11 +462,18 @@ def support_ticket_upload(ticket_id: int):
     except Exception:
         current_app.logger.exception("[support.audit] upload audit failed")
 
-    # Synchronous scan (placeholder)
+    # Scan via shared scanner (sync fast-path with short budget; may return pending)
     try:
-        status = scan_file(storage_url)
-        att.scan_status = status if status in ("clean", "infected", "failed") else "failed"
-        # Status nudges
+        r = scanner_scan_file(storage_url, mode="sync", timeout_ms=1200,
+                              filename=original, mime=att.mime, size=att.size,
+                              context={"module": "support", "ticket_id": t.id, "message_id": msg.id})
+        verdict = r.get("verdict")
+        if verdict in ("clean", "infected", "failed"):
+            att.scan_status = verdict
+        else:
+            att.scan_status = "pending"
+
+        # Status nudges (keep existing behavior)
         if not is_admin and t.status in ("pending_user", "solved", "closed"):
             _set_status(t, "open")
         elif is_admin and t.status == "new" and visibility == "public":
@@ -473,6 +482,7 @@ def support_ticket_upload(ticket_id: int):
     except Exception:
         current_app.logger.exception("[support] scan failed")
         # keep 'pending' if scan errored; client can retry/view status
+
 
     return jsonify({
         "ok": True,

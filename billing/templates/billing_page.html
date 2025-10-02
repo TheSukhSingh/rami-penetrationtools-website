@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Billing · hackr.gg</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="wtf-csrf" content="{{ csrf_token() }}">
+
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; background:#0b0f12; color:#e6edf3; }
+    .container { max-width: 980px; margin: 24px auto; padding: 0 16px; }
+    .card { background:#11161b; border:1px solid #1d2932; border-radius:12px; padding:16px; margin-bottom:16px; }
+    h1,h2 { margin:0 0 12px; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 18px; }
+    .row { display:flex; gap:12px; flex-wrap: wrap; }
+    .col { flex:1 1 320px; }
+    .muted { color:#9fb0bd; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #1d2932; }
+    .pill.pro { background:#11231a; color:#7ee787; border-color:#1f3a2b; }
+    .pill.pastdue { background:#2a1616; color:#ff7b72; border-color:#4a2323; }
+    .btn { appearance:none; border:1px solid #2a3844; background:#0f1418; color:#e6edf3; padding:8px 12px; border-radius:10px; cursor:pointer; }
+    .btn:hover { background:#111a21; }
+    .btn.primary { background:#1b2a38; border-color:#2d4354; }
+    .grid { display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; }
+    .span-6 { grid-column: span 6; min-width: 280px; }
+    .progress { height: 8px; background:#0c1216; border-radius: 999px; overflow:hidden; border:1px solid #1d2932; }
+    .bar { height:100%; width:0%; background:#7ee787; transition: width .4s ease; }
+    a { color:#79c0ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .list { list-style:none; padding:0; margin:0; }
+    .list li { display:flex; justify-content:space-between; border-top:1px solid #1d2932; padding:10px 0; }
+    .small { font-size: 12px; }
+    code { background:#0c1216; padding:2px 6px; border-radius:6px; border:1px solid #1d2932; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Billing</h1>
+
+    <div class="grid">
+      <div class="span-6 card">
+        <h2>Status</h2>
+        <div id="statusRow" class="muted">Loading…</div>
+        <div style="margin-top:8px">
+          <button id="btnPortal" class="btn primary">Manage subscription</button>
+        </div>
+      </div>
+
+      <div class="span-6 card">
+        <h2>Credits</h2>
+        <div class="row muted">
+          <div class="col"><div>Daily</div><div id="dailyMic">–</div></div>
+          <div class="col"><div>Monthly</div><div id="monthlyMic">–</div></div>
+          <div class="col"><div>Top-up</div><div id="topupMic">–</div></div>
+        </div>
+        <div class="muted small" style="margin-top:6px">Resets at <span id="resetAt">–</span> (≈ <span id="resetIn">–</span>)</div>
+      </div>
+
+      <div class="span-6 card">
+        <h2>Monthly usage</h2>
+        <div id="usageNumbers" class="muted small">–</div>
+        <div class="progress" style="margin-top:8px"><div id="usageBar" class="bar"></div></div>
+      </div>
+
+      <div class="span-6 card">
+        <h2>Buy top-up</h2>
+        <div id="packsRow" class="row muted">Loading…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Invoices & receipts</h2>
+      <ul id="invoicesList" class="list">
+        <li class="muted">Loading…</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Activity</h2>
+      <div class="row">
+        <div class="col muted small">Download CSV export of recent ledger for support/debug.</div>
+        <div class="col" style="text-align:right"><a class="btn" id="dlCsv" href="/credits/activity.csv?limit=1000">Download CSV</a></div>
+      </div>
+    </div>
+
+    <!-- Dev helpers (show always in dev; harmless in prod unless FEATURE_BILLING=1 server side) -->
+    <div class="card">
+      <h2>Dev simulate</h2>
+      <div class="row">
+        <button id="simPaid" class="btn">Simulate invoice.paid</button>
+        <button id="simFailed" class="btn">Simulate invoice.payment_failed</button>
+        <button id="simTopup" class="btn">Simulate top-up (100)</button>
+      </div>
+      <div id="simOut" class="muted small" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- page script -->
+  <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/requesting.js') }}"></script>
+  <script nonce="{{ g.csp_nonce }}" src="{{ url_for('billing_bp.static', filename='js/billing.js') }}"></script>
+</body>
+</html>

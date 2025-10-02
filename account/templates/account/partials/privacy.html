@@ -1,0 +1,54 @@
+{% include "account/partials/_flash_hook.html" %}
+
+<div class="tab-header">
+  <h2>Privacy &amp; Data</h2>
+  <p>Control your data and privacy settings</p>
+</div>
+
+<div class="privacy-sections">
+  <!-- Export Data -->
+  <div class="privacy-section glass">
+    <h3>Export Your Data</h3>
+    <div class="privacy-content">
+      <p>Download a copy of all your data including scans, sessions, and account information.</p>
+      <div class="export-status">
+        <span class="status-label">Last export:</span>
+        <span class="status-value">{{ last_export_at or "Never" }}</span>
+      </div>
+
+      <!-- Hidden form submitted by the button below -->
+      <form id="exportForm" action="{{ url_for('account.privacy_export') }}" method="post" data-ajax></form>
+
+      <button class="cyber-button" onclick="requestExport()">Request Data Export</button>
+
+      <small class="form-help">
+        <a href="#" class="link">How the export process works</a>
+      </small>
+    </div>
+  </div>
+
+  <!-- Delete Account -->
+  <div class="privacy-section glass danger-section">
+    <h3>Delete Account</h3>
+    <div class="privacy-content">
+      <p>Permanently delete your account and all associated data. This action cannot be undone.</p>
+
+      <div class="danger-warning">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span>This will permanently delete all your scans, sessions, and account data{% if deletion_grace_days %} after a {{ deletion_grace_days }}-day grace period{% endif %}.</span>
+      </div>
+
+      <!-- Hidden form submitted by the button below -->
+      <form id="deleteForm" action="{{ url_for('account.privacy_delete') }}" method="post" data-ajax></form>
+
+      <button class="danger-button" onclick="requestDeletion()">Request Account Deletion</button>
+
+      <small class="form-help">
+        <a href="#" class="link">Account deletion policy</a>
+      </small>
+    </div>
+  </div>

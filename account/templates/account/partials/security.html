@@ -1,0 +1,142 @@
+{% include "account/partials/_flash_hook.html" %}
+
+<div class="account-form glass">
+  <div class="tab-header">
+    <h2>Security Settings</h2>
+    <p>Manage your account security and authentication</p>
+  </div>
+
+  {# ——— Change Email ——— #}
+  <div class="security-section">
+    <h3>Email Address</h3>
+    <div class="security-content">
+      <div class="current-setting">
+        <span class="setting-label">Current email:</span>
+        <span class="setting-value">{{ user.email }}</span>
+        {% if user.is_verified %}
+          <span class="status-badge verified">Verified</span>
+        {% else %}
+          <span class="status-badge warning">Unverified</span>
+        {% endif %}
+      </div>
+
+      <form class="security-form" id="emailForm"
+            action="{{ url_for('account.change_email_request') }}"
+            method="post" data-ajax>
+        <div class="form-group">
+          <label for="newEmail">New Email Address</label>
+          <input type="email" id="newEmail" name="new_email" class="form-input" placeholder="Enter new email" required>
+        </div>
+        <div class="form-group">
+          <label for="emailCurrentPassword">Current Password</label>
+          <div class="password-input">
+            <input type="password" id="emailCurrentPassword" name="current_password" class="form-input" placeholder="Enter current password" autocomplete="current-password" required>
+            <button type="button" class="password-toggle" data-target="emailCurrentPassword" aria-label="Toggle password visibility">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="eye-open">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="eye-closed" style="display:none;">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <button type="submit" class="cyber-button">Send Verification Link</button>
+      </form>
+    </div>
+  </div>
+
+  {# ——— Change Password ——— #}
+  <div class="security-section">
+    <h3>Password</h3>
+    <div class="security-content">
+      <div class="current-setting">
+        <span class="setting-label">Last changed:</span>
+        <span class="setting-value">
+          {% if user.local_auth and user.local_auth.password_changed_at %}
+            {{ user.local_auth.password_changed_at }}
+          {% else %}
+            —
+          {% endif %}
+        </span>
+        <span class="status-badge {% if user.local_auth %}verified{% else %}warning{% endif %}">
+          {% if user.local_auth %}Set{% else %}Unset{% endif %}
+        </span>
+      </div>
+
+      <form class="security-form" id="passwordForm"
+            action="{{ url_for('account.security') }}"
+            method="post" data-ajax>
+        <div class="form-group">
+          <label for="currentPassword">Current Password</label>
+          <div class="password-input">
+            <input type="password" id="currentPassword" name="current_password" class="form-input" placeholder="Enter current password" autocomplete="current-password" required>
+            <button type="button" class="password-toggle" data-target="currentPassword" aria-label="Toggle password visibility">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="eye-open">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="eye-closed" style="display:none;">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="newPassword">New Password</label>
+          <div class="password-input">
+            <input type="password" id="newPassword" name="new_password" class="form-input" placeholder="Enter new password" autocomplete="new-password" required>
+            <button type="button" class="password-toggle" data-target="newPassword" aria-label="Toggle password visibility">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="eye-open">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="eye-closed" style="display:none;">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+          </div>
+
+          <div class="password-strength" id="passwordStrength">
+            <div class="strength-bar">
+              <div class="strength-fill" style="width:0%"></div>
+            </div>
+            <span class="strength-text">Password strength</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="confirmPassword">Confirm New Password</label>
+          <input type="password" id="confirmPassword" name="confirm_password" class="form-input" placeholder="Confirm new password" autocomplete="new-password" required>
+        </div>
+
+        <button type="submit" class="cyber-button">Update Password</button>
+      </form>
+    </div>
+  </div>
+
+  {# ——— Two-Factor Auth (placeholder actions) ——— #}
+  <div class="security-section">
+    <h3>Two-Factor Authentication</h3>
+    <div class="security-content">
+      <div class="current-setting">
+        <span class="setting-label">Status:</span>
+        <span class="setting-value">Not configured</span>
+        <span class="status-badge">—</span>
+      </div>
+      <div class="tfa-info">
+        <p>Enable 2FA to add an extra layer of protection.</p>
+      </div>
+      <div class="tfa-actions">
+        <button class="account-glass-button" type="button" onclick="window._tfaNotImplemented && window._tfaNotImplemented()">Set up 2FA</button>
+        <button class="account-glass-button" type="button" onclick="window._tfaNotImplemented && window._tfaNotImplemented()">Regenerate Backup Codes</button>
+        <button class="account-glass-button" type="button" onclick="window._tfaNotImplemented && window._tfaNotImplemented()">Download Backup Codes</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,123 @@
+{% include "account/partials/_flash_hook.html" %}
+
+<div class="tab-header">
+  <h2>Sessions &amp; Devices</h2>
+  <p>Manage your active sessions and connected devices</p>
+</div>
+
+<div class="sessions-actions glass">
+  <div class="bulk-actions">
+    <form id="revokeSelectedForm" action="{{ url_for('account.revoke_selected_sessions') }}" method="post" data-ajax
+      class="inline">
+      <button id="revokeSelectedBtn" class="account-glass-button" type="submit" disabled>
+        Revoke Selected
+      </button>
+      {# The checkboxes live in the table below; submitting this form will include them if they are within this form.
+      To ensure they’re part of this form, we wrap the table in this form too (see below). #}
+    </form>
+
+    <form id="revokeOthersForm" action="{{ url_for('account.revoke_all_other_sessions') }}" method="post" data-ajax
+      class="inline">
+      <button class="account-glass-button" type="submit">
+        Revoke All Others
+      </button>
+    </form>
+  </div>
+
+
+  <div class="sessions-table glass">
+    <table>
+      <thead>
+        <tr>
+          <th>
+            <input type="checkbox" id="selectAll" form="revokeSelectedForm">
+
+          </th>
+          <th>Device</th>
+          <th>Location</th>
+          <th>IP Address</th>
+          <th>Last Seen</th>
+          <th>Created</th>
+          <th>Status</th>
+          <th class="text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if rows and rows|length > 0 %}
+        {% for r in rows %}
+        <tr class="{% if r.is_current %}current-session{% endif %}">
+          <td>
+            <input type="checkbox" class="session-checkbox" name="token_id" value="{{ r.id }}" form="revokeSelectedForm"
+              {% if r.is_current %}disabled{% endif %}>
+
+          </td>
+          <td>
+            <div class="device-info">
+              <div class="device-icon">
+                {# Simple UA-based icon hint #}
+                {% if 'iPhone' in r.user_agent %}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+                  <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                </svg>
+                {% else %}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                {% endif %}
+              </div>
+              <div class="device-details">
+                <strong>{{ r.device_label }}</strong>
+                {% if r.is_current %}
+                <span class="current-badge">Current Session</span>
+                {% endif %}
+              </div>
+            </div>
+          </td>
+          <td>{{ r.location or "—" }}</td>
+          <td>{{ r.ip or "—" }}</td>
+          <td>{{ r.last_seen or "—" }}</td>
+          <td>{{ r.created or "—" }}</td>
+          <td>
+            <span class="status-badge {% if r.revoked %}warning{% else %}active{% endif %}">
+              {% if r.revoked %}Revoked{% else %}Active{% endif %}
+            </span>
+          </td>
+          <td class="text-right">
+            {% if r.is_current %}
+            <span class="text-mute">Current</span>
+            {% elif not r.revoked %}
+            <form action="{{ url_for('account.revoke_session', token_id=r.id) }}" method="post" data-ajax
+              class="inline">
+              <button class="action-btn delete" type="submit">Revoke</button>
+            </form>
+            {% else %}
+            <span class="text-mute">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% else %}
+        <tr>
+          <td colspan="8">
+            <div class="empty-state" id="sessionsEmptyState">
+              <div class="empty-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+              </div>
+              <h4>Only your current session is active</h4>
+              <p>You'll see other devices and sessions here when you sign in from different locations</p>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+</div>

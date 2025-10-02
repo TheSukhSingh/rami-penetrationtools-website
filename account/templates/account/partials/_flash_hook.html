@@ -1,0 +1,7 @@
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for cat, msg in messages %}
+      <div class="visually-hidden" data-flash-message data-flash-category="{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
