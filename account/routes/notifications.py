@@ -16,8 +16,36 @@ def as_bool(v) -> bool:
 @jwt_required()
 def notifications():
     user_id = get_jwt_identity()
-    prefs = (AccountNotificationPrefs.query.filter_by(user_id=user_id).first()
-             or AccountNotificationPrefs(user_id=user_id))
+
+    def _ensure_prefs(uid: int) -> AccountNotificationPrefs:
+        prefs = AccountNotificationPrefs.query.filter_by(user_id=uid).first()
+        if prefs:
+            return prefs
+
+        # Python-side defaults that mirror your model intent
+        prefs = AccountNotificationPrefs(
+            user_id=uid,
+            # group flags (for back-compat/UI grouping)
+            product_updates=True,
+            marketing_emails=False,
+            security_alerts=True,
+            # granular flags
+            login_alerts=True,
+            password_change_alerts=True,
+            tfa_change_alerts=True,
+            new_tools_updates=True,
+            feature_updates=True,
+            promotions=False,
+            newsletter=False,
+            scan_completion=True,
+            weekly_summary=False,
+        )
+        db.session.add(prefs)
+        db.session.commit()
+        return prefs
+
+    prefs = _ensure_prefs(user_id)
+
 
     if request.method == "POST" or request.is_json:
         data = request.get_json(silent=True) or request.form

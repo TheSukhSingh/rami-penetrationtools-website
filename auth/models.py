@@ -129,6 +129,19 @@ class User(TimestampMixin, db.Model):
         if u.lower() in RESERVED_USERNAMES:
             raise ValueError("That username is reserved; please choose another.")
     
+    @property
+    def is_verified(self) -> bool:
+        # 1) direct flag (if you added one)
+        if hasattr(self, "email_verified") and bool(getattr(self, "email_verified")):
+            return True
+        # 2) LocalAuth flag
+        la = getattr(self, "local_auth", None)
+        if la and getattr(la, "email_verified", False):
+            return True
+        # 3) any linked OAuth account => provider-verified email
+        oas = getattr(self, "oauth_accounts", None)
+        return bool(oas and len(oas) > 0)
+
     def get_full_name(self):
         return self.name or self.username or self.email
 
@@ -294,7 +307,8 @@ class LocalAuth(db.Model):
     failed_logins = db.Column(db.Integer, default=0, nullable=False)
     last_failed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     last_login_at  = db.Column(db.DateTime(timezone=True), nullable=True)
-
+    password_changed_at = db.Column(db.DateTime(timezone=True))
+    
     user = db.relationship('User', back_populates='local_auth')
 
     def _validate_password(self, raw: str):
@@ -325,6 +339,7 @@ class LocalAuth(db.Model):
     def set_password(self, raw: str) -> None:
         self._validate_password(raw)
         self.password_hash = bcrypt.generate_password_hash(raw).decode('utf-8')
+        self.password_changed_at = datetime.now(timezone.utc)
 
     def check_password(self, password: str) -> bool:
         if not self.password_hash:

@@ -1,14 +1,28 @@
 from flask import render_template, request, redirect, url_for, flash
-from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
 from extensions import db
-from auth.models import User
 from auth.utils import validate_and_set_password
 from auth.models import LocalAuth
 from .. import account_bp
+from flask_jwt_extended import jwt_required, get_jwt_identity, decode_token
+from auth.models import LocalAuth, RefreshToken, User
 
 def wants_fragment() -> bool:
     return request.args.get("fragment") == "1" or request.headers.get("X-Fragment") == "1"
+
+def _current_refresh_token_id() -> int | None:
+    try:
+        raw = request.cookies.get("refresh_token_cookie")
+        if not raw:
+            return None
+        decoded = decode_token(raw, allow_expired=True)
+        jti = decoded.get("jti")
+        if not jti:
+            return None
+        rt = RefreshToken.query.filter_by(jti=jti).first()
+        return rt.id if rt else None
+    except Exception:
+        return None
 
 @account_bp.route("/security", methods=["GET", "POST"])
 @jwt_required()
@@ -37,10 +51,20 @@ def security():
 
         db.session.add(user.local_auth)
         db.session.commit()
-        flash("Password updated.", "success")
+
+        # Revoke all other active sessions (keep the current one)
+        current_id = _current_refresh_token_id()
+        q = RefreshToken.query.filter_by(user_id=user_id, revoked=False)
+        if current_id:
+            q = q.filter(RefreshToken.id != current_id)
+        revoked_count = q.update({"revoked": True}, synchronize_session=False)
+        db.session.commit()
+
+        flash(f"Password updated. Revoked {revoked_count} other session(s).", "success")
         if wants_fragment():
             return render_template("account/partials/security.html", user=user)
         return redirect(url_for("account.security"))
+
 
     if wants_fragment():
         return render_template("account/partials/security.html", user=user)

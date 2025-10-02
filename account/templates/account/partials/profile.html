@@ -8,6 +8,8 @@
 
 
   <form action="{{ url_for('account.profile') }}" method="post" data-ajax>
+
+
     <div class="form-row">
       <div class="form-group">
         <label>
@@ -16,14 +18,54 @@
         </label>
       </div>
 
-      <div class="form-group">
-        <label>
-          <span>Timezone</span>
-          <input type="text" name="timezone" value="{{ prof.timezone or 'UTC' }}" class="form-input"
-            placeholder="e.g. Asia/Kolkata">
-        </label>
+
+
+      <label>
+        <span>Timezone</span>
+        <select name="timezone" id="timezoneSelect" class="form-input">
+          {% for region, zones in tz_groups %}
+          <optgroup label="{{ region }}">
+            {% for tz in zones %}
+            <option value="{{ tz }}" class="options-dropdown" {% if prof.timezone==tz %}selected{% endif %}>{{ tz }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+      </label>
+      <div id="tzHint" class="form-help" hidden>
+        Your device timezone appears to be <strong class="device-tz"></strong>.
+        <button id="useDeviceTz" type="button" class="account-glass-button">Use this</button>
       </div>
     </div>
+
+    <script nonce="{{ g.csp_nonce }}">
+      (function () {
+        var tzSel = document.getElementById('timezoneSelect');
+        var hint = document.getElementById('tzHint');
+        var btn = document.getElementById('useDeviceTz');
+
+        try {
+          var guess = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          if (guess && tzSel && tzSel.value !== guess) {
+            // show hint only if dropdown differs from device tz
+            hint.hidden = false;
+            hint.querySelector('.device-tz').textContent = guess;
+            btn.addEventListener('click', function () {
+              for (var i = 0; i < tzSel.options.length; i++) {
+                if (tzSel.options[i].value === guess) {
+                  tzSel.value = guess;
+                  break;
+                }
+              }
+              hint.hidden = true;
+            });
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
+
+
+
 
     <div class="form-group">
       <label for="bio">Bio</label>

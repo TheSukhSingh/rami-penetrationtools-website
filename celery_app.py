@@ -85,9 +85,11 @@ celery = Celery(
     __name__,
     include=[
         "tools.tasks",
+        "support.tasks",   # needed because you schedule support.* below
+        "account.tasks",   # needed for the privacy task
     ],
 )
-
+celery_app = celery
 # Celery config (unchanged)
 from kombu import Queue
 celery.conf.update(
@@ -120,6 +122,14 @@ celery.conf.beat_schedule = {
         "schedule": crontab(minute=35, hour="*/2"),  # every 2 hours (staggered)
     },
 }
+
+celery.conf.beat_schedule.update({
+    "account-execute-due-deletions-every-hour": {
+        "task": "account.execute_due_deletions",
+        "schedule": crontab(minute=0),  # hourly on the hour
+    },
+})
+
 celery.conf.task_default_queue = "tools_default"
 celery.conf.task_queues = (Queue("tools_default", routing_key="tools_default"),)
 celery.conf.task_default_exchange = "tools_default"

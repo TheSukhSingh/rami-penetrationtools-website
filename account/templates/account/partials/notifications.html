@@ -23,7 +23,7 @@
           <span>New sign-ins from unrecognized devices</span>
         </div>
         <div class="toggle-switch">
-          <input type="checkbox" id="loginAlerts" name="login_alerts" {% if prefs.security_alerts %}checked{% endif %}>
+          <input type="checkbox" id="loginAlerts" name="login_alerts" {% if prefs.login_alerts %}checked{% endif %}>
           <label for="loginAlerts"></label>
         </div>
       </div>
@@ -34,7 +34,7 @@
           <span>When your password is changed</span>
         </div>
         <div class="toggle-switch">
-          <input type="checkbox" id="passwordAlerts" name="password_change_alerts"  {% if prefs.security_alerts %}checked{% endif %}>
+          <input type="checkbox" id="passwordAlerts" name="password_change_alerts"  {% if prefs.password_change_alerts  %}checked{% endif %}>
           <label for="passwordAlerts"></label>
         </div>
       </div>
@@ -45,7 +45,7 @@
           <span>When 2FA is enabled or disabled</span>
         </div>
         <div class="toggle-switch">
-          <input type="checkbox" id="tfaAlerts" name="tfa_change_alerts" {% if prefs.security_alerts %}checked{% endif %}>
+          <input type="checkbox" id="tfaAlerts" name="tfa_change_alerts" {% if prefs.tfa_change_alerts %}checked{% endif %}>
           <label for="tfaAlerts"></label>
         </div>
       </div>
@@ -62,7 +62,7 @@
           <span>When new reconnaissance tools are added</span>
         </div>
         <div class="toggle-switch">
-          <input type="checkbox" id="newTools"  name="new_tools_updates"  {% if prefs.product_updates %}checked{% endif %}>
+          <input type="checkbox" id="newTools" name="new_tools_updates"  {% if prefs.new_tools_updates  %}checked{% endif %}>
           <label for="newTools"></label>
         </div>
       </div>
@@ -73,7 +73,7 @@
           <span>Platform improvements and new features</span>
         </div>
         <div class="toggle-switch">
-          <input type="checkbox" id="featureUpdates" name="feature_updates" {% if prefs.product_updates %}checked{% endif %}>
+          <input type="checkbox" id="featureUpdates" name="feature_updates" {% if prefs.feature_updates  %}checked{% endif %}>
           <label for="featureUpdates"></label>
         </div>
       </div>
@@ -90,7 +90,7 @@
           <span>Discounts and promotional campaigns</span>
         </div>
         <div class="toggle-switch">
-          <input type="checkbox" id="promotions"  name="promotions"  {% if prefs.marketing_emails %}checked{% endif %}>
+          <input type="checkbox" id="promotions" name="promotions"  {% if prefs.promotions  %}checked{% endif %}>
           <label for="promotions"></label>
         </div>
       </div>
@@ -101,7 +101,7 @@
           <span>Monthly security tips and best practices</span>
         </div>
         <div class="toggle-switch">
-          <input type="checkbox" id="newsletter" name="newsletter" {% if prefs.marketing_emails %}checked{% endif %}>
+          <input type="checkbox" id="newsletter" name="newsletter" {% if prefs.newsletter  %}checked{% endif %}>
           <label for="newsletter"></label>
         </div>
       </div>
@@ -118,7 +118,7 @@
           <span>When your scans finish running</span>
         </div>
         <div class="toggle-switch">
-          <input type="checkbox" id="scanCompletion" name="scan_completion"  checked>
+          <input type="checkbox" id="scanCompletion" name="scan_completion" {% if prefs.scan_completion %}checked{% endif %}>
           <label for="scanCompletion"></label>
         </div>
       </div>
@@ -129,7 +129,7 @@
           <span>Weekly activity and usage summary</span>
         </div>
         <div class="toggle-switch">
-          <input type="checkbox" id="weeklySummary"  name="weekly_summary" >
+          <input type="checkbox" id="weeklySummary" name="weekly_summary" {% if prefs.weekly_summary %}checked{% endif %}>
           <label for="weeklySummary"></label>
         </div>
       </div>
